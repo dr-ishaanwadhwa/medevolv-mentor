@@ -4,6 +4,7 @@ data/okf/
 data/chroma/
 stair/adapters/
 stair/pairs/
+stair/data/
 *.gguf
 *.safetensors
 
