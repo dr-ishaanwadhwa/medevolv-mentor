@@ -31,10 +31,14 @@ python stair/train_unsloth.py --data stair/data/tripathi --out stair/adapters/tr
 ```
 
 ## Measured so far (2026-11-07, local llama3.2:3b generator)
-- Pair generation: ~3.5 s per target with 2 passages → ~25 min for all 447 sections locally.
-- Dataset: ~744 tokens per example (stage A and B similar), 2 examples per question.
-- Estimate for 447 sections × 10 questions: ~8,900 examples ≈ 6.6 M tokens/epoch → at ~500 tok/s on a T4,
-  **~3.7 GPU-h per epoch**. Replace with the real number from the 100-step test.
+- Pair generation (local llama3.2:3b, 3 passages/section): 3,952 questions for 446 of 447 sections;
+  27 dropped by the copy / eval-overlap guards.
+- Dataset: **6,972 train / 886 val** examples (stage A 3,506, stage B 3,466), median 737 tokens,
+  **3.09 M tokens per epoch**.
+- At an assumed ~500 tok/s on a T4 that is **~1.7 GPU-h per epoch → 3 epochs ≈ 5 h**, inside one Kaggle session.
+  Replace with the real number from the 100-step test.
+- Baseline to beat (vector search, 446 held-out questions, all 5 books indexed): chapter@1 76.7%,
+  **section@1 65.5%**, section@3 84.3%.
 
 ## Quality guards built in
 - Questions sharing **8+ consecutive words** with their source passage are dropped (paraphrase, don't memorise text).

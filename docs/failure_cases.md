@@ -63,3 +63,21 @@ using the local model at once); the shell reported success because of a trailing
 **Fix (built):** retries with backoff, per-section flushing and resume-from-file; the job now reports the
 generator's own exit code.
 **Category:** engineering.
+
+## 8. Prompt-based ToC router with a small model is worse than vector search
+**Measured (Tripathi, held-out generated questions, local llama3.2 3B):**
+
+| Retriever | n | chapter@1 | chapter@3 | section@1 |
+|---|---|---|---|---|
+| Vector (bge-small) | 446 | 76.7% | 91.0% | 65.5% |
+| Router, LLM sees all 78 chapters | 120 | 12.5% | 30.0% | 2.5% |
+| Router, vector shortlist of 8 | 40 | 20% | 68% | 10% |
+| Router, vector shortlist of 4 (default) | 40 | 32% | 68% | 15% |
+
+**Cause:** not a code bug (raw model picks were checked against `route()` and match). A 3B model cannot pick the
+right chapter from a long list, and even when given vector search's own top-4 it re-ranks them worse than the
+embedding order (32% vs 74% for vector's first choice).
+**What it means:** LLM routing only pays off with a stronger model (OCI 70B) or a model trained for the task —
+which is exactly what STAIR's fine-tuning is meant to provide. The router stays as the "untrained" point of
+comparison on the eval slide: vector → untrained router → fine-tuned STAIR.
+**Category:** retrieval / model capacity.
