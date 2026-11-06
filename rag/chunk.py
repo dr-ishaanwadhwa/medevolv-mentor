@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ingest.font_toc import smart_title
 from rag import config
 
 
@@ -64,16 +65,19 @@ def chunk_section(sec: Section, target_words: int = config.CHUNK_WORDS) -> list[
             return
         passage = "\n\n".join(buf)
         n = len(chunks) + 1
-        ctx = f"{sec.meta['title']}" + (f" › {buf_heading.title()}" if buf_heading else "")
+        chapter = sec.meta.get("chapter", sec.meta["title"])
+        crumbs = [chapter] + ([sec.meta["title"]] if sec.meta["title"] != chapter else []) + \
+                 ([buf_heading] if buf_heading else [])
         chunks.append(Chunk(
             id=f"{sec.meta['id']}#p{n:03d}",
-            text=f"{ctx}\n{passage}",
+            text=" › ".join(crumbs) + "\n" + passage,   # heading context is embedded with the passage
             passage=passage,
             meta={
                 "section_id": sec.meta["id"],
                 "section_title": sec.meta["title"],
+                "chapter": chapter,
                 "section_path": " › ".join(sec.meta["section_path"]),
-                "heading": buf_heading.title(),
+                "heading": buf_heading,
                 "book_id": sec.meta["book_id"],
                 "book": sec.meta["book"],
                 "subject": sec.meta["subject"],
@@ -83,9 +87,10 @@ def chunk_section(sec: Section, target_words: int = config.CHUNK_WORDS) -> list[
         buf = [carry] if carry else []
 
     for par in pars:
-        if is_heading(par):
+        md = re.match(r"^#{3,4} (.+)$", par)          # sub-headings written by ingest.font_toc
+        if md or is_heading(par):
             flush(None)                    # a new heading starts a fresh passage, no overlap across topics
-            heading = par
+            heading = md.group(1) if md else smart_title(par)
             buf_heading = heading
             continue
         if not buf:

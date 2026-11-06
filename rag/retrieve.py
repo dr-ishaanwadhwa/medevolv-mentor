@@ -17,7 +17,14 @@ class Hit:
 
     def citation(self) -> str:
         m = self.meta
-        where = m["section_title"] + (f" › {m['heading']}" if m.get("heading") else "")
+        path = m["section_path"].split(" › ")
+        chapter = m.get("chapter", m["section_title"])
+        # Everything from the chapter down (drops the book title and "Section N:" grouping)
+        parts = path[path.index(chapter):] if chapter in path else [chapter, m["section_title"]]
+        parts = [p for p in parts if p != "Overview"]
+        if m.get("heading") and m["heading"] not in parts:
+            parts.append(m["heading"])
+        where = " › ".join(parts)
         return f"{m['book']}, {where} (pp. {m['pages']})"
 
 
