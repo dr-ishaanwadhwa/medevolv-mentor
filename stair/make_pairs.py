@@ -28,7 +28,7 @@ from rag import config
 from rag.backends import chat
 from rag.chunk import iter_chunks
 
-SYSTEM = """You write exam questions for medical students from a pharmacology textbook passage.
+SYSTEM = """You write exam questions for medical students from a medical textbook passage.
 Return a JSON object: {"questions": ["...", "..."]}.
 Rules:
 - Every question must be answerable from the passage alone.

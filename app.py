@@ -15,7 +15,7 @@ STATUS_LABEL = {
 
 with st.sidebar:
     st.title("💊 Eka Study Companion")
-    st.caption("Pharmacology study aid for medical students. Answers come only from the textbook, with citations.")
+    st.caption("Study aid for medical students. Answers come only from 5 indexed textbooks and the BODHI graph, with citations.")
     st.divider()
     st.markdown("**Pipeline**")
     st.code("OKF sections → ~250-word chunks\n→ embeddings → Chroma\n→ [BODHI hops | decomposition]\n→ retrieval per hop → LLM → cited answer",
@@ -76,7 +76,7 @@ for msg in st.session_state.messages:
         if msg.get("result"):
             render_evidence(msg["result"])
 
-question = st.chat_input("Ask a pharmacology question…") or st.session_state.pop("pending", None)
+question = st.chat_input("Ask a medicine, pharmacology, pathology, physiology or microbiology question…") or st.session_state.pop("pending", None)
 if question:
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):

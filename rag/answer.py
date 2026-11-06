@@ -23,7 +23,7 @@ PERSONAL = re.compile(
     re.I,
 )
 
-SYSTEM = """You are a pharmacology study companion for medical students, built on Eka Care's knowledge sources.
+SYSTEM = """You are a study companion for medical students (pharmacology, medicine, pathology, physiology, microbiology), built on Eka Care's knowledge sources.
 Rules:
 - Answer ONLY from the numbered evidence passages. Do not use outside knowledge.
 - Cite every claim with the passage number in square brackets, e.g. [2]. Use only numbers that exist.
@@ -33,7 +33,7 @@ Rules:
 - Never give dosing or treatment advice for a specific real person."""
 
 NOT_IN_SOURCES = ("I couldn't find this in my textbook sources, so I won't guess. "
-                  "Try rephrasing, or ask about a topic covered in the pharmacology textbook.")
+                  "Try rephrasing, or ask about a topic covered in the indexed textbooks.")
 PERSONAL_REFUSAL = ("I'm a study aid, so I can't advise on treatment or dosing for a real person — please ask a "
                     "doctor or pharmacist. I can explain what the textbook says about the drug or condition in general.")
 
