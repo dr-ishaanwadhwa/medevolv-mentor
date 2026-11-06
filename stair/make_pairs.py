@@ -20,6 +20,7 @@ import argparse
 import json
 import random
 import re
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -83,6 +84,18 @@ def parse_questions(raw: str) -> list[str]:
     return out
 
 
+def _chat_with_retry(user: str, tries: int = 4) -> str | None:
+    """Transient backend errors (Ollama 500s, OCI throttling) must not kill a 25-minute run."""
+    for attempt in range(tries):
+        try:
+            return chat(SYSTEM, user, temperature=0.7, max_tokens=700, json_mode=True)
+        except Exception as e:  # noqa: BLE001 -- any backend failure is retried the same way
+            wait = 2 ** attempt * 3
+            print(f"  ! {type(e).__name__}: {str(e)[:80]} -- retrying in {wait}s")
+            time.sleep(wait)
+    return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--book", required=True, help="book_id, e.g. tripathi")
@@ -131,8 +144,10 @@ def main() -> None:
             per_passage = max(1, round(a.per_section / len(chosen)))
             seen: set[str] = set()
             for c in chosen:
-                raw = chat(SYSTEM, USER.format(path=label, passage=c.passage, n=per_passage),
-                           temperature=0.7, max_tokens=700, json_mode=True)
+                raw = _chat_with_retry(USER.format(path=label, passage=c.passage, n=per_passage))
+                if raw is None:
+                    print(f"  ! gave up on one passage of {label.split(' › ')[-1][:50]} after retries")
+                    continue
                 for q in parse_questions(raw)[:per_passage]:
                     if q.lower() in seen:
                         continue

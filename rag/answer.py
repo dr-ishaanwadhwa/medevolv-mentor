@@ -44,6 +44,9 @@ class Answer:
     hits: list[Hit] = field(default_factory=list)
     cited: list[int] = field(default_factory=list)   # 1-based indices into hits
     status: str = "answered"                          # answered | not_in_sources | personal_refusal | insufficient
+    plan: object | None = None                        # rag.hops.Plan for multi-hop answers (trace for the UI)
+    graph_cited: list[int] = field(default_factory=list)
+    agreed_drugs: list[str] = field(default_factory=list)   # BODHI drug list ∩ textbook-grounded answer
 
 
 def build_prompt(question: str, hits: list[Hit]) -> str:
@@ -69,10 +72,59 @@ def answer(question: str, section_ids: list[str] | None = None) -> Answer:
     return Answer(text, hits=hits, cited=cited)
 
 
+MULTIHOP_SYSTEM = SYSTEM + """
+- Two kinds of evidence: graph facts [G1], [G2] ... from Eka Care's BODHI clinical graph, and textbook passages
+  [1], [2] .... Cite each claim with the right kind.
+- For symptom questions answer in this order: likely condition(s) from the graph, which specialist, then treatment /
+  drug of choice from the textbook. Present conditions as a differential to consider, never as a diagnosis.
+- If the textbook evidence does not cover a condition's treatment, say so instead of filling it in."""
+
+
+def _cited(text: str, pattern: str, n: int) -> list[int]:
+    nums = [x for grp in re.findall(pattern, text) for x in re.findall(r"\d+", grp)]
+    return sorted({int(x) for x in nums if 1 <= int(x) <= n})
+
+
+def answer_multihop(question: str) -> Answer:
+    from rag.hops import cross_check, plan as make_plan
+
+    if PERSONAL.search(question):
+        return Answer(PERSONAL_REFUSAL, status="personal_refusal")
+    p = make_plan(question)
+    if p.route == "single":                       # nothing to hop over: identical to the baseline
+        a = answer(question)
+        a.plan = p
+        return a
+    if not p.evidence and not p.graph_facts:
+        return Answer(NOT_IN_SOURCES, status="not_in_sources", plan=p)
+
+    graph_block = "\n".join(f"[G{i}] {f}" for i, f in enumerate(p.graph_facts, 1))
+    text_block = "\n\n".join(f"[{i}] ({h.citation()})\n{h.passage}" for i, h in enumerate(p.evidence, 1))
+    prompt = (f"Graph facts:\n{graph_block or '(none)'}\n\nTextbook passages:\n\n{text_block or '(none)'}"
+              f"\n\nQuestion: {question}\nAnswer:")
+    text = chat(MULTIHOP_SYSTEM, prompt, max_tokens=1100).strip()
+    if "INSUFFICIENT_CONTEXT" in text:
+        return Answer(NOT_IN_SOURCES, hits=p.evidence, status="insufficient", plan=p)
+    return Answer(text, hits=p.evidence, plan=p,
+                  cited=_cited(text, r"\[([\d,\s]+)\]", len(p.evidence)),
+                  graph_cited=_cited(text, r"\[(G\d+(?:\s*,\s*G?\d+)*)\]", len(p.graph_facts)),
+                  agreed_drugs=cross_check(text, p))
+
+
 if __name__ == "__main__":
     import sys
-    a = answer(" ".join(sys.argv[1:]) or "What is the mechanism of action of penicillin?")
+    args = sys.argv[1:]
+    multi = bool(args) and args[0] == "--hops"
+    q = " ".join(args[1:] if multi else args) or "What is the mechanism of action of penicillin?"
+    a = answer_multihop(q) if multi else answer(q)
     print(f"[{a.status}]\n{a.text}\n")
+    if a.plan:
+        print(f"route: {a.plan.route}")
+        for h in a.plan.hops:
+            print(f"  {h.kind:9} {h.query[:70]}\n            -> {h.result[:110]}")
+        for i, f in enumerate(a.plan.graph_facts, 1):
+            print(f"{'*' if i in a.graph_cited else ' '}[G{i}] {f[:110]}")
     for i, h in enumerate(a.hits, 1):
-        mark = "*" if i in a.cited else " "
-        print(f"{mark}[{i}] {h.similarity:.3f}  {h.citation()}")
+        print(f"{'*' if i in a.cited else ' '}[{i}] {h.similarity:.3f}  {h.citation()}")
+    if a.agreed_drugs:
+        print("BODHI cross-check agrees on:", ", ".join(a.agreed_drugs))

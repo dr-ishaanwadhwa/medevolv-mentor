@@ -2,7 +2,7 @@
 import streamlit as st
 
 from rag import config
-from rag.answer import answer
+from rag.answer import answer, answer_multihop
 
 st.set_page_config(page_title="Eka Study Companion", page_icon="💊", layout="wide")
 
@@ -18,13 +18,16 @@ with st.sidebar:
     st.caption("Pharmacology study aid for medical students. Answers come only from the textbook, with citations.")
     st.divider()
     st.markdown("**Pipeline**")
-    st.code("OKF sections → ~250-word chunks\n→ embeddings → Chroma\n→ top-k retrieval → LLM → cited answer",
+    st.code("OKF sections → ~250-word chunks\n→ embeddings → Chroma\n→ [BODHI hops | decomposition]\n→ retrieval per hop → LLM → cited answer",
             language=None)
     st.markdown(f"- Embeddings: `{config.EMBED_BACKEND}`\n- LLM: `{config.LLM_BACKEND}`\n"
                 f"- Top-k: `{config.TOP_K}`\n- Refusal threshold: `{config.MIN_SIMILARITY}`")
+    multihop = st.toggle("Multi-hop (BODHI graph + query decomposition)", value=True,
+                         help="Off = baseline single-retrieval RAG, for before/after comparison")
     st.divider()
     st.markdown("**Try:**")
     examples = [
+        "A patient has high fever, headache and joint pain after a mosquito bite. Likely diagnosis and treatment?",
         "What is the drug of choice for absence seizures and why?",
         "Compare the mechanism of action of penicillins and aminoglycosides",
         "Who won the 2011 cricket world cup?",
@@ -41,7 +44,23 @@ st.session_state.setdefault("messages", [])
 
 def render_evidence(res) -> None:
     label, color = STATUS_LABEL[res.status]
-    st.badge(label, color=color)
+    cols = st.columns([1, 3])
+    with cols[0]:
+        st.badge(label, color=color)
+    if res.agreed_drugs:
+        with cols[1]:
+            st.badge("BODHI cross-check agrees: " + ", ".join(res.agreed_drugs[:3]), color="blue")
+
+    p = res.plan
+    if p is not None and p.route != "single":
+        with st.expander(f"Reasoning path ({p.route} route, {len(p.hops)} hops)"):
+            for i, h in enumerate(p.hops, 1):
+                icon = {"graph": "🕸️", "retrieve": "📖", "decompose": "🧩"}[h.kind]
+                st.markdown(f"{i}. {icon} **{h.kind}** · `{h.query}`  \n→ {h.result}")
+            if p.graph_facts:
+                st.markdown("**Graph facts** (Eka Care BODHI, CC BY-NC 4.0)")
+                for j, f in enumerate(p.graph_facts, 1):
+                    st.markdown(f"- **[G{j}]** {f}" + (" ✅" if j in res.graph_cited else ""))
     if not res.hits:
         return
     with st.expander(f"Evidence ({len(res.cited)} cited of {len(res.hits)} retrieved)"):
@@ -64,7 +83,7 @@ if question:
         st.markdown(question)
     with st.chat_message("assistant"):
         with st.spinner("Retrieving and answering…"):
-            res = answer(question)
+            res = answer_multihop(question) if multihop else answer(question)
         st.markdown(res.text)
         render_evidence(res)
     st.session_state.messages.append({"role": "assistant", "content": res.text, "result": res})
