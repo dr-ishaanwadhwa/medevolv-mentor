@@ -49,14 +49,16 @@ def embed(texts: list[str], is_query: bool = False) -> list[list[float]]:
 
 
 # ---------- chat ----------
-def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900, json_mode: bool = False) -> str:
-    """json_mode asks the backend for a JSON object (Ollama enforces it; for OCI the prompt must ask for JSON)."""
-    if config.LLM_BACKEND == "ollama":
+def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900, json_mode: bool = False,
+         schema: dict | None = None, model: str | None = None) -> str:
+    """json_mode asks for a JSON object; schema (a JSON Schema) constrains decoding on Ollama -- e.g. an enum of
+    real ToC titles, so the model cannot output a title that does not exist. On OCI the caller must validate."""
+    if config.LLM_BACKEND == "ollama" or model:          # a named local model (e.g. STAIR) always runs on Ollama
         body = json.dumps({
-            "model": config.OLLAMA_MODEL, "stream": False,
+            "model": model or config.OLLAMA_MODEL, "stream": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            **({"format": "json"} if json_mode else {}),
+            **({"format": schema} if schema else ({"format": "json"} if json_mode else {})),
         }).encode()
         req = urllib.request.Request(f"{config.OLLAMA_URL}/api/chat", body, {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=300) as r:

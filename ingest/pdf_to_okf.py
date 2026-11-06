@@ -160,43 +160,51 @@ def main() -> None:
 
     toc_json, index_lines = [], []
     n = 0
+    target = a.level + (1 if parent_re else 0)
+    min_level = (a.chapter_level or 1)
+
+    def emit(title: str, ancestors: list[str], text: str, start: int, end: int) -> None:
+        nonlocal n
+        n += 1
+        sid = f"{a.book_id}/{n:03d}-{slugify(ancestors[-1] if title == 'Overview' else title)}"
+        if title == "Overview":
+            sid += "-overview"
+        path = [a.title] + ancestors + ([title] if title != ancestors[-1] else [])
+        cl = a.chapter_level
+        chapter = ancestors[cl - 1] if cl and len(ancestors) >= cl else ancestors[-1]
+        front = {
+            "type": "textbook-section", "id": sid, "title": title, "chapter": chapter,
+            "book_id": a.book_id, "book": a.title, "subject": a.subject, "isbn": a.isbn,
+            "section_path": path, "level": a.level, "pages": [start, end], "words": len(text.split()),
+            "source": Path(a.pdf).name, "license": "copyrighted; local study use only; do not redistribute",
+        }
+        fname = sid.split("/", 1)[1] + ".md"
+        (out / "sections" / fname).write_text(yaml_front(front) + f"\n# {title}\n\n{text}\n")
+        toc_json.append({"id": sid, "chapter": chapter, "path": " › ".join(path), "pages": [start, end]})
+        index_lines.append(f"- [{title}](sections/{fname}) (pp. {start}–{end})")
+
     for i, e in enumerate(entries):
         if e["parent"]:
             index_lines.append(f"\n## {e['title']}\n")
             continue
-        if e["level"] != a.level + (1 if parent_re else 0) or any(skip_re.search(t) for t in e["path"]):
+        if e["level"] > target or e["level"] < min_level or any(skip_re.search(t) for t in e["path"]):
             continue
-        # The section runs from its bookmark's exact position to the next bookmark at the same or a higher level.
-        nxt = next((x for x in entries[i + 1:] if x["level"] <= e["level"]), None)
-        text, start, end = slice_text(doc, edges, position(doc, e), position(doc, nxt) if nxt else None)
-        if len(text) < 200:  # bookmark with no real body (e.g. a divider page)
-            continue
-        chapter_level = a.chapter_level
-        chapter = e["path"][chapter_level - 1] if chapter_level and len(e["path"]) >= chapter_level else e["title"]
+        nxt_any = entries[i + 1] if i + 1 < len(entries) else None
+        nxt_same = next((x for x in entries[i + 1:] if x["level"] <= e["level"]), None)
+        has_children = nxt_any is not None and nxt_any["level"] > e["level"]
 
-        n += 1
-        sid = f"{a.book_id}/{n:03d}-{slugify(e['title'])}"
-        path = [a.title] + e["path"]
-        front = {
-            "type": "textbook-section",
-            "id": sid,
-            "title": e["title"],
-            "chapter": chapter,
-            "book_id": a.book_id,
-            "book": a.title,
-            "subject": a.subject,
-            "isbn": a.isbn,
-            "section_path": path,
-            "level": a.level,
-            "pages": [start, end],
-            "words": len(text.split()),
-            "source": Path(a.pdf).name,
-            "license": "copyrighted; local study use only; do not redistribute",
-        }
-        fname = f"{n:03d}-{slugify(e['title'])}.md"
-        (out / "sections" / fname).write_text(yaml_front(front) + f"\n# {e['title']}\n\n{text}\n")
-        toc_json.append({"id": sid, "chapter": chapter, "path": " › ".join(path), "pages": [start, end]})
-        index_lines.append(f"- [{e['title']}](sections/{fname}) (pp. {start}–{end})")
+        if e["level"] == target or not has_children:
+            # A target-level section, or a shallower entry with no sub-bookmarks (whole chapter = one section).
+            # It runs from its bookmark's exact position to the next bookmark at the same or a higher level.
+            text, start, end = slice_text(doc, edges, position(doc, e),
+                                          position(doc, nxt_same) if nxt_same else None)
+            if len(text) >= 200:          # shorter = a bookmark with no real body (e.g. a divider page)
+                emit(e["title"], e["path"], text, start, end)
+        else:
+            # Shallower entry with children: capture its intro text (before the first child) as "Overview".
+            text, start, end = slice_text(doc, edges, position(doc, e), position(doc, nxt_any))
+            if len(text.split()) >= 60:
+                emit("Overview", e["path"], text, start, end)
 
     index = yaml_front({"type": "index", "book_id": a.book_id, "book": a.title, "subject": a.subject,
                         "sections": n}) + f"\n# {a.title}\n" + "\n".join(index_lines) + "\n"

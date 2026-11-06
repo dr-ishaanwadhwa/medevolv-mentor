@@ -54,10 +54,28 @@ def build_prompt(question: str, hits: list[Hit]) -> str:
     return "Evidence passages:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}\nAnswer:"
 
 
-def answer(question: str, section_ids: list[str] | None = None) -> Answer:
+def routed_section_ids(question: str, retriever: str) -> list[str] | None:
+    """vector = search everything; router = prompt-based ToC routing; stair = fine-tuned ToC retriever."""
+    if retriever == "router":
+        from rag.router import section_ids
+        return section_ids(question)[1]
+    if retriever == "stair":
+        from rag.router import pick_book, toc
+        from stair.serve import retrieve
+        book = pick_book(question)
+        t = toc(book)
+        ranked = retrieve(question, book)          # raises if the STAIR model is not installed yet
+        ids = [i for _, label in ranked for i in t["ids"].get(label, [])]
+        return list(dict.fromkeys(ids + t["ids"].get(ranked[0][0], [])))
+    return None
+
+
+def answer(question: str, section_ids: list[str] | None = None, retriever: str = "vector") -> Answer:
     if PERSONAL.search(question):
         return Answer(PERSONAL_REFUSAL, status="personal_refusal")
 
+    if section_ids is None and retriever != "vector":
+        section_ids = routed_section_ids(question, retriever)
     hits = search(question, section_ids=section_ids)
     if not hits or hits[0].similarity < config.MIN_SIMILARITY:
         return Answer(NOT_IN_SOURCES, hits=hits, status="not_in_sources")

@@ -22,8 +22,14 @@ with st.sidebar:
             language=None)
     st.markdown(f"- Embeddings: `{config.EMBED_BACKEND}`\n- LLM: `{config.LLM_BACKEND}`\n"
                 f"- Top-k: `{config.TOP_K}`\n- Refusal threshold: `{config.MIN_SIMILARITY}`")
-    multihop = st.toggle("Multi-hop (BODHI graph + query decomposition)", value=True,
-                         help="Off = baseline single-retrieval RAG, for before/after comparison")
+    retriever = st.radio(
+        "Retriever", ["vector", "router", "stair"], horizontal=True,
+        format_func={"vector": "Vector", "router": "ToC router", "stair": "STAIR"}.get,
+        help="Vector = embedding search over all books · ToC router = LLM picks chapter/section from the table of "
+             "contents, then searches inside it · STAIR = fine-tuned model does that routing")
+    multihop = st.toggle("Multi-hop (BODHI graph + query decomposition)", value=True, disabled=retriever != "vector",
+                         help="Off = baseline single-retrieval RAG, for before/after comparison. "
+                              "Multi-hop runs on vector retrieval.")
     st.divider()
     st.markdown("**Try:**")
     examples = [
@@ -67,7 +73,8 @@ def render_evidence(res) -> None:
         for i, h in enumerate(res.hits, 1):
             star = "✅ cited" if i in res.cited else "retrieved"
             st.markdown(f"**[{i}]** {h.citation()} · similarity `{h.similarity:.2f}` · {star}")
-            st.caption(h.passage[:700] + ("…" if len(h.passage) > 700 else ""))
+            # Short excerpt only: the books are copyrighted, the citation tells the reader where to look.
+            st.caption(h.passage[:300] + ("…" if len(h.passage) > 300 else ""))
 
 
 for msg in st.session_state.messages:
@@ -82,8 +89,16 @@ if question:
     with st.chat_message("user"):
         st.markdown(question)
     with st.chat_message("assistant"):
-        with st.spinner("Retrieving and answering…"):
-            res = answer_multihop(question) if multihop else answer(question)
+        try:
+            with st.spinner("Retrieving and answering…"):
+                if retriever != "vector":
+                    res = answer(question, retriever=retriever)
+                else:
+                    res = answer_multihop(question) if multihop else answer(question)
+        except RuntimeError as e:                 # e.g. STAIR model not installed yet
+            st.warning(str(e))
+            st.stop()
         st.markdown(res.text)
+        st.caption(f"retriever: {retriever}" + (" · multi-hop" if retriever == "vector" and multihop else ""))
         render_evidence(res)
     st.session_state.messages.append({"role": "assistant", "content": res.text, "result": res})

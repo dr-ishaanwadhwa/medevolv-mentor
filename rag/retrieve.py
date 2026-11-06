@@ -27,9 +27,22 @@ class Hit:
         where = " › ".join(parts)
         return f"{m['book']}, {where} (pp. {m['pages']})"
 
+    def labels(self) -> tuple[str, str]:
+        """(chapter, 'chapter › section path') in the same format as STAIR targets, for scoring retrievers."""
+        path = self.meta["section_path"].split(" › ")
+        chapter = self.meta.get("chapter", self.meta["section_title"])
+        below = path[path.index(chapter):] if chapter in path else [chapter]
+        return chapter, " › ".join(below)
 
-def search(query: str, k: int = config.TOP_K, section_ids: list[str] | None = None) -> list[Hit]:
-    where = {"section_id": {"$in": section_ids}} if section_ids else None
+
+def search(query: str, k: int = config.TOP_K, section_ids: list[str] | None = None,
+           book_ids: list[str] | None = None) -> list[Hit]:
+    filters = []
+    if section_ids:
+        filters.append({"section_id": {"$in": section_ids}})
+    if book_ids:
+        filters.append({"book_id": {"$in": book_ids}})
+    where = filters[0] if len(filters) == 1 else ({"$and": filters} if filters else None)
     res = get_collection().query(
         query_embeddings=embed([query], is_query=True), n_results=k, where=where,
         include=["documents", "metadatas", "distances"],

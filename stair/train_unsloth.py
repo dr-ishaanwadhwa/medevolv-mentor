@@ -44,6 +44,8 @@ def main() -> None:
     ap.add_argument("--grad-accum", type=int, default=4)
     ap.add_argument("--save-steps", type=int, default=200)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--export-gguf", action="store_true",
+                    help="also merge the adapter and write a q4_k_m GGUF for `python -m stair.serve install`")
     a = ap.parse_args()
 
     from datasets import Dataset
@@ -80,6 +82,10 @@ def main() -> None:
     model.save_pretrained(a.out)
     tokenizer.save_pretrained(a.out)
     print(stats)
+    if a.export_gguf:
+        # Merges LoRA into the base weights and quantises to ~4 GB; runs on the demo Mac via Ollama.
+        model.save_pretrained_gguf(a.out, tokenizer, quantization_method="q4_k_m")
+        print("GGUF written under", a.out)
     print("Adapter saved to", a.out, "-- never upload it publicly (it is trained on a copyrighted book).")
 
 
