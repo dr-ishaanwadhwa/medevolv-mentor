@@ -15,3 +15,7 @@ data/bodhi/
 __pycache__/
 .env
 reports/
+
+# Ontology facts carry verbatim textbook quotes as provenance: derived from the corpus, never published
+data/ontology/
+.DS_Store

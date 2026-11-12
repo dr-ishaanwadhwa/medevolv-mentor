@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import re
 from pathlib import Path
 
@@ -73,11 +74,75 @@ def _name_index() -> dict[str, list[str]]:
     return idx
 
 
+# Canonical medical synonyms mapped to standardized BODHI graph symptom entities
+SYNONYMS: dict[str, str] = {
+    # Coryza / runny nose / upper respiratory
+    "coryza": "Catarrhal nasal discharge",
+    "runny nose": "Catarrhal nasal discharge",
+    "rhinorrhea": "Catarrhal nasal discharge",
+    "nasal discharge": "Catarrhal nasal discharge",
+
+    # Urinary / Polyuria
+    "polyuria": "Increased frequency of urination",
+    "frequent urination": "Increased frequency of urination",
+    "excessive urination": "Increased frequency of urination",
+    "increased urination": "Increased frequency of urination",
+    "urinating frequently": "Increased frequency of urination",
+
+    # Thirst / Polydipsia
+    "excessive thirst": "Excessive thirst",
+    "polydipsia": "Excessive thirst",
+
+    # Weight loss / cachexia
+    "weight loss": "Weight decreased (> 10% in 6 month)",
+    "losing weight": "Weight decreased (> 10% in 6 month)",
+    "unintentional weight loss": "Weight decreased (> 10% in 6 month)",
+    "loss of weight": "Weight decreased (> 10% in 6 month)",
+
+    # Radiating chest pain / Angina / MI
+    "radiating to the left arm": "Chest pain in chest",
+    "radiating to left arm": "Chest pain in chest",
+    "radiating to arm": "Chest pain in chest",
+    "radiating pain": "Chest pain in chest",
+    "crushing chest pain": "Chest pain in chest",
+
+    # Sweating / Diaphoresis
+    "night sweats": "Night sweats",
+    "night sweat": "Night sweats",
+    "sweating attack": "Sweating attack",
+    "sweating": "Sweating attack",
+    "profuse sweating": "Sweating attack",
+    "diaphoresis": "Sweating attack",
+    "cold sweats": "Sweating attack",
+
+    # Joint pains
+    "polyarthralgias": "Joint pain",
+    "polyarthralgia": "Joint pain",
+}
+
+
 def link_entities(question: str, types: tuple[str, ...] = ("Symptom", "Condition", "Concept")) -> list[dict]:
-    """Find graph nodes whose names appear in the question (longest match first, word-boundary, no overlaps)."""
+    """Find graph nodes whose names appear in the question (synonym map -> exact match -> lay single word -> semantic)."""
     g, q = load_graph(), " " + re.sub(r"[^a-z0-9 ]", " ", question.lower()) + " "
     q = re.sub(r"\s+", " ", q)
     found, taken = [], []
+
+    # Priority 0: Medical synonym map (deterministic mapping of high-yield clinical terms)
+    for phrase in sorted(SYNONYMS, key=len, reverse=True):
+        clean = " " + phrase + " "
+        pos = q.find(clean)
+        if pos < 0:
+            continue
+        start, end = pos + 1, pos + len(phrase) + 1
+        if any(start < e and s < end for s, e in taken):
+            continue
+        target = SYNONYMS[phrase]
+        ids = [i for i in _name_index().get(target.lower(), []) if g.nodes[i]["type"] in types]
+        if ids:
+            taken.append((start, end))
+            found.append({"name": g.nodes[ids[0]]["name"], "type": "Symptom", "ids": ids, "via": phrase})
+
+    # Priority 1: Exact name index matches (longest first)
     for name in sorted(_name_index(), key=len, reverse=True):
         if len(name) < 4:
             continue
@@ -167,11 +232,16 @@ STOPWORDS = {"patient", "presents", "likely", "diagnosis", "treatment", "drug", 
 
 
 # ---------- hops ----------
-def conditions_for_symptoms(symptom_ids: list[list[str]], top: int = 5) -> list[dict]:
-    """Rank conditions by how many of the symptoms point to them, weighted by likelihood."""
-    g, scores, hits = load_graph(), {}, {}
+def conditions_for_symptoms(symptom_ids: list[list[str]], top: int = 5, question: str = "") -> list[dict]:
+    """Rank conditions by how many symptoms point to them, then likelihood, then symptom specificity
+    (inverse condition frequency: a rare symptom says more than fever). Purely from the graph; the
+    textbook check that re-ranks this pool lives in rag/hops.py."""
+    g, scores, hits, spec_scores = load_graph(), {}, {}, {}
     for group in symptom_ids:                          # one group = all variant nodes of one symptom
         best: dict[str, int] = {}
+        # Symptom group specificity: rare symptoms have higher discriminative power
+        edges = sum(1 for n in group for _, _, d in g.out_edges(n, data=True) if d.get("relation") == "PRESENT_IN")
+        icf = math.log(1.0 + 1000.0 / max(edges, 1))
         for sid in group:
             for _, cid, d in g.out_edges(sid, data=True):
                 if d["relation"] == "PRESENT_IN":
@@ -180,8 +250,11 @@ def conditions_for_symptoms(symptom_ids: list[list[str]], top: int = 5) -> list[
         for cid, w in best.items():
             scores[cid] = scores.get(cid, 0) + w
             hits[cid] = hits.get(cid, 0) + 1
-    ranked = sorted(scores, key=lambda c: (hits[c], scores[c]), reverse=True)[:top]
-    return [{"id": c, "name": g.nodes[c]["name"], "symptoms_matched": hits[c], "score": scores[c]} for c in ranked]
+            spec_scores[cid] = spec_scores.get(cid, 0.0) + (w * icf)
+
+    ranked = sorted(scores, key=lambda c: (hits[c], scores[c], spec_scores[c]), reverse=True)[:top]
+    return [{"id": c, "name": g.nodes[c]["name"], "symptoms_matched": hits[c], "score": scores[c],
+             "spec": round(spec_scores[c], 2)} for c in ranked]
 
 
 def specialities_for(condition_id: str) -> list[str]:

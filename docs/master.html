@@ -116,7 +116,7 @@ td code { white-space: nowrap; }
   <div class="tbl"><table>
     <thead><tr><th>Area</th><th>Status</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td>Pipeline (ingest → index → retrieve → answer)</td><td><span class="pill good">Done</span></td><td>5 books, 1,557 sections, 16,032 passages</td></tr>
+      <tr><td>Pipeline (ingest → index → retrieve → answer)</td><td><span class="pill good">Done</span></td><td>6 books, 2,062 sections, 33,830 passages</td></tr>
       <tr><td>Multi-hop: graph route + question splitting</td><td><span class="pill good">Done</span></td><td>The assignment's optional enhancement (query decomposition)</td></tr>
       <tr><td>Refusals (personal advice, off-topic, weak evidence)</td><td><span class="pill good">Done</span></td><td>9/9 in the 36-question evaluation</td></tr>
       <tr><td>UI with live answer trace + How it works tab</td><td><span class="pill good">Done</span></td><td>Streamlit</td></tr>
@@ -134,8 +134,8 @@ td code { white-space: nowrap; }
   <div class="diagram"><pre class="mermaid">
 flowchart LR
   subgraph Build["Built once, offline"]
-    A[5 textbook PDFs] --> B[Recover table of contents<br/>1,557 sections]
-    B --> C[Heading-aware passages<br/>16,032]
+    A[6 textbook PDFs] --> B[Recover table of contents<br/>2,062 sections]
+    B --> C[Heading-aware passages<br/>33,830]
     C --> D[Embed with bge-small]
     D --> E[(Chroma vector DB)]
   end
@@ -204,7 +204,7 @@ flowchart LR
         <li><b>Otherwise:</b> one direct search.</li>
       </ul></span></li>
     <li><span class="i">4</span><span><b>Graph hops</b> (clinical case only): conditions are ranked by matched symptoms, weighted by BODHI's likelihood labels (top 3). Then specialists and drugs come from the graph, with drugs found via CHILD_OF ancestors. For the top 2 conditions, the textbooks are searched for "treatment and drug of choice for X".</span></li>
-    <li><span class="i">5</span><span><b>Search</b> (<code>rag/retrieve.py</code>): cosine similarity over all 16,032 passages, returning the top 6, or 3 per sub-question.</span></li>
+    <li><span class="i">5</span><span><b>Search</b> (<code>rag/retrieve.py</code>): cosine similarity over all 33,830 passages, returning the top 6, or 3 per sub-question.</span></li>
     <li><span class="i">6</span><span><b>Relevance filters</b>:
       <ul>
         <li>The best passage must score ≥ <b>0.60</b>, or the bot declines without calling the model.</li>
@@ -266,7 +266,7 @@ flowchart LR
 python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m ingest.fetch_bodhi             # graph data -> data/bodhi/
 # put PDFs in data/books/, then run the per-book ingest commands in README.md
-.venv/bin/python -m rag.index                      # ~6 min: embed 16,032 passages
+.venv/bin/python -m rag.index                      # ~6 min: embed 33,830 passages
 echo "DEEPSEEK_API_KEY=...your key..." &gt;&gt; .env    # never commit .env
 echo "LLM_BACKEND=deepseek" &gt;&gt; .env
 .venv/bin/streamlit run app.py                     # http://localhost:8501
@@ -415,7 +415,7 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
 <section id="books">
   <h2><span class="n">15</span>Adding a book</h2>
   <p>Adding a book takes no code changes to the pipeline. Each book is one ingest command with its own section levels. Capacity isn't a concern: the VM has 12 GB RAM and 42 GB free disk, and Chroma searches 50k+ passages in milliseconds.</p>
-  <div class="callout"><b>Recommended next book: Harrison's Principles of Internal Medicine (21st ed.)</b>, from the team's own list.
+  <div class="callout"><b>Added book: Harrison's Principles of Internal Medicine (22nd ed.)</b>, from the team's own list.
     <ul>
       <li><b>It fixes gaps we've already seen.</b> In the mosquito demo the answer had to say the indexed books don't cover acute dengue management. TB and measles are the weak vignettes too. Harrison's covers all of these in depth.</li>
       <li><b>It strengthens the clinical-case route,</b> the most impressive part of the demo, where the textbook confirms what the graph proposes.</li>
@@ -440,10 +440,10 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
     <thead><tr><th>Task</th><th>Owner</th><th>Priority</th></tr></thead>
     <tbody>
       <tr><td>Rehearse the demo script; warm up the site before presenting</td><td>Team</td><td><span class="pill bad">Before demo</span></td></tr>
-      <tr><td>Write 10–15 gold questions with sections in <code>eval/questions.jsonl</code></td><td>Ishaan</td><td><span class="pill warn">High</span></td></tr>
-      <tr><td>Fix vignette ranking: synonym table (coryza, polyuria, radiating pain), tie-break by symptom specificity, textbook boost for TB and measles</td><td>Claude + Ishaan</td><td><span class="pill warn">High</span></td></tr>
-      <tr><td>Clean the drug cross-check (filter non-drugs, skip negated mentions)</td><td>Claude</td><td><span class="pill info">Medium</span></td></tr>
-      <tr><td>Add a book (see section 15)</td><td>Ishaan</td><td><span class="pill info">Medium</span></td></tr>
+      <tr><td>Write 10–15 gold questions with sections in <code>eval/questions.jsonl</code></td><td>Ishaan</td><td><span class="pill good">Done</span></td></tr>
+      <tr><td>Fix vignette ranking: synonym table (coryza, polyuria, radiating pain), tie-break by symptom specificity, textbook boost for TB and measles</td><td>Claude + Ishaan</td><td><span class="pill good">Done</span></td></tr>
+      <tr><td>Clean the drug cross-check (filter non-drugs, skip negated mentions)</td><td>Claude</td><td><span class="pill good">Done</span></td></tr>
+      <tr><td>Add Harrison's Principles of Internal Medicine (22nd ed.)</td><td>Ishaan</td><td><span class="pill good">Done</span></td></tr>
       <tr><td>Give repo access for the MEDPATH-AI comparison review</td><td>Hardik</td><td><span class="pill info">Medium</span></td></tr>
       <tr><td>STAIR training on Kaggle (speed test, then full run)</td><td>Hardik</td><td><span class="pill info">Future</span></td></tr>
       <tr><td>Decide the VM's future before the Oracle trial ends (upgrade, or move to A1 when capacity frees)</td><td>Ishaan</td><td><span class="pill info">After demo</span></td></tr>

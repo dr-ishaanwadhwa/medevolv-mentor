@@ -42,7 +42,7 @@ def generated_questions(book: str, limit: int) -> list[dict]:
     return items[:limit] if limit else items
 
 
-def handwritten_questions() -> list[dict]:
+def handwritten_questions(book: str | None = None) -> list[dict]:
     p = Path("eval/questions.jsonl")
     if not p.exists():
         return []
@@ -51,6 +51,8 @@ def handwritten_questions() -> list[dict]:
         if not l.strip():
             continue
         r = json.loads(l)
+        if book and r.get("gold_books") and book not in r["gold_books"]:
+            continue
         if r.get("gold_sections"):
             first = r["gold_sections"][0]                       # "chapter › section"
             out.append({"question": r["question"], "chapter": first.split(" › ")[0], "section": first,
@@ -122,7 +124,7 @@ def score_retrieval(items: list[dict], name: str, run) -> dict:
 
 
 def retrieval_mode(a) -> None:
-    sets = {"generated": generated_questions(a.book, a.limit), "handwritten": handwritten_questions()}
+    sets = {"generated": generated_questions(a.book, a.limit), "handwritten": handwritten_questions(a.book)}
     rows = []
     for set_name, items in sets.items():
         if not items:

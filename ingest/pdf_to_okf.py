@@ -106,10 +106,18 @@ def position(doc: pymupdf.Document, entry: dict) -> tuple[int, int, float]:
     from the page bottom; without one, the section starts at the top of its page."""
     page = doc[entry["page"] - 1]
     to = entry.get("to")
-    if to is None:
-        return (entry["page"], 0, 0.0)
-    y = page.rect.height - to.y - 3            # small tolerance so the heading line itself is included
-    return (entry["page"], 0 if to.x < page.rect.width / 2 - 10 else 1, max(y, 0.0))
+    if to is not None and to.y > 0:
+        y = page.rect.height - to.y - 3            # small tolerance so the heading line itself is included
+        return (entry["page"], 0 if to.x < page.rect.width / 2 - 10 else 1, max(y, 0.0))
+    w = page.rect.width
+    m = re.match(r"^(\d+)\s+(.*)", entry.get("title", ""))
+    if m:
+        num, name = m.group(1), m.group(2)
+        for x0, y0, x1, y1, text, *_ in page.get_text("blocks"):
+            if x0 < w - 40 and (name.lower() in text.lower() or f"chapter {num}" in text.lower()):
+                col = 0 if x0 < w / 2 - 10 else 1
+                return (entry["page"], col, max(y0 - 5, 0.0))
+    return (entry["page"], 0, 0.0)
 
 
 def slice_text(doc: pymupdf.Document, edges: set[str], start: tuple, end: tuple | None) -> tuple[str, int, int]:

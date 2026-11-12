@@ -7,7 +7,7 @@ specialist → treatment?"). Every claim is cited to a textbook section or a gra
 sources don't cover the question.
 
 ```
- 5 textbook PDFs ──► ToC recovery ──► OKF bundle (1 markdown file per section, YAML metadata)
+ 6 textbook PDFs ──► ToC recovery ──► OKF bundle (1 markdown file per section, YAML metadata)
                                           │
                                           ├─► ~250-word passages ──► bge-small embeddings ──► Chroma
                                           │
@@ -30,6 +30,7 @@ sources don't cover the question.
 | Robbins & Cotran *Pathologic Basis of Disease* | 30 chapters → 212 sections | mechanisms of disease |
 | Guyton & Hall *Medical Physiology* 14e | 85 chapters → 478 sections | normal function |
 | *Essentials of Medical Microbiology* | 82 chapters | organisms, diagnosis |
+| Harrison's *Principles of Internal Medicine* 22e | 505 chapters → 505 sections | comprehensive internal medicine, clinical management |
 | BODHI-S / BODHI-M (Eka Care, CC BY-NC 4.0) | 13,204 + 3,566 triples | symptom → condition → speciality; condition → drug |
 
 Books are local study copies, never redistributed; only code and metrics are published.
@@ -47,7 +48,7 @@ Books are local study copies, never redistributed; only code and metrics are pub
   splitting a paragraph, repeating a short last paragraph as overlap, and starting a new passage at every heading so
   one passage never mixes two topics. The heading path is embedded with the passage
   ("Beta-Lactam Antibiotics › Cephalosporins › Adverse effects"), so a passage that never names its topic is still
-  findable. Result: 15k+ passages across the five books.
+  findable. Result: 33k+ passages across the six books.
 
 ## 3. Embeddings and vector store
 `BAAI/bge-small-en-v1.5` locally (OCI Cohere embeddings are a drop-in swap via `EMBED_BACKEND=oci`), cosine

@@ -70,6 +70,32 @@ def mentions(hit: Hit, condition: str) -> bool:
     return any(re.search(rf"\b{re.escape(k)}", hay) for k in keys)
 
 
+NAME_GENERIC = GENERIC_TERMS | {"pulmonary", "cardiac", "renal", "hepatic", "acute", "chronic", "severe", "mild",
+                                "primary", "with", "without", "unspecified"}
+CANDIDATE_POOL = 25        # graph proposes this many conditions; the textbook check picks the top 3
+CASE_SEARCH_K = 12         # passages retrieved for the whole case text
+
+
+def names_condition(hit: Hit, condition: str) -> bool:
+    """Stricter than mentions(): every distinctive word of the condition must appear in the passage."""
+    keys = [w for w in re.findall(r"[a-z]+", condition.lower()) if len(w) >= 4 and w not in NAME_GENERIC]
+    if not keys:
+        return False
+    hay = (hit.passage + " " + hit.citation()).lower()
+    return all(re.search(rf"\b{re.escape(k)}", hay) for k in keys)
+
+
+def textbook_rerank(question: str, pool: list[dict], top: int = 3) -> tuple[list[dict], list[Hit]]:
+    """Re-rank graph candidates by textbook support: search the whole case once and count how many of the
+    top passages name each candidate. The graph still proposes; the books decide between proposals."""
+    case_hits = search(question, k=CASE_SEARCH_K)
+    for c in pool:
+        c["text_support"] = sum(names_condition(h, c["name"]) for h in case_hits)
+    ranked = sorted(pool, key=lambda c: (c["symptoms_matched"] + 0.25 * min(c["text_support"], 4),
+                                         c["text_support"], c.get("spec", 0.0)), reverse=True)
+    return ranked[:top], case_hits
+
+
 def decompose(question: str) -> list[str]:
     try:
         raw = chat(DECOMPOSE_SYSTEM, question, temperature=0.0, max_tokens=300, json_mode=True,
@@ -124,11 +150,16 @@ def plan(question: str) -> Plan:
         p = Plan(route="graph")
         names = ", ".join(e["name"] for e in symptoms)
         with trace.timer() as t:
-            conds = conditions_for_symptoms([e["ids"] for e in symptoms], top=3)
-        trace.record("graph", "Symptoms → candidate conditions",
-                     "; ".join(f"{c['name']} ({c['symptoms_matched']}/{len(symptoms)} symptoms, score {c['score']:.1f})"
-                               for c in conds) or "No condition matches these symptoms.",
-                     status="ok" if conds else "warn", ms=t.ms)
+            pool = conditions_for_symptoms([e["ids"] for e in symptoms], top=CANDIDATE_POOL)
+        trace.record("graph", f"Symptoms → {len(pool)} candidate conditions",
+                     "Top by graph: " + ("; ".join(f"{c['name']} ({c['symptoms_matched']}/{len(symptoms)})"
+                                                   for c in pool[:5]) or "none"),
+                     status="ok" if pool else "warn", ms=t.ms)
+        conds, case_hits = textbook_rerank(question, pool)
+        trace.record("graph", "Textbook check of candidates",
+                     "; ".join(f"{c['name']}: {c['symptoms_matched']}/{len(symptoms)} symptoms, named in "
+                               f"{c['text_support']} of {len(case_hits)} case passages" for c in conds)
+                     or "No condition matches these symptoms.", status="ok" if conds else "warn")
         p.hops.append(Hop("graph", f"symptoms → conditions ({names})",
                           "; ".join(f"{c['name']} ({c['symptoms_matched']}/{len(symptoms)} symptoms)" for c in conds)
                           or "no matching conditions"))
@@ -164,10 +195,10 @@ def plan(question: str) -> Plan:
                 # Say so explicitly: the honest answer is "this book does not cover it", not a nearby passage.
                 p.graph_facts.append(f"The indexed textbook(s) contain no passage on the treatment of {c['name']}.")
                 p.hops.append(Hop("retrieve", q, "no textbook passage mentions this condition"))
-        # Also retrieve for the original question so non-treatment parts are covered
-        hits = search(question, k=PER_SUBQUERY_K)
-        _add_hits(p, hits)
-        p.hops.append(Hop("retrieve", question, hits[0].citation() if hits else "no textbook evidence", hits))
+        # The case search above also covers the non-treatment parts of the question (no second search)
+        _add_hits(p, case_hits[:PER_SUBQUERY_K])
+        p.hops.append(Hop("retrieve", question, case_hits[0].citation() if case_hits else "no textbook evidence",
+                          case_hits[:PER_SUBQUERY_K]))
         return p
 
     if looks_compound(question):
@@ -185,12 +216,42 @@ def plan(question: str) -> Plan:
     return Plan(route="single")
 
 
+NON_DRUGS = {
+    "iron", "water", "saline", "normal saline", "oxygen", "diet", "exercise",
+    "electrolyte", "electrolytes", "adapting electrolyte solutions",
+    "oral rehydration salts", "rehydration", "bed rest", "glucose", "dextrose",
+    "calcium", "potassium", "sodium", "nutrition", "fluid", "fluids",
+    "intravenous fluid", "intravenous fluids", "lifestyle", "rest", "smoking cessation",
+}
+
+NEGATION_PATTERN = re.compile(
+    r"\b(avoid|avoided|avoiding|do not|don't|should not|must not|never|contraindicated|"
+    r"contraindication|contraindications|harmful|not recommended|withheld|withhold|"
+    r"refrain|toxic|toxicity|caution with|discontinue|stop|prohibited)\b",
+    re.I,
+)
+
+
 def cross_check(answer_text: str, plan: Plan) -> list[str]:
-    """Drugs that BODHI links to a candidate condition AND that appear in the textbook-grounded answer."""
-    text = answer_text.lower()
+    """Drugs that BODHI links to a candidate condition AND that appear in affirmative recommendations
+    in the textbook-grounded answer (skips non-drugs and negated/contraindicated mentions)."""
+    sentences = [s.strip() for s in re.split(r"[.\n;!]", answer_text) if s.strip()]
     agreed = []
+    seen = set()
     for cond, drugs in plan.bodhi_drugs.items():
         for d in drugs:
-            if len(d) > 3 and re.search(rf"\b{re.escape(d.lower())}\b", text):
-                agreed.append(f"{d} ({cond})")
+            d_clean = d.strip()
+            if len(d_clean) < 3 or d_clean.lower() in NON_DRUGS:
+                continue
+            d_pattern = re.compile(rf"\b{re.escape(d_clean.lower())}\b", re.I)
+            affirmed = False
+            for sent in sentences:
+                if d_pattern.search(sent) and not NEGATION_PATTERN.search(sent):
+                    affirmed = True
+                    break
+            if affirmed:
+                item = f"{d_clean.title()} ({cond})"
+                if item not in seen:
+                    seen.add(item)
+                    agreed.append(item)
     return agreed

@@ -107,7 +107,8 @@ STATUS = {
 ROUTE = {"graph": "Clinical case · graph route", "decompose": "Compound · split into parts",
          "single": "Single question · direct search"}
 BOOKS = {"tripathi": "KD Tripathi · Pharmacology", "guyton": "Guyton & Hall · Physiology",
-         "robbins": "Robbins · Pathology", "davidson": "Davidson · Medicine", "micro": "Microbiology"}
+         "robbins": "Robbins · Pathology", "davidson": "Davidson · Medicine", "micro": "Microbiology",
+         "harrison": "Harrison · Internal Medicine"}
 
 EXAMPLES = [
     ("Clinical case", "A patient has high fever, headache and joint pain after a mosquito bite. Likely diagnosis and treatment?"),
@@ -139,11 +140,11 @@ st.html("""
 <div class="mm-hero">
   <div class="mm-eyebrow">MedEvolv · study companion for medical students</div>
   <h1 class="mm-title">MedEvolv Mentor</h1>
-  <p class="mm-sub">Ask exam questions or clinical cases. Every answer is built only from five standard textbooks
+  <p class="mm-sub">Ask exam questions or clinical cases. Every answer is built only from six standard textbooks
   and an open clinical knowledge graph, cites its sources, and shows exactly how it was made.</p>
   <div class="mm-chips">
-    <span class="mm-chip">5 textbooks</span><span class="mm-chip">1,557 sections</span>
-    <span class="mm-chip">16,032 passages</span><span class="mm-chip">6,560-node clinical graph</span>
+    <span class="mm-chip">6 textbooks</span><span class="mm-chip">2,062 sections</span>
+    <span class="mm-chip">33,830 passages</span><span class="mm-chip">6,560-node clinical graph</span>
     <span class="mm-chip">cites every claim</span><span class="mm-chip">declines when unsure</span>
   </div>
 </div>
@@ -325,8 +326,8 @@ digraph Q { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
     st.markdown('<div class="mm-label">Built once, offline</div>', unsafe_allow_html=True)
     st.graphviz_chart("""
 digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + NODE + """
-  pdf [label="5 textbook\\nPDFs"]; toc [label="Recover contents\\n1,557 sections"];
-  chunk [label="~250-word passages\\n16,032"]; emb [label="Embed\\n(bge-small)"];
+  pdf [label="6 textbook\\nPDFs"]; toc [label="Recover contents\\n2,062 sections"];
+  chunk [label="~250-word passages\\n33,830"]; emb [label="Embed\\n(bge-small)"];
   db [label="Vector database\\n(Chroma)", fillcolor="#e2f0f1"];
   pdf -> toc -> chunk -> emb -> db;
 }""", use_container_width=True)
@@ -340,7 +341,7 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
          "else is a single search."),
         ("3", "🕸️ Knowledge graph", "Symptoms are matched to nodes in Eka Care's open BODHI graph, which ranks "
          "likely conditions and links them to specialists and drugs. The graph proposes; the textbooks confirm."),
-        ("4", "📖 Textbook search", "The question (or each part) is turned into a vector and compared with all 16,032 "
+        ("4", "📖 Textbook search", "The question (or each part) is turned into a vector and compared with all 33,830 "
          "passages. The closest ones are kept, and passages about a condition must actually name it."),
         ("5", "🤖 Grounded answer", "The model receives numbered evidence and strict rules: answer only from it, "
          "cite every claim as [n] or [G n], and reply INSUFFICIENT_CONTEXT if the evidence doesn't answer it."),
@@ -370,6 +371,7 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
                     "| Davidson's Principles and Practice of Medicine 24e | Medicine | 338 |\n"
                     "| Robbins & Cotran, Pathologic Basis of Disease | Pathology | 212 |\n"
                     "| Microbiology textbook | Microbiology | 82 |\n"
+                    "| Harrison's Principles of Internal Medicine 22e | Internal Medicine | 505 |\n"
                     "| Eka Care BODHI-S + BODHI-M (CC BY-NC 4.0) | Clinical graph | 6,560 nodes |")
     with right:
         st.markdown("#### How well it works")

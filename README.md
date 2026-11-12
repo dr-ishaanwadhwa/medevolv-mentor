@@ -42,6 +42,11 @@ $P -m ingest.pdf_to_okf data/books/978-0-702-08347-1.pdf --book-id davidson \
 $P -m ingest.pdf_to_okf data/books/978-81-947090-1-5.pdf --book-id micro \
   --title "Essentials of Medical Microbiology" --subject Microbiology --isbn 978-81-947090-1-5 \
   --level 3 --chapter-level 3 --also-skip '^(Prelims|Annexures)'
+# Internal Medicine: Parts and Sections as parents, chapters as sections
+$P -m ingest.pdf_to_okf data/books/978-12-6597-952-2.pdf --book-id harrison \
+  --title "Harrison's Principles of Internal Medicine (22nd ed.)" --subject Medicine \
+  --isbn 978-12-6597-952-2 --level 1 --parent-pattern '^(PART|SECTION)\s+\d+' \
+  --also-skip '^(Related Harrison.*|Index)'
 
 $P -m rag.index                     # embed all books into Chroma (~6 min, local model)
 .venv/bin/streamlit run app.py
@@ -54,6 +59,7 @@ $P -m rag.index                     # embed all books into Chroma (~6 min, local
 | Robbins (Pathology) | 29 | 195 | 2,601 |
 | Davidson (Medicine) | 35 | 303 | 1,674 |
 | Microbiology | 82 | 82 | 4,873 |
+| Harrison (Internal Medicine) | 505 | 505 | 6,576 |
 
 Known gap: text between a chapter title and its first section bookmark (chapter intros) is not captured
 (~4% of Guyton's body text).

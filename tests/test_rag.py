@@ -87,3 +87,52 @@ def test_graph_route_only_for_case_questions():
     assert is_case("A 30 year old presents with seizures. Likely diagnosis?", one)
     assert is_case("fever and joint pain", [{"name": "Fever"}, {"name": "Joint pain"}])
     assert not is_case("Mechanism of penicillin", [])
+
+
+@bodhi
+def test_synonym_entity_linking():
+    from rag.graph import link_entities
+    ents = link_entities("Child with coryza, polyuria, radiating pain, night sweats, and weight loss.")
+    names = {e["name"] for e in ents}
+    assert "Catarrhal nasal discharge" in names or "Nasal congestion" in names
+    assert "Increased frequency of urination" in names
+    assert "Chest pain in chest" in names
+    assert "Night sweats" in names
+    assert "Weight decreased (> 10% in 6 month)" in names or "Weight decreased" in names
+
+
+def test_graph_ranking_has_no_disease_keyword_boosts():
+    """Ranking must come from the graph and the textbooks, never from disease names wired to question words."""
+    import inspect
+    from rag import graph
+    src = inspect.getsource(graph.conditions_for_symptoms).lower()
+    for disease in ("tuberculosis", "measles", "dengue", "myocardial", "diabetes"):
+        assert disease not in src
+
+
+def test_names_condition_requires_all_distinctive_words():
+    from rag.hops import names_condition
+    from rag.retrieve import Hit
+    h = Hit("x", "Acute myocardial infarction presents with crushing chest pain.",
+            {"book": "B", "section_path": "Ch", "section_title": "Ch", "pages": "1"}, 0.8)
+    assert names_condition(h, "Acute myocardial infarction")
+    assert not names_condition(h, "Pulmonary tuberculosis")
+
+
+def test_cross_check_skips_negated_and_non_drugs():
+    from rag.hops import Plan, cross_check
+    plan = Plan(route="graph", bodhi_drugs={
+        "Dengue fever": ["paracetamol", "aspirin", "ibuprofen", "normal saline", "iron"]
+    })
+    text = (
+        "The likely condition is Dengue fever [G1]. "
+        "Administer oral fluids and paracetamol for fever and pain relief [1]. "
+        "Aspirin and ibuprofen are contraindicated and must be strictly avoided due to hemorrhage risk [2]. "
+        "Infuse normal saline if severe plasma leakage occurs [3]."
+    )
+    agreed = cross_check(text, plan)
+    assert "Paracetamol (Dengue fever)" in agreed
+    assert not any("aspirin" in a.lower() for a in agreed)
+    assert not any("ibuprofen" in a.lower() for a in agreed)
+    assert not any("saline" in a.lower() for a in agreed)
+    assert not any("iron" in a.lower() for a in agreed)
