@@ -54,17 +54,44 @@ def main() -> None:
                     help="also merge the adapter and write a q4_k_m GGUF for `python -m stair.serve install`")
     a = ap.parse_args()
 
-    from datasets import Dataset
-    from trl import SFTConfig, SFTTrainer
+    # Unsloth must be imported BEFORE trl/transformers/datasets, or its patches only partly apply.
     from unsloth import FastLanguageModel
     from unsloth.chat_templates import train_on_responses_only
+    from datasets import Dataset
+    from trl import SFTConfig, SFTTrainer
 
-    model, tokenizer = FastLanguageModel.from_pretrained(a.model, max_seq_length=a.max_seq, load_in_4bit=True)
+    import torch
+    # T4 has no bfloat16: load in float16 so the weights match fp16 training (newer Unsloth may default to bf16,
+    # which makes the fp16 grad scaler fail with "not implemented for 'BFloat16'").
+    use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+    dtype = torch.bfloat16 if use_bf16 else torch.float16
+    model, tokenizer = FastLanguageModel.from_pretrained(a.model, max_seq_length=a.max_seq, load_in_4bit=True,
+                                                         dtype=dtype)
+    print("precision:", dtype)
+    if not use_bf16:
+        # The pre-quantised checkpoint keeps its unquantised layers (norms, embeddings, lm_head) in bfloat16, and
+        # Unsloth's fast grad-clipping groups gradients by those dtypes, which the fp16 grad scaler rejects. Cast
+        # every remaining bfloat16 tensor to float16 (4-bit weights are untouched: they're uint8).
+        n_cast = 0
+        for t in list(model.parameters()) + list(model.buffers()):
+            if t.dtype == torch.bfloat16:
+                t.data = t.data.half()
+                n_cast += 1
+        print("cast bfloat16 -> float16 tensors:", n_cast)
     model = FastLanguageModel.get_peft_model(
         model, r=16, lora_alpha=32, lora_dropout=0,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         use_gradient_checkpointing="unsloth", random_state=13,
     )
+    if not use_bf16:
+        # fp16 mixed precision needs the TRAINABLE (LoRA) weights in float32: the grad scaler cannot unscale
+        # half-precision gradients, and newer Unsloth creates LoRA weights in bfloat16. Base weights stay 4-bit.
+        for prm in model.parameters():
+            if prm.requires_grad and prm.dtype != torch.float32:
+                prm.data = prm.data.float()
+    trainable = {str(prm.dtype) for prm in model.parameters() if prm.requires_grad}
+    print("trainable params:", sum(prm.numel() for prm in model.parameters() if prm.requires_grad),
+          "dtypes:", trainable)
 
     data = Path(a.data)
     train = Dataset.from_list([{"text": to_text(r, tokenizer)} for r in load_rows(data / "train.jsonl")])
@@ -79,16 +106,23 @@ def main() -> None:
     trainer_params = inspect.signature(SFTTrainer.__init__).parameters
     tok_kw = "tokenizer" if "tokenizer" in trainer_params else "processing_class"
 
+    steps_per_epoch = -(-len(train) // (a.batch * a.grad_accum))
+    total_steps = a.max_steps if a.max_steps > 0 else int(steps_per_epoch * a.epochs)
+    wanted = dict(
+        output_dir=a.out, dataset_text_field="text", per_device_train_batch_size=a.batch,
+        gradient_accumulation_steps=a.grad_accum, num_train_epochs=a.epochs, max_steps=a.max_steps,
+        learning_rate=a.lr, lr_scheduler_type="cosine", warmup_steps=max(1, int(0.03 * total_steps)),
+        logging_steps=10, save_steps=a.save_steps, save_total_limit=3, eval_strategy="steps",
+        eval_steps=a.eval_steps, bf16=use_bf16, fp16=not use_bf16, optim="adamw_8bit", seed=13, report_to="none",
+        **{seq_kw: a.max_seq},
+    )
+    # Keep only the settings this TRL/transformers version accepts, and say which were dropped.
+    dropped = [k for k in wanted if k not in cfg_params]
+    if dropped:
+        print("SFTConfig does not accept (dropped):", dropped)
     trainer = SFTTrainer(
         model=model, train_dataset=train, eval_dataset=val, **{tok_kw: tokenizer},
-        args=SFTConfig(
-            output_dir=a.out, dataset_text_field="text", **{seq_kw: a.max_seq},
-            per_device_train_batch_size=a.batch, gradient_accumulation_steps=a.grad_accum,
-            num_train_epochs=a.epochs, max_steps=a.max_steps, learning_rate=a.lr,
-            lr_scheduler_type="cosine", warmup_ratio=0.03, logging_steps=10,
-            save_steps=a.save_steps, save_total_limit=3, eval_strategy="steps", eval_steps=a.eval_steps,
-            bf16=False, fp16=True, optim="adamw_8bit", seed=13, report_to="none",
-        ),
+        args=SFTConfig(**{k: v for k, v in wanted.items() if k in cfg_params}),
     )
     # Train only on the answer: Mistral wraps user turns in [INST] ... [/INST]
     trainer = train_on_responses_only(trainer, instruction_part="[INST]", response_part="[/INST]")
