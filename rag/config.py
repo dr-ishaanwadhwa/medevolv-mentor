@@ -45,6 +45,19 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GEMINI_THINKING = os.getenv("GEMINI_THINKING", "minimal")      # minimal | low | medium | high
 GEMINI_URL = os.getenv("GEMINI_URL", "https://generativelanguage.googleapis.com/v1beta/interactions")
 
+# OpenRouter (OpenAI-compatible). Free ':free' models: 20 req/min and 50 req/day (1000/day once >=10 credits were
+# ever bought) per openrouter.ai/docs/api-reference/limits (2026-11). Key only in .env / host secrets.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+OPENROUTER_REASONING = os.getenv("OPENROUTER_REASONING", "low")    # none | minimal | low | medium | high
+OPENROUTER_URL = os.getenv("OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions")
+
+# Mistral (docs.mistral.ai, 2026-11): OpenAI-style chat completions; JSON mode needs the prompt to ask for JSON too.
+# Default: Ministral 3 8B, $0.15 / $0.15 per 1M tokens, 256k context. Key only in .env / host secrets.
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "ministral-8b-2512")
+MISTRAL_URL = os.getenv("MISTRAL_URL", "https://api.mistral.ai/v1/chat/completions")
+
 OKF_DIR = Path(os.getenv("OKF_DIR", "data/okf"))
 CHROMA_DIR = Path(os.getenv("CHROMA_DIR", "data/chroma"))
 

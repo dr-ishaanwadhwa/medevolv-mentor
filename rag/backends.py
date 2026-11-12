@@ -55,7 +55,8 @@ def model_name(model: str | None = None) -> str:
     if model:
         return model
     return {"deepseek": config.DEEPSEEK_MODEL, "ollama": config.OLLAMA_MODEL,
-            "oci": config.OCI_CHAT_MODEL, "gemini": config.GEMINI_MODEL}.get(config.LLM_BACKEND, config.LLM_BACKEND)
+            "oci": config.OCI_CHAT_MODEL, "gemini": config.GEMINI_MODEL,
+            "openrouter": config.OPENROUTER_MODEL, "mistral": config.MISTRAL_MODEL}.get(config.LLM_BACKEND, config.LLM_BACKEND)
 
 
 def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900, json_mode: bool = False,
@@ -119,6 +120,12 @@ def _chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 90
 
     if config.LLM_BACKEND == "gemini":
         return _gemini_chat(system, user, max_tokens, json_mode or schema is not None)
+
+    if config.LLM_BACKEND == "openrouter":
+        return _openrouter_chat(system, user, temperature, max_tokens, json_mode or schema is not None)
+
+    if config.LLM_BACKEND == "mistral":
+        return _mistral_chat(system, user, temperature, max_tokens, json_mode or schema is not None)
 
     raise ValueError(f"Unknown LLM_BACKEND={config.LLM_BACKEND}")
 
@@ -197,3 +204,78 @@ def _gemini_chat(system: str, user: str, max_tokens: int, json_mode: bool) -> st
             err = e
         time.sleep(3 * (attempt + 1))
     raise RuntimeError(f"Gemini API is not responding: {err}") from err
+
+
+def _openrouter_chat(system: str, user: str, temperature: float, max_tokens: int, json_mode: bool) -> str:
+    """OpenRouter chat completions (OpenAI-compatible). JSON mode is requested, and dropped automatically if the
+    routed provider rejects it (free listings don't always support response_format)."""
+    if not config.OPENROUTER_API_KEY:
+        raise RuntimeError("LLM_BACKEND=openrouter but OPENROUTER_API_KEY is not set (add it to .env).")
+    body = {
+        "model": config.OPENROUTER_MODEL, "temperature": temperature,
+        # reasoning tokens count against max_tokens: leave headroom so the answer isn't cut off
+        "max_tokens": max_tokens + 4096,
+        "reasoning": {"effort": config.OPENROUTER_REASONING},
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+    }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {config.OPENROUTER_API_KEY}"}
+    err: Exception | None = None
+    for attempt in range(6):
+        req = urllib.request.Request(config.OPENROUTER_URL, json.dumps(body).encode(), headers)
+        try:
+            with urllib.request.urlopen(req, timeout=240) as r:
+                data = json.load(r)
+            if "error" in data:
+                raise RuntimeError(f"OpenRouter error: {str(data['error'])[:200]}")
+            choice = (data.get("choices") or [{}])[0]
+            text = (choice.get("message") or {}).get("content") or ""
+            if not text.strip():
+                raise RuntimeError(f"OpenRouter returned no text (finish_reason={choice.get('finish_reason')!r})")
+            return text
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            if e.code == 400 and "response_format" in body:      # provider doesn't support JSON mode: retry without
+                body.pop("response_format")
+                continue
+            if e.code in (400, 401, 402, 403):
+                raise RuntimeError(f"OpenRouter refused the request (HTTP {e.code}): {detail}") from e
+            err = RuntimeError(f"HTTP {e.code}: {detail}")        # 429 (20/min or daily cap), 5xx
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            err = e
+        time.sleep(4 * (attempt + 1))
+    raise RuntimeError(f"OpenRouter is not responding: {err}") from err
+
+
+def _mistral_chat(system: str, user: str, temperature: float, max_tokens: int, json_mode: bool) -> str:
+    """Mistral chat completions. JSON mode requires the prompt itself to ask for JSON (Mistral API reference), so a
+    one-line reminder is added to the system prompt when json_mode is on."""
+    if not config.MISTRAL_API_KEY:
+        raise RuntimeError("LLM_BACKEND=mistral but MISTRAL_API_KEY is not set (add it to .env).")
+    if json_mode:
+        system += "\nReply with a single JSON object."
+    body = {"model": config.MISTRAL_MODEL, "temperature": temperature, "max_tokens": max_tokens,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    req = urllib.request.Request(config.MISTRAL_URL, json.dumps(body).encode(), {
+        "Content-Type": "application/json", "Authorization": f"Bearer {config.MISTRAL_API_KEY}"})
+    err: Exception | None = None
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                data = json.load(r)
+            text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            if not text.strip():
+                raise RuntimeError("Mistral returned no text")
+            return text
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            if e.code in (400, 401, 402, 403, 422):   # bad request / key / no credit: retrying will not help
+                raise RuntimeError(f"Mistral refused the request (HTTP {e.code}): {detail}") from e
+            err = RuntimeError(f"HTTP {e.code}: {detail}")   # 429 rate limit, 5xx
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            err = e
+        time.sleep(3 * (attempt + 1))
+    raise RuntimeError(f"Mistral API is not responding: {err}") from err
