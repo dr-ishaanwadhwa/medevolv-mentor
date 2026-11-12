@@ -151,7 +151,10 @@ MULTIHOP_SYSTEM = SYSTEM + """
   [1], [2] .... Cite each claim with the right kind.
 - For symptom questions answer in this order: likely condition(s) from the graph, which specialist, then treatment /
   drug of choice from the textbook. Present conditions as a differential to consider, never as a diagnosis.
-- If the textbook evidence does not cover a condition's treatment, say so instead of filling it in."""
+- If the textbook evidence does not cover a condition's treatment, say so instead of filling it in.
+- Graph facts that start with "Textbook ontology" are certified facts extracted from the textbooks (with their source);
+  use them for first-line drugs and confirmatory tests, cited as [G#].
+- If a graph fact starts with "WARNING", state the contraindication explicitly in a short "Warnings" line, cited [G#]."""
 
 
 def _cited(text: str, pattern: str, n: int) -> list[int]:

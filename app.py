@@ -1,8 +1,9 @@
 """MedEvolv Mentor: Streamlit UI.  Run:  .venv/bin/streamlit run app.py
 
-Two tabs:
-  Ask           chat; every answer carries its sources and a step-by-step record of how it was made
-  How it works  the pipeline explained for a first-time viewer (diagram, stages, safety rules, evaluation)
+Three tabs:
+  Ask                 chat; every answer carries its sources and a step-by-step record of how it was made
+  How it works        the pipeline explained for a first-time viewer (diagram, stages, safety rules, evaluation)
+  Explore conditions  5-level drill-down over the certified clinical ontology, with a source on every fact
 """
 import hmac
 import html
@@ -12,6 +13,7 @@ import re
 import streamlit as st
 
 from rag import config, trace
+from rag import ontology_facts as onto
 from rag.answer import answer, answer_multihop
 from rag.trace import STAGES
 
@@ -104,7 +106,8 @@ STATUS = {
     "insufficient": ("Evidence insufficient: declined", "warn"),
     "personal_refusal": ("Personal medical advice: declined", "bad"),
 }
-ROUTE = {"graph": "Clinical case · graph route", "decompose": "Compound · split into parts",
+ROUTE = {"graph": "Clinical case · graph route", "case": "Long case · focused look-ups",
+         "decompose": "Compound · split into parts",
          "single": "Single question · direct search"}
 BOOKS = {"tripathi": "KD Tripathi · Pharmacology", "guyton": "Guyton & Hall · Physiology",
          "robbins": "Robbins · Pathology", "davidson": "Davidson · Medicine", "micro": "Microbiology",
@@ -150,7 +153,7 @@ st.html("""
 </div>
 """)
 
-tab_ask, tab_how = st.tabs(["💬  Ask", "🔍  How it works"])
+tab_ask, tab_how, tab_explore = st.tabs(["💬  Ask", "🔍  How it works", "🧭  Explore conditions"])
 
 
 # ---------------------------------------------------------------- rendering helpers
@@ -393,3 +396,102 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
     st.markdown(" ".join(f'<span class="mm-chip">{t}</span>' for t in
                          ["Python", "Streamlit", "Chroma", "bge-small-en-v1.5", "DeepSeek", "networkx",
                           "PyMuPDF", "Oracle Cloud", "Caddy"]), unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------- Explore conditions tab
+def fact_row(f, uid: str, arrow: bool = False) -> None:
+    """One compact card for a certified fact, plus a 'Source' expander with the (truncated) verbatim quote."""
+    name = f"{f['subject_label']} → {f['object_label']}" if arrow else f["object_label"]
+    cf = f.get("clinical_facets") or {}
+    sev = cf.get("contraindication_severity")
+    pill = ('<span class="mm-pill bad">strict</span>' if sev == "STRICT"
+            else '<span class="mm-pill warn">caution</span>' if sev == "CAUTIONARY" else "")
+    why = f'<div class="mm-src-ex">Why: {esc(cf["rationale"])}</div>' if f["predicate"] == "CONTRAINDICATES" and cf.get("rationale") else ""
+    st.markdown(f'<div class="mm-src"><div class="mm-src-head">{pill}<span class="mm-src-where"><b>{esc(name)}</b></span></div>'
+                f'<div class="mm-src-ex">{esc(f.get("nl_fact", ""))}</div>{why}</div>', unsafe_allow_html=True)
+    quote = (f.get("provenance") or {}).get("verbatim_quote") or ""
+    quote = quote[:300] + ("…" if len(quote) > 300 else "")
+    with st.expander("Source"):
+        st.caption(onto.cite(f))
+        if quote:
+            st.markdown(f"> {quote}")
+
+
+def fact_list(facts_, uid: str, arrow: bool = False) -> None:
+    for i, f in enumerate(facts_):
+        fact_row(f, f"{uid}{i}", arrow)
+
+
+with tab_explore:
+    if not onto.available():
+        st.info("The certified clinical ontology file (data/ontology/clinical_ontology.jsonl) is missing, so there "
+                "is nothing to explore yet. Build it with the ontology pipeline and reload this page.")
+    else:
+        cat = onto.catalog()
+        n_cond = sum(len(c) for s in cat.values() for c in s.values())
+        st.markdown("### Explore certified clinical facts")
+        st.markdown("Certified facts extracted from the textbooks and checked word-for-word against the source; "
+                    "pilot covers 20 high-yield sections. Drill down from organ system to a single condition, "
+                    "then open the source of any fact.")
+        st.markdown(f'<div class="mm-chips"><span class="mm-chip">{n_cond} conditions</span>'
+                    f'<span class="mm-chip">{len(onto.facts()):,} certified facts</span></div>', unsafe_allow_html=True)
+        st.write("")
+
+        st.markdown('<div class="mm-label">1 · Organ system</div>', unsafe_allow_html=True)
+        systems = list(cat)
+        system = st.pills("Organ system", systems, selection_mode="single", default=systems[0],
+                          key="ex_system", label_visibility="collapsed") or systems[0]
+
+        cats = list(cat[system])
+        st.markdown('<div class="mm-label">2 · Disease category</div>', unsafe_allow_html=True)
+        category = st.pills("Disease category", cats, selection_mode="single", default=cats[0],
+                            key=f"ex_cat_{system}", label_visibility="collapsed") or cats[0]
+
+        conds = sorted(cat[system][category].items(), key=lambda kv: (-kv[1], kv[0]))
+        counts = dict(conds)
+        st.markdown('<div class="mm-label">3 · Condition</div>', unsafe_allow_html=True)
+        cond = st.selectbox("Condition", [c for c, _ in conds], key=f"ex_cond_{system}_{category}",
+                            format_func=lambda c: f"{c} · {counts[c]} facts", label_visibility="collapsed")
+        prof = onto.profile(cond)
+        if prof["stages"]:
+            st.markdown('<div class="mm-label">Stages</div>' + "".join(
+                f'<span class="mm-pill info">{esc(f["object_label"])}</span>' for f in prof["stages"]),
+                unsafe_allow_html=True)
+
+        st.markdown('<div class="mm-label" style="margin-top:.6rem">4 · Clinical facets</div>', unsafe_allow_html=True)
+        panels = []   # (tab title, render function)
+        if prof["presentation"]:
+            panels.append(("Presentation", lambda: fact_list(prof["presentation"], "ex_pr")))
+        if prof["etiology"] or prof["mechanism"]:
+            def _em():
+                for title, key in (("Etiology", "etiology"), ("Mechanism", "mechanism")):
+                    if prof[key]:
+                        st.markdown(f"**{title}**")
+                        fact_list(prof[key], f"ex_{key[:2]}")
+            panels.append(("Etiology & mechanism", _em))
+        if prof["diagnostics"]:
+            panels.append(("Diagnostics", lambda: fact_list(prof["diagnostics"], "ex_dx")))
+        if prof["therapy"]:
+            def _th():
+                for line, items in prof["therapy"].items():
+                    st.markdown(f"**{line}** · {', '.join(f['object_label'] for f in items)}")
+                    fact_list(items, f"ex_th_{line}")
+            panels.append(("Stepwise therapy", _th))
+        if prof["warnings"]:
+            panels.append(("Warnings", lambda: fact_list(prof["warnings"], "ex_wa")))
+        if any(prof[k] for k in ("differentials", "is_a", "drug_effects", "drug_mechanisms")):
+            def _rel():
+                for title, key, arrow in (("Differentials", "differentials", False), ("Is a", "is_a", False),
+                                          ("Drug → adverse effect", "drug_effects", True),
+                                          ("Drug → target", "drug_mechanisms", True)):
+                    if prof[key]:
+                        st.markdown(f"**{title}**")
+                        fact_list(prof[key], f"ex_{key[:3]}", arrow)
+            panels.append(("Related", _rel))
+
+        if not panels:
+            st.info("No certified facts yet for this condition.")
+        else:
+            for tab, (_, render) in zip(st.tabs([t for t, _ in panels]), panels):
+                with tab:
+                    render()

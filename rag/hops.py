@@ -19,7 +19,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from rag import config, trace
+from rag import config, ontology_facts, trace
 from rag.backends import chat
 from rag.graph import conditions_for_symptoms, drugs_for, link_entities, specialities_for
 from rag.retrieve import Hit, search
@@ -96,6 +96,42 @@ def textbook_rerank(question: str, pool: list[dict], top: int = 3) -> tuple[list
     return ranked[:top], case_hits
 
 
+CASE_MIN_WORDS = 35        # a question this long is a clinical vignette, not a look-up
+CASE_SYSTEM = """You turn a clinical case vignette into focused textbook look-up queries for a medical student.
+Identify (1) the most likely diagnosis or the specific drug/organism/process the question is really about, and
+(2) what is being asked, as a subset of: diagnosis, presentation, etiology, mechanism, pathology, diagnostics,
+treatment, contraindications.
+Write 1-3 short search queries (each under 15 words) naming the condition/drug/organism explicitly, the way a
+textbook heading or index entry would phrase it. Do not answer the question.
+Return JSON: {"focus": "<diagnosis or topic>", "asks": ["treatment", ...], "queries": ["...", "..."]}"""
+# what the student asks -> which certified ontology facts are worth adding
+ASK_TO_ONTOLOGY = {"treatment": ("first-line", "WARNING"), "contraindications": ("WARNING",),
+                   "diagnostics": ("confirmed by",), "diagnosis": ("confirmed by",)}
+
+
+def decompose_case(question: str) -> tuple[str, list[str], list[str]]:
+    """(focus, asks, queries) for a long vignette; falls back to the question itself."""
+    try:
+        raw = chat(CASE_SYSTEM, question, temperature=0.0, max_tokens=300, json_mode=True,
+                   purpose="Find the case's focus and what it asks")
+        d = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+        queries = [" ".join(str(q).split()) for q in d.get("queries", []) if str(q).strip()][:3]
+        return str(d.get("focus", "")).strip(), [str(a).lower() for a in d.get("asks", [])], queries or [question]
+    except (json.JSONDecodeError, ValueError):
+        return "", [], [question]
+
+
+def interleave(*lists: list[Hit], limit: int) -> list[Hit]:
+    """Round-robin merge (first list first), dropping duplicates: each query's best passages get in."""
+    out, seen = [], set()
+    for i in range(max((len(l) for l in lists), default=0)):
+        for l in lists:
+            if i < len(l) and l[i].id not in seen:
+                seen.add(l[i].id)
+                out.append(l[i])
+    return out[:limit]
+
+
 def decompose(question: str) -> list[str]:
     try:
         raw = chat(DECOMPOSE_SYSTEM, question, temperature=0.0, max_tokens=300, json_mode=True,
@@ -133,6 +169,9 @@ def plan(question: str) -> Plan:
                  ("; ".join(f'"{e.get("via", e["name"])}" → {e["name"]}' for e in symptoms) or "No symptoms found.")
                  + (f" Also recognised: {', '.join(e['name'] + ' (' + e['type'].lower() + ')' for e in others[:4])}."
                     if others else ""), ms=t.ms, symptoms=[e["name"] for e in symptoms])
+
+    if len(question.split()) >= CASE_MIN_WORDS:
+        return plan_case(question)
 
     case = is_case(question, symptoms)
     cue = CASE_CUE.search(question)
@@ -180,6 +219,18 @@ def plan(question: str) -> Plan:
             p.hops.append(Hop("graph", "conditions → speciality, drugs",
                               "; ".join(f"{c['name']}: {', '.join(specialities_for(c['id'])[:2]) or '—'}"
                                         for c in conds)))
+        if conds and ontology_facts.available():
+            with trace.timer() as t:
+                found = {c["name"]: ontology_facts.graph_facts_for(c["name"]) for c in conds[:2]}
+            for lines in found.values():
+                p.graph_facts.extend(lines)
+            n_warn = sum(line.startswith("WARNING") for lines in found.values() for line in lines)
+            trace.record("graph", "Textbook ontology lookup",
+                         "; ".join(f"{name}: " + (", ".join(ontology_facts.match_conditions(name)[:2]) + f" ({len(lines)} facts)"
+                                                  if lines else "not covered by the pilot ontology")
+                                   for name, lines in found.items())
+                         + (f". {n_warn} contraindication warning(s) added." if n_warn else ""),
+                         status="ok" if any(found.values()) else "warn", ms=t.ms)
         for c in conds[:2]:                      # textbook evidence for the top two conditions
             q = f"treatment and drug of choice for {c['name']}"
             found = search(q, k=PER_SUBQUERY_K * 2)
@@ -230,6 +281,36 @@ NEGATION_PATTERN = re.compile(
     r"refrain|toxic|toxicity|caution with|discontinue|stop|prohibited)\b",
     re.I,
 )
+
+
+def plan_case(question: str) -> Plan:
+    """Long vignette: name its focus and what it asks, search the whole case AND focused queries (interleaved),
+    and add certified ontology facts for the focus that match what is asked."""
+    p = Plan(route="case")
+    trace.record("route", "Long clinical case → focused look-ups",
+                 f"{len(question.split())} words: one embedding of the whole case blurs what is asked, so the case "
+                 "is also searched as short, focused textbook queries.")
+    focus, asks, queries = decompose_case(question)
+    trace.record("decompose", f"Focus: {focus or 'unclear'}",
+                 ("Asks about: " + ", ".join(asks) + ". " if asks else "") + "Queries: " + " | ".join(queries))
+    p.hops.append(Hop("decompose", question, f"{focus} :: " + " | ".join(queries)))
+    whole = search(question, k=5)
+    focused = [search(q, k=5) for q in queries]
+    merged = interleave(whole, *focused, limit=MAX_EVIDENCE + 3)
+    _add_hits(p, merged)
+    p.hops.append(Hop("retrieve", " + ".join([question[:40] + "…"] + queries),
+                      p.evidence[0].citation() if p.evidence else "no evidence", p.evidence))
+    if focus and ontology_facts.available():
+        wanted = {key for a in asks for key in ASK_TO_ONTOLOGY.get(a, ())}
+        lines = [l for l in ontology_facts.graph_facts_for(focus)
+                 if any(w.lower() in l.lower() for w in wanted)] if wanted else []
+        p.graph_facts.extend(lines)
+        trace.record("graph", "Textbook ontology lookup",
+                     f"{focus}: " + (", ".join(ontology_facts.match_conditions(focus)[:2]) or "not in the pilot ontology")
+                     + (f"; {len(lines)} certified fact(s) added for what the case asks" if lines else
+                        "; nothing added (not covered, or the case doesn't ask about therapy/diagnostics)"),
+                     status="ok" if lines else "warn")
+    return p
 
 
 def cross_check(answer_text: str, plan: Plan) -> list[str]:

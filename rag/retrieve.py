@@ -1,6 +1,7 @@
 """Vector retrieval over passage chunks, optionally restricted to chosen sections (for the router / STAIR)."""
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 
 from rag import config, trace
@@ -35,6 +36,11 @@ class Hit:
         return chapter, " › ".join(below)
 
 
+@functools.cache
+def _corpus_size() -> int:
+    return get_collection().count()
+
+
 def search(query: str, k: int = config.TOP_K, section_ids: list[str] | None = None,
            book_ids: list[str] | None = None) -> list[Hit]:
     filters = []
@@ -52,7 +58,7 @@ def search(query: str, k: int = config.TOP_K, section_ids: list[str] | None = No
         Hit(id=i, passage=d, meta=m, similarity=1 - dist)
         for i, d, m, dist in zip(res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0])
     ]
-    trace.record("retrieve", "Vector search over 16,032 textbook passages", query, ms=t.ms, query=query, k=k,
+    trace.record("retrieve", f"Vector search over {_corpus_size():,} textbook passages", query, ms=t.ms, query=query, k=k,
                  hits=[{"book": h.meta.get("book_id"), "where": h.citation().removeprefix(h.meta.get("book", "") + ", "),
                         "sim": round(h.similarity, 3)}
                        for h in hits])
