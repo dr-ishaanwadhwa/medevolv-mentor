@@ -1,0 +1,453 @@
+<title>MedEvolv Mentor Handbook</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single reading column like a clinical handbook. Contents first, then numbered chapters in reading order */
+:root {
+  --bg: #f6f8f8; --surface: #ffffff; --fg: #15232a; --muted: #586a71; --line: #d7e0e2;
+  --accent: #0f6b74; --accent-soft: #e2f0f1; --code-bg: #eef3f4;
+  --good: #1d7a46; --good-soft: #e3f3ea; --warn: #9a6200; --warn-soft: #fbf0db; --bad: #b0323a; --bad-soft: #f8e3e4;
+  --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f171a; --surface: #152126; --fg: #e3ecee; --muted: #94a7ad; --line: #27373d;
+  --accent: #5cc3cc; --accent-soft: #173238; --code-bg: #1a2a30;
+  --good: #6bd197; --good-soft: #163327; --warn: #e9b55a; --warn-soft: #3a2c12; --bad: #f08a90; --bad-soft: #3c1a1d;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f171a; --surface: #152126; --fg: #e3ecee; --muted: #94a7ad; --line: #27373d;
+  --accent: #5cc3cc; --accent-soft: #173238; --code-bg: #1a2a30;
+  --good: #6bd197; --good-soft: #163327; --warn: #e9b55a; --warn-soft: #3a2c12; --bad: #f08a90; --bad-soft: #3c1a1d;
+  color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.62 var(--sans); }
+.wrap { max-width: 900px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 48px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.35rem; font-weight: 650; display: flex; gap: 10px; align-items: baseline; scroll-margin-top: 16px; }
+h2 .n { font: 500 .8rem var(--mono); color: var(--accent); }
+h3 { font-size: 1.02rem; font-weight: 600; margin-top: 6px; }
+p { margin: 0; max-width: 70ch; }
+a { color: var(--accent); }
+section { display: grid; gap: 12px; min-width: 0; }
+ul, ol { margin: 0; padding-left: 20px; display: grid; gap: 5px; max-width: 72ch; }
+code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre { margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+  font: .82rem/1.55 var(--mono); }
+pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.eyebrow { font: 500 .75rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.lede { color: var(--muted); font-size: 1.04rem; }
+header { display: grid; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 26px; }
+.meta { font: .8rem var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.links { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.link { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 2px; min-width: 0; }
+.link .k { font: 500 .7rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.link a, .link span.v { font-weight: 600; overflow-wrap: anywhere; }
+nav.toc { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+nav.toc ol { columns: 2; column-gap: 28px; display: block; padding-left: 22px; }
+nav.toc li { margin-bottom: 4px; break-inside: avoid; }
+@media (max-width: 560px) { nav.toc ol { columns: 1; } }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; padding: 8px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 .7rem var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg); }
+td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td code { white-space: nowrap; }
+.pill { display: inline-block; font: 500 .7rem var(--mono); letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; max-width: 76ch; }
+.callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+.callout.bad { border-color: var(--bad); background: var(--bad-soft); }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow-x: auto; }
+.steps { list-style: none; padding: 0; display: grid; gap: 8px; }
+.steps li { display: grid; grid-template-columns: 2.2rem 1fr; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.steps .i { font: 600 .8rem var(--mono); color: var(--accent); padding-top: 2px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.two > div { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.note { color: var(--muted); font-size: .86rem; }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Team handbook · group RAG assignment</div>
+  <h1>MedEvolv Mentor Handbook</h1>
+  <p class="lede">Everything the team needs to understand, run, change, deploy and present MedEvolv Mentor: a study companion for medical students that answers from five standard textbooks and Eka Care's open BODHI clinical graph, cites every claim, declines when its sources don't cover a question, and shows exactly how each answer was made.</p>
+  <div class="meta"><span>Updated 12 Nov 2026</span><span>Demo 17 Nov 2026</span><span>Repo HEAD 64afda7</span><span>Owner: Ishaan</span></div>
+</header>
+
+<div class="links">
+  <div class="link"><span class="k">Live app (public)</span><a href="https://mentor.medevolv.in">mentor.medevolv.in</a></div>
+  <div class="link"><span class="k">Backup address</span><a href="https://130-210-60-153.sslip.io">130-210-60-153.sslip.io</a></div>
+  <div class="link"><span class="k">Code (public)</span><a href="https://github.com/dr-ishaanwadhwa/medevolv-mentor">github.com/dr-ishaanwadhwa/medevolv-mentor</a></div>
+  <div class="link"><span class="k">Product report</span><a href="https://claude.ai/artifact/FV9SCWMAFnYNFdQ8iE9tF2">Evaluation and status page</a></div>
+</div>
+
+<nav class="toc" aria-label="Contents">
+  <div class="eyebrow" style="margin-bottom:8px">Contents</div>
+  <ol>
+    <li><a href="#overview">What it is and where it stands</a></li>
+    <li><a href="#architecture">Architecture at a glance</a></li>
+    <li><a href="#data">Data and the offline build</a></li>
+    <li><a href="#pipeline">What happens to a question</a></li>
+    <li><a href="#trace">The answer trace and the UI</a></li>
+    <li><a href="#code">Code map</a></li>
+    <li><a href="#run">Run it on your machine</a></li>
+    <li><a href="#config">Configuration</a></li>
+    <li><a href="#deploy">Deployment</a></li>
+    <li><a href="#eval">Evaluation</a></li>
+    <li><a href="#limits">Known issues and failure cases</a></li>
+    <li><a href="#decisions">Decision log</a></li>
+    <li><a href="#demo">Demo script</a></li>
+    <li><a href="#rules">Rules: copyright and secrets</a></li>
+    <li><a href="#books">Adding a book</a></li>
+    <li><a href="#todo">Open tasks and owners</a></li>
+  </ol>
+</nav>
+
+<section id="overview">
+  <h2><span class="n">01</span>What it is and where it stands</h2>
+  <p>MedEvolv Mentor is a retrieval-augmented chatbot (RAG). It never answers from the language model's memory. It first finds evidence in the textbooks, and for clinical cases also in a medical knowledge graph, then asks the model to write an answer using only that evidence, citing each claim. When the evidence isn't there it says so.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Area</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Pipeline (ingest → index → retrieve → answer)</td><td><span class="pill good">Done</span></td><td>5 books, 1,557 sections, 16,032 passages</td></tr>
+      <tr><td>Multi-hop: graph route + question splitting</td><td><span class="pill good">Done</span></td><td>The assignment's optional enhancement (query decomposition)</td></tr>
+      <tr><td>Refusals (personal advice, off-topic, weak evidence)</td><td><span class="pill good">Done</span></td><td>9/9 in the 36-question evaluation</td></tr>
+      <tr><td>UI with live answer trace + How it works tab</td><td><span class="pill good">Done</span></td><td>Streamlit</td></tr>
+      <tr><td>Hosting on mentor.medevolv.in</td><td><span class="pill good">Live</span></td><td>Public, no password, noindex</td></tr>
+      <tr><td>Vignette differentials (TB, measles)</td><td><span class="pill warn">Weak</span></td><td>Graph data gaps; see <a href="#limits">section 11</a></td></tr>
+      <tr><td>STAIR (fine-tuned ToC retriever)</td><td><span class="pill info">Future work</span></td><td>Data and training code ready; hidden behind a flag</td></tr>
+      <tr><td>Hand-written gold evaluation set</td><td><span class="pill warn">Open</span></td><td>Template in <code>eval/questions.template.jsonl</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="architecture">
+  <h2><span class="n">02</span>Architecture at a glance</h2>
+  <p>Two halves. The <b>offline build</b> turns PDFs into a searchable index once. The <b>question-time pipeline</b> runs for every question.</p>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph Build["Built once, offline"]
+    A[5 textbook PDFs] --> B[Recover table of contents<br/>1,557 sections]
+    B --> C[Heading-aware passages<br/>16,032]
+    C --> D[Embed with bge-small]
+    D --> E[(Chroma vector DB)]
+  end
+  G[(BODHI graph<br/>6,560 nodes)]
+  Q([Question]) --> S{Safety check}
+  S -- personal advice --> R[Decline]
+  S --> RT{Route}
+  RT -- clinical case --> GR[Graph hops:<br/>symptoms → conditions<br/>→ specialist, drugs]
+  RT -- compound --> DC[Split into<br/>sub-questions]
+  RT -- single --> SR[Search]
+  G -.-> GR
+  GR --> SR
+  DC --> SR
+  E -.-> SR
+  SR --> F{Relevance<br/>filters}
+  F -- nothing relevant --> R
+  F --> L[DeepSeek writes the answer<br/>from numbered evidence only]
+  L --> CK[Citation check +<br/>graph drug cross-check]
+  CK --> O([Cited answer + full trace])
+  </pre></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>UI</td><td>Streamlit 1.67</td><td>Fast to build; chat, status boxes and expanders built in</td></tr>
+      <tr><td>Embeddings</td><td><code>BAAI/bge-small-en-v1.5</code> (local, CPU)</td><td>Free, fast, good retrieval; 77% chapter@1</td></tr>
+      <tr><td>Vector store</td><td>Chroma 1.5.9 (cosine)</td><td>File-based, no server; metadata filters</td></tr>
+      <tr><td>LLM</td><td>DeepSeek <code>deepseek-chat</code></td><td>Large quality jump over the local 3B model; cheap</td></tr>
+      <tr><td>Knowledge graph</td><td>Eka Care BODHI-S + BODHI-M in networkx</td><td>Open, India-focused symptom → condition → drug links</td></tr>
+      <tr><td>Hosting</td><td>Oracle Cloud VM + Docker + Caddy</td><td>Automatic HTTPS; custom domain</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="data">
+  <h2><span class="n">03</span>Data and the offline build</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Book (id)</th><th>Subject</th><th>How sections were cut</th><th class="num">Sections</th></tr></thead>
+    <tbody>
+      <tr><td>KD Tripathi, Essentials of Medical Pharmacology 7e (<code>tripathi</code>)</td><td>Pharmacology</td><td>Bookmarks are chapter-only, so headings were rebuilt from font styles (<code>ingest/font_toc.py</code>)</td><td class="num">447</td></tr>
+      <tr><td>Guyton &amp; Hall, Medical Physiology 14e (<code>guyton</code>)</td><td>Physiology</td><td>Bookmark level 3, chapters at level 2</td><td class="num">478</td></tr>
+      <tr><td>Davidson's Principles and Practice of Medicine 24e (<code>davidson</code>)</td><td>Medicine</td><td>Bookmark level 3, chapters at level 2</td><td class="num">338</td></tr>
+      <tr><td>Robbins, Cotran &amp; Kumar, Pathologic Basis of Disease (<code>robbins</code>)</td><td>Pathology</td><td>Bookmark level 2, chapters at level 1</td><td class="num">212</td></tr>
+      <tr><td>Essentials of Medical Microbiology (<code>micro</code>)</td><td>Microbiology</td><td>Bookmark level 3, chapters at level 3</td><td class="num">82</td></tr>
+      <tr><td>Eka Care BODHI-S + BODHI-M, CC BY-NC 4.0</td><td>Clinical graph</td><td>Merged on shared SNOMED IDs</td><td class="num">6,560 nodes · 16,770 edges</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Build steps</h3>
+  <ol class="steps">
+    <li><span class="i">1</span><span><b>Check each PDF</b> (<code>ingest/check_books.py</code>): ToC depth, text per page and a verdict, one of OK, NO_TOC, SCANNED or SHALLOW_TOC.</span></li>
+    <li><span class="i">2</span><span><b>Cut sections at bookmark positions</b> (<code>ingest/pdf_to_okf.py</code>): text is sliced at the bookmark's exact spot on the page, so nothing is duplicated or split mid-heading. Running headers and margin tabs are stripped. Chapter intros become "Overview" sections. Measured coverage is 99–101% of each book's text.</span></li>
+    <li><span class="i">3</span><span><b>Write an OKF bundle</b>: one markdown file per section with YAML metadata (book, chapter, section path, pages), plus <code>toc.json</code> and <code>index.md</code> per book under <code>data/okf/</code>.</span></li>
+    <li><span class="i">4</span><span><b>Chunk</b> (<code>rag/chunk.py</code>): heading-aware passages of up to ~300 words. Tiny fragments are merged, and every passage carries its book, chapter, section path and pages.</span></li>
+    <li><span class="i">5</span><span><b>Embed and index</b> (<code>rag/index.py</code>): bge-small vectors in Chroma under <code>data/chroma/</code>. This takes about 6 minutes on a Mac.</span></li>
+  </ol>
+</section>
+
+<section id="pipeline">
+  <h2><span class="n">04</span>What happens to a question</h2>
+  <ol class="steps">
+    <li><span class="i">1</span><span><b>Safety check</b> (<code>rag/answer.py: _guard</code>): a regex catches requests about a real person, such as "my mother…", "should I take…" or "how much should I give…". These are declined before any search.</span></li>
+    <li><span class="i">2</span><span><b>Symptom linking</b> (<code>rag/graph.py: link_entities</code>): exact names, lay terms with generic prefixes, and a semantic fallback (similarity ≥ 0.86) map phrases to BODHI symptom nodes.</span></li>
+    <li><span class="i">3</span><span><b>Routing</b> (<code>rag/hops.py: plan</code>):
+      <ul>
+        <li><b>Clinical case:</b> 2 or more symptoms, or 1 symptom plus a case cue ("patient", "year old", "presents", "diagnosis") → graph route.</li>
+        <li><b>Compound:</b> "compare", "difference", "vs", several "?", or "and why/how" → split into up to 3 sub-questions by the LLM.</li>
+        <li><b>Otherwise:</b> one direct search.</li>
+      </ul></span></li>
+    <li><span class="i">4</span><span><b>Graph hops</b> (clinical case only): conditions are ranked by matched symptoms, weighted by BODHI's likelihood labels (top 3). Then specialists and drugs come from the graph, with drugs found via CHILD_OF ancestors. For the top 2 conditions, the textbooks are searched for "treatment and drug of choice for X".</span></li>
+    <li><span class="i">5</span><span><b>Search</b> (<code>rag/retrieve.py</code>): cosine similarity over all 16,032 passages, returning the top 6, or 3 per sub-question.</span></li>
+    <li><span class="i">6</span><span><b>Relevance filters</b>:
+      <ul>
+        <li>The best passage must score ≥ <b>0.60</b>, or the bot declines without calling the model.</li>
+        <li>On the graph route, a passage counts as being about a condition only if it actually names it.</li>
+        <li>At most 9 passages go to the model.</li>
+      </ul></span></li>
+    <li><span class="i">7</span><span><b>Grounded answer</b>: DeepSeek gets numbered passages <code>[1]…</code>, graph facts <code>[G1]…</code>, and rules: answer only from the evidence, cite every claim, say which parts aren't covered, and reply <code>INSUFFICIENT_CONTEXT</code> if nothing answers it. That reply makes the bot decline.</span></li>
+    <li><span class="i">8</span><span><b>Checks</b>: every <code>[n]</code> is validated against the evidence list. Drugs named in the answer are cross-checked against the graph's drug links. Echoed headers are stripped from the answer.</span></li>
+  </ol>
+  <div class="callout"><b>Three ways it says no:</b> personal advice (before search), weak retrieval (best match below 0.60, model never called), and the model's own check (INSUFFICIENT_CONTEXT).</div>
+</section>
+
+<section id="trace">
+  <h2><span class="n">05</span>The answer trace and the UI</h2>
+  <p><code>rag/trace.py</code> records each step of a question: stage, title, plain-language detail, status (ok, warn or stop) and duration. Every vector search and every LLM call is captured automatically at <code>retrieve.search</code> and <code>backends.chat</code>. Routing, graph, filter and citation decisions record themselves where they happen. Outside the app nothing is recorded, so the CLI and the evaluation harness are unaffected.</p>
+  <div class="two">
+    <div><h3>Ask tab</h3><ul>
+      <li>Six demo questions, labelled by type</li>
+      <li>A live status box that ticks off steps as they run</li>
+      <li>Under each answer: <b>How this answer was made</b> (timeline with timings, search results with score bars, model and token counts) and <b>Sources</b> (cited or retrieved, book, match score, path, pages, 300-character excerpt)</li>
+      <li>Sidebar: multi-hop on/off for a before-and-after comparison</li>
+    </ul></div>
+    <div><h3>How it works tab</h3><ul>
+      <li>Two flow diagrams: question time and the offline build</li>
+      <li>The six stages in plain language</li>
+      <li>The three refusal rules, the sources table, evaluation results and known limits</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="code">
+  <h2><span class="n">06</span>Code map</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Path</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>app.py</code></td><td>Streamlit UI: both tabs, trace and source rendering, optional password gate</td></tr>
+      <tr><td><code>rag/config.py</code></td><td>All settings from env or <code>.env</code></td></tr>
+      <tr><td><code>rag/backends.py</code></td><td><code>embed()</code> (local or OCI) and <code>chat()</code> (DeepSeek, Ollama or OCI), with retries and trace records</td></tr>
+      <tr><td><code>rag/retrieve.py</code></td><td>Vector search, <code>Hit.citation()</code></td></tr>
+      <tr><td><code>rag/answer.py</code></td><td>Safety check, prompts, <code>answer()</code> (single search) and <code>answer_multihop()</code></td></tr>
+      <tr><td><code>rag/hops.py</code></td><td>Routing, graph route, question splitting, relevance filter, drug cross-check</td></tr>
+      <tr><td><code>rag/graph.py</code></td><td>BODHI graph loading, entity linking, condition ranking, specialists, drugs</td></tr>
+      <tr><td><code>rag/trace.py</code></td><td>Step recorder behind the answer trace</td></tr>
+      <tr><td><code>rag/chunk.py</code>, <code>rag/index.py</code></td><td>Passages and the Chroma index (build time)</td></tr>
+      <tr><td><code>ingest/</code></td><td>PDF checks, bookmark-based section cutting, font-based ToC rebuild, BODHI download</td></tr>
+      <tr><td><code>eval/</code></td><td><code>run_eval.py</code> (retrieval@k), <code>product_eval.py</code> (36 questions, both modes)</td></tr>
+      <tr><td><code>rag/router.py</code>, <code>stair/</code></td><td>Experimental ToC router and STAIR (hidden unless <code>EXPERIMENTAL=1</code>)</td></tr>
+      <tr><td><code>deploy/</code></td><td>Server bundle builder, Dockerfile, Oracle deploy scripts, Caddy config</td></tr>
+      <tr><td><code>docs/</code></td><td>Pipeline, failure cases, STAIR, deployment, product report, this handbook</td></tr>
+      <tr><td><code>tests/</code></td><td>23 tests on synthetic inputs</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="run">
+  <h2><span class="n">07</span>Run it on your machine</h2>
+  <p>The repo has no books or index (see <a href="#rules">section 14</a>). To run it fully you need the PDFs in <code>data/books/</code>, named by ISBN. Ask Ishaan for access.</p>
+<pre><code>git clone https://github.com/dr-ishaanwadhwa/medevolv-mentor && cd medevolv-mentor
+python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m ingest.fetch_bodhi             # graph data -> data/bodhi/
+# put PDFs in data/books/, then run the per-book ingest commands in README.md
+.venv/bin/python -m rag.index                      # ~6 min: embed 16,032 passages
+echo "DEEPSEEK_API_KEY=...your key..." &gt;&gt; .env    # never commit .env
+echo "LLM_BACKEND=deepseek" &gt;&gt; .env
+.venv/bin/streamlit run app.py                     # http://localhost:8501
+.venv/bin/python -m pytest -q                      # 23 tests
+.venv/bin/python -m eval.product_eval              # 36-question evaluation</code></pre>
+  <p class="note">Offline fallback: <code>LLM_BACKEND=ollama</code> with <code>OLLAMA_MODEL=qwen2.5:7b</code>, which is better than the default 3B model. Run <code>ollama pull qwen2.5:7b</code> first.</p>
+</section>
+
+<section id="config">
+  <h2><span class="n">08</span>Configuration</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>LLM_BACKEND</code></td><td><code>ollama</code></td><td><code>deepseek</code> (demo), <code>ollama</code> (offline) or <code>oci</code></td></tr>
+      <tr><td><code>DEEPSEEK_API_KEY</code></td><td>none</td><td>Secret. Kept only in <code>.env</code> and on the server</td></tr>
+      <tr><td><code>DEEPSEEK_MODEL</code></td><td><code>deepseek-chat</code></td><td>Model name</td></tr>
+      <tr><td><code>EMBED_BACKEND</code></td><td><code>local</code></td><td><code>local</code> (bge-small) or <code>oci</code>; changing it needs a re-index</td></tr>
+      <tr><td><code>OLLAMA_MODEL</code></td><td><code>llama3.2:3b</code></td><td>Local model for offline runs</td></tr>
+      <tr><td><code>TOP_K</code></td><td><code>6</code></td><td>Passages per search</td></tr>
+      <tr><td><code>MIN_SIMILARITY</code></td><td><code>0.60</code></td><td>Below this the bot declines. On-topic queries score 0.71–0.81, off-topic about 0.50</td></tr>
+      <tr><td><code>CHUNK_WORDS</code></td><td><code>300</code></td><td>Maximum passage length (build time)</td></tr>
+      <tr><td><code>APP_PASSWORD</code></td><td>unset</td><td>If set, the app shows a login screen. Currently off (commented out in <code>.env</code>)</td></tr>
+      <tr><td><code>EXPERIMENTAL</code></td><td><code>0</code></td><td><code>1</code> shows the ToC router and STAIR retrievers</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="deploy">
+  <h2><span class="n">09</span>Deployment</h2>
+  <div class="tbl"><table>
+    <tbody>
+      <tr><td>Server</td><td>Oracle Cloud VM <code>eka-study-companion</code>, Mumbai, VM.Standard.E5.Flex (1 OCPU, 12 GB), Ubuntu 24.04, IP <code>130.210.60.153</code></td></tr>
+      <tr><td>Billing</td><td>Trial credit, about $1/day. The free Ampere A1 shape had no capacity in Mumbai. <b>The VM stops when the trial ends</b> unless the account is upgraded</td></tr>
+      <tr><td>Containers</td><td><code>app</code> (Streamlit on 7860) and <code>caddy</code> (HTTPS on 80/443) via Docker Compose in <code>~/eka</code></td></tr>
+      <tr><td>Domain</td><td>GoDaddy A record <code>mentor</code> → <code>130.210.60.153</code>. Let's Encrypt certificate, renewed automatically by Caddy</td></tr>
+      <tr><td>Search engines</td><td><code>X-Robots-Tag: noindex, nofollow</code> plus <code>robots.txt</code> disallowing everything</td></tr>
+      <tr><td>SSH</td><td><code>ssh -i ~/.ssh/eka_oci ubuntu@130.210.60.153</code> (key on Ishaan's Mac)</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Redeploy after a change</h3>
+<pre><code>DOMAIN=mentor.medevolv.in deploy/oci/push.sh 130.210.60.153</code></pre>
+  <p>This builds the bundle (code, theme, graph data and a compacted index, with no books), uploads it, copies only the DeepSeek key (and the password, if set) to the server, rebuilds the image and recreates Caddy. It takes 1–3 minutes when cached.</p>
+  <div class="callout warn"><b>Gotchas we hit:</b>
+    <ul>
+      <li>Never run two <code>push.sh</code> at once: each builds a fresh index folder, and <code>rsync --delete</code> makes the runs delete each other's files.</li>
+      <li>Always pass <code>DOMAIN</code>, or Caddy stops serving the domain's certificate.</li>
+      <li>Oracle's Ubuntu image blocks ports 80/443 in iptables even when the security list allows them; <code>setup.sh</code> opens them.</li>
+      <li>The new-VCN wizard doesn't attach a public IP. Add an ephemeral one under VNIC → IP administration (the ⋯ menu opens with Enter).</li>
+      <li>The first question after a deploy takes about 12 s while the embedding model loads. Warm it up before a demo.</li>
+    </ul></div>
+  <p class="note">Logs: <code>ssh … 'cd eka &amp;&amp; sudo docker compose logs -f app'</code>. Full notes in <code>docs/deploy_oci.md</code>.</p>
+</section>
+
+<section id="eval">
+  <h2><span class="n">10</span>Evaluation</h2>
+  <div class="two">
+    <div>
+      <h3>Product evaluation (36 questions, DeepSeek)</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Measure</th><th class="num">Baseline</th><th class="num">Multi-hop</th></tr></thead>
+        <tbody>
+          <tr><td>Expected status</td><td class="num">35/36</td><td class="num">36/36</td></tr>
+          <tr><td>Clinical vignettes</td><td class="num">4/5</td><td class="num">5/5</td></tr>
+          <tr><td>Right textbook cited</td><td class="num">22/22</td><td class="num">22/22</td></tr>
+          <tr><td>Claims supported (LLM judge)</td><td class="num">99.2%</td><td class="num">100%</td></tr>
+          <tr><td>Median / p95 latency</td><td class="num">3.2 / 6.9 s</td><td class="num">3.9 / 8.3 s</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">The judge is DeepSeek grading itself, so treat its scores as an upper bound.</p>
+    </div>
+    <div>
+      <h3>Retrieval (446 held-out questions, Tripathi)</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Retriever</th><th class="num">Ch@1</th><th class="num">Ch@3</th><th class="num">Sec@1</th></tr></thead>
+        <tbody>
+          <tr><td>Vector (in use)</td><td class="num">76.7%</td><td class="num">91.0%</td><td class="num">65.5%</td></tr>
+          <tr><td>ToC router, 3B</td><td class="num">32%</td><td class="num">68%</td><td class="num">15%</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Generated questions share wording with the passages, which favours vector search.</p>
+    </div>
+  </div>
+<pre><code>.venv/bin/python -m eval.product_eval               # writes reports/product_eval.json (git-ignored)
+.venv/bin/python -m eval.run_eval retrieval --retrievers vector</code></pre>
+</section>
+
+<section id="limits">
+  <h2><span class="n">11</span>Known issues and failure cases</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Issue</th><th>Cause</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>TB vignette lists lung abscess, COVID and endocarditis, not TB</td><td>BODHI's TB node lacks night sweats and weight loss</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>Measles-like child gets only "viral exanthem"</td><td>Coryza and rash spread aren't linked to the graph</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>Polyuria/polydipsia ranks gestational DM first</td><td>Ties in symptom count; weight loss not linked</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>Drug cross-check can match a "not supported" mention</td><td>String matching; graph lists some non-drugs</td><td><span class="pill info">Shown only in the trace</span></td></tr>
+      <tr><td>Comparison retrieved one side only</td><td>One embedding for two topics</td><td><span class="pill good">Fixed</span> by splitting</td></tr>
+      <tr><td>3B local model wrote unsupported claims</td><td>Model capacity</td><td><span class="pill good">Fixed</span> by DeepSeek</td></tr>
+      <tr><td>Treatment hop borrowed an unrelated passage</td><td>Similarity alone</td><td><span class="pill good">Fixed</span> by name filter</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">All 8 cases with evidence are in <code>docs/failure_cases.md</code>.</p>
+</section>
+
+<section id="decisions">
+  <h2><span class="n">12</span>Decision log</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Date</th><th>Decision</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>7 Nov</td><td>Medical study companion ("Hard" option) over the visa assistant</td><td>Stronger multi-hop story; domain expert on the team</td></tr>
+      <tr><td>7 Nov</td><td>Books named by ISBN, OKF markdown bundle per book</td><td>Reproducible ingest; section-level citations</td></tr>
+      <tr><td>12 Nov</td><td>STAIR and the ToC router dropped from the demo, kept as future work</td><td>Router 32% vs vector 77%; Kaggle training not run</td></tr>
+      <tr><td>12 Nov</td><td>DeepSeek as the LLM</td><td>The 3B local model made faithfulness errors</td></tr>
+      <tr><td>12 Nov</td><td>Oracle VM (E5, trial credit) + Caddy, not Vercel or Hugging Face</td><td>Vercel can't run Streamlit or hold the index; HF Docker needs PRO; no free A1 capacity</td></tr>
+      <tr><td>12 Nov</td><td>Renamed to MedEvolv Mentor on mentor.medevolv.in</td><td>Own brand and domain; Eka Care credited for BODHI</td></tr>
+      <tr><td>12 Nov</td><td>Public site without password, excerpts kept, noindex</td><td>Easier demo; the copyright risk was accepted knowingly (see <a href="#rules">section 14</a>)</td></tr>
+      <tr><td>12 Nov</td><td>Code published at github.com/dr-ishaanwadhwa/medevolv-mentor</td><td>Portfolio; history audited first</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="demo">
+  <h2><span class="n">13</span>Demo script (about 5 minutes)</h2>
+  <ol class="steps">
+    <li><span class="i">0</span><span><b>Before the professor arrives:</b> open the site and ask any question once, to warm up the model.</span></li>
+    <li><span class="i">1</span><span><b>How it works tab</b> (1 min): the question-time diagram and the three refusal rules.</span></li>
+    <li><span class="i">2</span><span><b>Mosquito case</b> (1.5 min): open "How this answer was made". Show the symptoms linked, the graph's conditions, the textbook search, the relevance filter and the cited answer.</span></li>
+    <li><span class="i">3</span><span><b>Penicillins vs aminoglycosides</b> (45 s): the question splits into two searches, so both drug classes get evidence.</span></li>
+    <li><span class="i">4</span><span><b>Cricket question, then "My mother has TB…"</b> (45 s): one is declined below the 0.60 threshold without calling the model, the other before any search.</span></li>
+    <li><span class="i">5</span><span><b>Multi-hop off</b> (30 s, optional): the same question as plain RAG, for contrast.</span></li>
+    <li><span class="i">6</span><span><b>Close</b> (1 min): the evaluation table, the honest limits (TB vignette) and next steps.</span></li>
+  </ol>
+  <p class="note">Backup: if the network fails, run the app on a laptop with <code>LLM_BACKEND=ollama</code>, <code>OLLAMA_MODEL=qwen2.5:7b</code>.</p>
+</section>
+
+<section id="rules">
+  <h2><span class="n">14</span>Rules: copyright and secrets</h2>
+  <div class="callout bad"><b>The textbook PDFs are unlicensed copies.</b> They, and everything derived from them (OKF bundle, Chroma index, STAIR pairs and adapters, evaluation outputs), stay out of git. They're all git-ignored and never were committed. Never upload them to a public place, a public Kaggle dataset or a public Space. Move to institutional access before any real release.</div>
+  <ul>
+    <li><b>Live site:</b> it's public and shows up to 9 excerpts of 300 characters per answer. This was a deliberate team decision for the demo, with noindex to stay out of search results. To re-gate it, uncomment <code>APP_PASSWORD</code> in <code>.env</code> and redeploy.</li>
+    <li><b>Secrets</b> live only in <code>.env</code> (git-ignored) and in the server's <code>~/eka/.env</code> (mode 600). Never paste keys into chat, issues or docs.</li>
+    <li><b>Data flow:</b> every answer sends up to 9 passages and the question to DeepSeek's API.</li>
+    <li><b>Attribution:</b> credit Eka Care for BODHI wherever the graph is shown (CC BY-NC 4.0: credit, non-commercial).</li>
+  </ul>
+</section>
+
+<section id="books">
+  <h2><span class="n">15</span>Adding a book</h2>
+  <p>Adding a book takes no code changes to the pipeline. Each book is one ingest command with its own section levels. Capacity isn't a concern: the VM has 12 GB RAM and 42 GB free disk, and Chroma searches 50k+ passages in milliseconds.</p>
+  <div class="callout"><b>Recommended next book: Harrison's Principles of Internal Medicine (21st ed.)</b>, from the team's own list.
+    <ul>
+      <li><b>It fixes gaps we've already seen.</b> In the mosquito demo the answer had to say the indexed books don't cover acute dengue management. TB and measles are the weak vignettes too. Harrison's covers all of these in depth.</li>
+      <li><b>It strengthens the clinical-case route,</b> the most impressive part of the demo, where the textbook confirms what the graph proposes.</li>
+      <li><b>Cost:</b> it's about 4,000 pages, so expect the index to roughly double or triple (about 15–20 minutes to rebuild, and a bigger deploy bundle).</li>
+    </ul>
+    <b>Cheaper alternative: Harper's Illustrated Biochemistry (32nd ed.).</b> It adds a sixth core subject the app can't answer at all today, and it's a small book.
+  </div>
+  <div class="callout warn"><b>Not before the 17 Nov demo.</b> Neither PDF is on disk yet, and a re-index plus redeploy is avoidable risk on demo day. Add it the week after, and check the PDF first with <code>check_books</code> (step 1).</div>
+  <ol class="steps">
+    <li><span class="i">1</span><span>Put the PDF in <code>data/books/</code>, named by ISBN, and run <code>python -m ingest.check_books data/books</code>. You need verdict <b>OK</b>. NO_TOC means rebuilding headings from fonts (<code>ingest.font_toc</code>, like Tripathi). SCANNED means the PDF has no text layer and needs OCR first.</span></li>
+    <li><span class="i">2</span><span>Run <code>ingest.pdf_to_okf</code> with the right <code>--level</code> and <code>--chapter-level</code>, and <code>--also-skip</code> for front matter. Copy the pattern from README.md.</span></li>
+    <li><span class="i">3</span><span>Open <code>data/okf/&lt;book&gt;/index.md</code> and check the sections and coverage. A domain expert skim takes 10 minutes.</span></li>
+    <li><span class="i">4</span><span>Re-index with <code>python -m rag.index</code>, which rebuilds the whole index (about 6+ minutes).</span></li>
+    <li><span class="i">5</span><span>Add the book to <code>BOOKS</code> in <code>app.py</code>, the subject list in <code>rag/answer.py: SYSTEM</code>, and the counts on the How it works tab and in this handbook.</span></li>
+    <li><span class="i">6</span><span>Add 3–5 questions to <code>eval/product_questions.jsonl</code>, run the tests and the product evaluation, then redeploy.</span></li>
+  </ol>
+</section>
+
+<section id="todo">
+  <h2><span class="n">16</span>Open tasks and owners</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Task</th><th>Owner</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr><td>Rehearse the demo script; warm up the site before presenting</td><td>Team</td><td><span class="pill bad">Before demo</span></td></tr>
+      <tr><td>Write 10–15 gold questions with sections in <code>eval/questions.jsonl</code></td><td>Ishaan</td><td><span class="pill warn">High</span></td></tr>
+      <tr><td>Fix vignette ranking: synonym table (coryza, polyuria, radiating pain), tie-break by symptom specificity, textbook boost for TB and measles</td><td>Claude + Ishaan</td><td><span class="pill warn">High</span></td></tr>
+      <tr><td>Clean the drug cross-check (filter non-drugs, skip negated mentions)</td><td>Claude</td><td><span class="pill info">Medium</span></td></tr>
+      <tr><td>Add a book (see section 15)</td><td>Ishaan</td><td><span class="pill info">Medium</span></td></tr>
+      <tr><td>Give repo access for the MEDPATH-AI comparison review</td><td>Hardik</td><td><span class="pill info">Medium</span></td></tr>
+      <tr><td>STAIR training on Kaggle (speed test, then full run)</td><td>Hardik</td><td><span class="pill info">Future</span></td></tr>
+      <tr><td>Decide the VM's future before the Oracle trial ends (upgrade, or move to A1 when capacity frees)</td><td>Ishaan</td><td><span class="pill info">After demo</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+</div>
