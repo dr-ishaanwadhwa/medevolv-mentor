@@ -67,3 +67,11 @@ def test_negated_treatment_is_dropped():
     # the rejection is about another drug in another sentence
     assert not neg(R.TREATED_BY, "Ampicillin", "Ampicillin is preferred. Cephalosporins are not effective.")
     assert not neg(R.MANIFESTS_AS, "Rash", "Rash should not be confused with X.")
+
+
+@pytest.mark.skipif(not ontology_facts.available(), reason="ontology file not built")
+def test_subtype_drugs_are_labelled_with_their_subtype():
+    from rag.ontology_facts import _for
+    f = {"subject_label": "Multidrug-resistant tuberculosis"}
+    assert _for(f, "Tuberculosis") == " (for Multidrug-resistant tuberculosis)"
+    assert _for({"subject_label": "Pulmonary tuberculosis"}, "Tuberculosis") == ""   # 'pulmonary' is generic

@@ -110,7 +110,7 @@ def match_conditions(name: str) -> list[str]:
     best = max(cands, key=lambda c: (_keys(c) == k and n[c] >= 5, n[c]))
     # best-documented MORE SPECIFIC (or same) label, e.g. STEMI for 'acute myocardial infarction'; never a more
     # general one (that would give 'type 1 diabetes' the type 2 drugs filed under plain 'diabetes mellitus')
-    richest = max((c for c in cands if _keys(c) >= k), key=lambda c: n[c], default=best)
+    richest = max((c for c in cands if _keys(c) > k and n[c] >= 5), key=lambda c: n[c], default=best)
     groups = {_keys(best), _keys(richest), k}
     # the winner's concept group, the best-documented related label, and any exact-name labels
     return [c for c in cands if _keys(c) in groups]
@@ -251,6 +251,12 @@ def catalog() -> dict:
     return {s: dict(c) for s, c in sorted(out.items())}
 
 
+def _for(f: dict, label: str) -> str:
+    """' for <subtype>' when a fact is about a more specific label than the one asked about
+    (e.g. moxifloxacin is first-line for multidrug-resistant TB, not for TB)."""
+    return "" if _keys(f["subject_label"]) == _keys(label) else f" (for {f['subject_label']})"
+
+
 def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_warnings: int = 3) -> list[str]:
     """Short, cited fact strings about one condition for the answer prompt ([G#] evidence)."""
     labels = match_conditions(condition)
@@ -260,11 +266,11 @@ def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_
     fl = _dedupe(first_line_drugs_for(condition))[:max_drugs]
     if fl:
         out.append(f"Textbook ontology: first-line treatment for {labels[0]}: "
-                   + "; ".join(f"{f['object_label']} ({cite(f)})" for f in fl) + ".")
+                   + "; ".join(f"{f['object_label']}{_for(f, labels[0])} ({cite(f)})" for f in fl) + ".")
     dx = _dedupe(diagnostics_for(condition))[:max_tests]
     if dx:
         out.append(f"Textbook ontology: {labels[0]} is confirmed by: "
-                   + "; ".join(f"{f['object_label']} ({cite(f)})" for f in dx) + ".")
+                   + "; ".join(f"{f['object_label']}{_for(f, labels[0])} ({cite(f)})" for f in dx) + ".")
     for f in contraindications_for(condition)[:max_warnings]:
         sev = (f["clinical_facets"].get("contraindication_severity") or "").lower()
         why = f["clinical_facets"].get("rationale") or ""
