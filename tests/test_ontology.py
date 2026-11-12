@@ -28,3 +28,19 @@ def test_quote_must_be_in_source():
 
 def test_minted_ids_do_not_depend_on_book():
     assert mint_uri("tripathi", "Valproate", T.TherapeuticAgent) == mint_uri("harrison", "Valproate", T.TherapeuticAgent)
+
+
+import pytest
+from rag import ontology_facts
+
+
+@pytest.mark.skipif(not ontology_facts.available(), reason="ontology file not built")
+def test_condition_matching_rules():
+    m = ontology_facts.match_conditions
+    # a more specific, better-documented label is added (STEMI facts for acute MI) ...
+    assert any("ST-Segment" in c for c in m("Acute myocardial infarction"))
+    # ... but never a more general one: type 1 must not inherit plain 'diabetes mellitus' (type 2 drugs)
+    assert all("1" in c for c in m("Diabetes mellitus type 1"))
+    assert not m("zzz unknown condition")
+    # every catalog condition has an organ system
+    assert "Other" not in ontology_facts.catalog()

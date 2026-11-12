@@ -31,11 +31,28 @@ CHAPTER_GROUPS = [
     (r"myocardial|coronary", "Cardiovascular", "Acute coronary syndromes"),
     (r"hemodynamic|haemodynamic|shock|thrombo", "Cardiovascular", "Shock & haemodynamic disorders"),
     (r"tubercul|mycobact", "Infectious", "Mycobacterial infections"),
-    (r"seizure|epilep", "Nervous system", "Epilepsy & seizures"),
-    (r"neurology", "Nervous system", "Neurology (general)"),
+    (r"seizure|epilep", "Nervous system & psychiatry", "Epilepsy & seizures"),
+    (r"neurology", "Nervous system & psychiatry", "Neurology (general)"),
     (r"salmonell|enteric", "Infectious", "Enteric fever & salmonellosis"),
     (r"arthropod|arbovir|hemorrhagic|haemorrhagic|dengue", "Infectious", "Arboviral fevers"),
     (r"infectious disease", "Infectious", "Infectious disease (general)"),
+    # System-level rules (category None = use the source chapter's own title, like the book's contents page)
+    (r"heart|cardiac|cardiolog|hypertension|antianginal|anti-ischaemic|blood vessels|antiadrenergic|"
+     r"antihypertensive|hypolipid", "Cardiovascular", None),
+    (r"pneumonia|lung|asthma|cough|respirat", "Respiratory", None),
+    (r"kidney|nephro|dialysis|renal", "Renal & urinary", None),
+    (r"thyroid|endocrin|obesity|menopaus|androgen|estrogen|progestin|corticosteroid|vitamin|nutritional|"
+     r"biochem|metabolic|insulin|glucagon", "Endocrine & metabolic", None),
+    (r"mening|migraine|headache|dementia|subarachnoid|central nervous|mental illness|antipsychotic|"
+     r"antidepress|cholinergic|parkinson|hydroxytryptamine|\bpain\b", "Nervous system & psychiatry", None),
+    (r"hepat|liver|peptic|gastro|constipation|diarrh", "Gastrointestinal & liver", None),
+    (r"anaemi|anemi|antiphospholipid|immunosuppress", "Blood & immunology", None),
+    (r"antirheumatoid|antigout|rheumat", "Musculoskeletal & rheumatology", None),
+    (r"fungal|antimicrobial|antiprotozoal|antiamoebic|antileprotic|vaccine|hiv|antibacterial|macrolide",
+     "Infectious", None),
+    (r"poison|environmental", "Toxicology & environment", None),
+    (r"dermatolog|skin", "Skin", None),
+    (r"cell injury|inflammation and repair", "General pathology", None),
 ]
 
 
@@ -80,7 +97,8 @@ def match_conditions(name: str) -> list[str]:
     Candidates share distinctive words with the name: the same words, a more general label (fewer words), or a
     slightly more specific one (at most 2 extra words, e.g. 'Myocardial infarction' -> 'ST-Segment Elevation
     Myocardial Infarction'). The best candidate is an exact match with at least 5 facts, otherwise the one with
-    the most facts; every label with exactly the same words as it is returned with it."""
+    the most facts. Returned: that group, the best-documented candidate's group (so 'acute myocardial infarction'
+    also gets STEMI's facts), and every exact-name label."""
     k = _keys(name)
     if not k:
         return []
@@ -90,8 +108,12 @@ def match_conditions(name: str) -> list[str]:
     if not cands:
         return []
     best = max(cands, key=lambda c: (_keys(c) == k and n[c] >= 5, n[c]))
-    # the winner's concept group, plus any exact-name labels (they describe the asked condition itself)
-    return [c for c in cands if _keys(c) == _keys(best) or _keys(c) == k]
+    # best-documented MORE SPECIFIC (or same) label, e.g. STEMI for 'acute myocardial infarction'; never a more
+    # general one (that would give 'type 1 diabetes' the type 2 drugs filed under plain 'diabetes mellitus')
+    richest = max((c for c in cands if _keys(c) >= k), key=lambda c: n[c], default=best)
+    groups = {_keys(best), _keys(richest), k}
+    # the winner's concept group, the best-documented related label, and any exact-name labels
+    return [c for c in cands if _keys(c) in groups]
 
 
 def _about(labels: list[str] | str, predicate: str | None = None) -> list[dict]:
@@ -165,7 +187,7 @@ def profile(label: str) -> dict:
 def group_of(chapter: str) -> tuple[str, str]:
     for pattern, system, category in CHAPTER_GROUPS:
         if re.search(pattern, chapter, re.I):
-            return system, category
+            return system, category or (re.sub(r"^\d+[a-z]?\.?\s*", "", chapter)[:60] or system)
     return "Other", re.sub(r"^\d+\.?\s*", "", chapter)[:60] or "Other"
 
 
