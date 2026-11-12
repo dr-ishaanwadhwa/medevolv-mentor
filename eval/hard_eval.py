@@ -1,6 +1,7 @@
 """Hard multi-axis clinical cases: does the answer cover what each clinical axis needs, and avoid the trap?
 
-    .venv/bin/python -m eval.hard_eval run --arm after            # the current three-axis case decomposition
+    .venv/bin/python -m eval.hard_eval run --arm after            # three-axis decomposition + axis-aware answer prompt
+    .venv/bin/python -m eval.hard_eval run --arm plain            # three-axis decomposition, plain answer prompt
     .venv/bin/python -m eval.hard_eval run --arm before           # axis split switched off (older focus/queries split)
     .venv/bin/python -m eval.hard_eval compare reports/hard_eval_before.json reports/hard_eval_after.json
 
@@ -59,6 +60,9 @@ def axes_used(plan) -> list[str]:
 
 def run(arm: str, out: Path, only: set[str] | None) -> None:
     from eval.product_eval import judge as ground_judge
+    if arm == "plain":
+        from rag import answer as answer_mod
+        answer_mod.AXIS_AWARE = False
     if arm == "before":
         hops.decompose_axes = lambda q: (None, "axis split disabled (A/B arm 'before')")
     cases = [json.loads(l) for l in Path("eval/hard_cases.jsonl").read_text().splitlines() if l.strip()]
@@ -143,7 +147,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--arm", choices=["before", "after"], default="after")
+    r.add_argument("--arm", choices=["before", "plain", "after"], default="after")
     r.add_argument("--out", type=Path)
     r.add_argument("--only", help="comma-separated case ids")
     c = sub.add_parser("compare")

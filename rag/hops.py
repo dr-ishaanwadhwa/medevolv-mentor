@@ -53,6 +53,8 @@ class Plan:
     bodhi_drugs: dict[str, list[str]] = field(default_factory=dict)
     symptoms: list[str] = field(default_factory=list)       # for the clinical-graph view in app.py
     conditions: list[str] = field(default_factory=list)
+    axes: list[str] = field(default_factory=list)                # case route: clinical axes searched, in order
+    evidence_axis: dict[str, str] = field(default_factory=dict)  # hit id -> axis whose query found it ("case" = whole case)
 
 
 def _add_hits(plan: Plan, hits: list[Hit]) -> None:
@@ -453,6 +455,10 @@ def _plan_axes(question: str, p: Plan, axes: CaseAxes) -> Plan:
     for a, hits in zip(axes.axes, per_axis):
         p.hops.append(Hop("retrieve", f"[{a.axis}] {a.query}", hits[0].citation() if hits else "no evidence", hits))
     _add_hits(p, interleave(whole, *per_axis, limit=MAX_EVIDENCE + 3))
+    p.axes = list(dict.fromkeys(a.axis for a in axes.axes))
+    for h in p.evidence:
+        p.evidence_axis[h.id] = next((a.axis for a, hits in zip(axes.axes, per_axis) if any(x.id == h.id for x in hits)),
+                                     "case")
     if axes.condition:
         p.conditions = [axes.condition]
         p.symptoms = clinical_graph.symptoms_in_text(question, [axes.condition])

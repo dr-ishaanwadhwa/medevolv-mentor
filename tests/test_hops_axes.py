@@ -190,3 +190,38 @@ def test_graph_route_sets_graph_view_fields(stubs, monkeypatch):
     p = hops.plan("Patient with fever and joint pain, what is the likely diagnosis?")
     assert p.route == "graph"
     assert p.symptoms == ["Fever", "Joint pain"] and set(p.conditions) == {"Chikungunya", "Dengue"}
+
+
+def test_case_route_tags_evidence_by_axis(stubs):
+    set_reply, _ = stubs
+    set_reply(GOOD)
+    p = hops.plan_case(CASE)
+    assert p.axes == ["etiology", "stabilization", "pharmacology"]
+    assert set(p.evidence_axis) == {h.id for h in p.evidence}
+    assert set(p.evidence_axis.values()) <= {"etiology", "stabilization", "pharmacology", "case"}
+    # FakeHit ids start with the query's first 12 chars, so an axis-found hit maps to that axis's query
+    for h in p.evidence:
+        ax = p.evidence_axis[h.id]
+        if ax != "case":
+            q = next(a.query for a in hops.parse_axes(GOOD).axes if a.axis == ax)
+            assert h.id.startswith(q[:12])
+
+
+def test_answer_prompt_is_axis_aware_only_for_axis_plans(stubs, monkeypatch):
+    from rag import answer as answer_mod
+    set_reply, _ = stubs
+    set_reply(GOOD)
+    case_plan = hops.plan_case(CASE)
+    seen = {}
+
+    def fake_chat(system, user, **kw):
+        seen["system"], seen["user"] = system, user
+        return "Answer [1]."
+    monkeypatch.setattr(answer_mod, "chat", fake_chat)
+    monkeypatch.setattr(answer_mod, "_guard", lambda q: False)
+    monkeypatch.setattr(hops, "plan", lambda q: case_plan)
+    answer_mod.answer_multihop(CASE)
+    assert answer_mod.AXIS_ANSWER in seen["system"] and "Axis: " in seen["user"] and "Avoid:" in seen["system"]
+    monkeypatch.setattr(answer_mod, "AXIS_AWARE", False)
+    answer_mod.answer_multihop(CASE)
+    assert answer_mod.AXIS_ANSWER not in seen["system"] and "Axis: " not in seen["user"]

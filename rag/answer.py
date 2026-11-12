@@ -157,6 +157,22 @@ MULTIHOP_SYSTEM = SYSTEM + """
 - If a graph fact starts with "WARNING", state the contraindication explicitly in a short "Warnings" line, cited [G#]."""
 
 
+AXIS_AWARE = True          # the eval's A/B switches this off to measure the axis-aware prompt on its own
+AXIS_TITLES = {"etiology": "Etiology & differential", "stabilization": "Emergency stabilization",
+               "pharmacology": "Definitive pharmacology & contraindications", "case": "whole case"}
+AXIS_ANSWER = """
+- This case was decomposed into clinical axes, and each passage is tagged with the axis it was retrieved for.
+  Answer under one short bold heading per axis, in the order given, using mainly that axis's passages.
+- In each section give the specific, actionable details the passages state: the order of steps, lab thresholds,
+  doses and routes, and what must be done before what.
+- End the pharmacology section with an "Avoid:" line naming drugs contraindicated for THIS patient and why, cited.
+- If an axis's evidence does not cover something the question asks, say so in that section."""
+
+
+def _axis_block(i: int, h: Hit, axis: str) -> str:
+    return f"[{i}] Axis: {AXIS_TITLES.get(axis, axis)}\n" + evidence_block(i, h)
+
+
 def _cited(text: str, pattern: str, n: int) -> list[int]:
     nums = [x for grp in re.findall(pattern, text) for x in re.findall(r"\d+", grp)]
     return sorted({int(x) for x in nums if 1 <= int(x) <= n})
@@ -182,10 +198,17 @@ def answer_multihop(question: str) -> Answer:
                  + "Graph facts are cited [G#], passages [#]; passages below the relevance threshold were dropped.")
 
     graph_block = "\n".join(f"[G{i}] {f}" for i, f in enumerate(p.graph_facts, 1))
-    text_block = "\n\n".join(evidence_block(i, h) for i, h in enumerate(p.evidence, 1))
-    prompt = (f"Graph facts:\n{graph_block or '(none)'}\n\nTextbook passages:\n\n{text_block or '(none)'}"
+    axes = getattr(p, "axes", None) if AXIS_AWARE else None
+    if axes:
+        text_block = "\n\n".join(_axis_block(i, h, p.evidence_axis.get(h.id, "case")) for i, h in enumerate(p.evidence, 1))
+        axes_line = "Clinical axes, in order: " + "; ".join(AXIS_TITLES[a] for a in axes) + "\n\n"
+    else:
+        text_block = "\n\n".join(evidence_block(i, h) for i, h in enumerate(p.evidence, 1))
+        axes_line = ""
+    prompt = (f"{axes_line}Graph facts:\n{graph_block or '(none)'}\n\nTextbook passages:\n\n{text_block or '(none)'}"
               f"\n\nQuestion: {question}\nAnswer:")
-    text = clean(chat(MULTIHOP_SYSTEM, prompt, max_tokens=1100, purpose="Write the answer from graph facts + passages"))
+    text = clean(chat(MULTIHOP_SYSTEM + (AXIS_ANSWER if axes else ""), prompt, max_tokens=1100,
+                      purpose="Write the answer from graph facts + passages"))
     if "INSUFFICIENT_CONTEXT" in text:
         trace.record("refuse", "Declined: evidence insufficient", "The model found the evidence does not answer it.",
                      status="stop")
