@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs on YOUR Mac. Builds the bundle, copies it to the VM, starts it there.
-#   deploy/oci/push.sh <vm-public-ip> [ssh-key-path]
+#   [DOMAIN=study.medevolv.in] deploy/oci/push.sh <vm-public-ip> [ssh-key-path]
 set -euo pipefail
 HOST="$1"; KEY="${2:-$HOME/.ssh/eka_oci}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
@@ -19,4 +19,4 @@ chmod 600 "$OUT/.env"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new"
 rsync -az --delete -e "$SSH" "$OUT/" "ubuntu@$HOST:eka/"
 rm -rf "$(dirname "$OUT")"
-$SSH "ubuntu@$HOST" 'chmod 600 eka/.env && bash eka/setup.sh'
+$SSH "ubuntu@$HOST" "chmod 600 eka/.env && DOMAIN='${DOMAIN:-}' bash eka/setup.sh"

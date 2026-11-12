@@ -19,9 +19,11 @@ done
 sudo netfilter-persistent save >/dev/null
 
 IP=$(curl -s https://ifconfig.me)
-export SITE_ADDRESS="${IP//./-}.sslip.io"       # free hostname that resolves to this IP, so Caddy can get a cert
+SSLIP="${IP//./-}.sslip.io"                     # free hostname that resolves to this IP, so Caddy can get a cert
+# DOMAIN (optional, e.g. study.medevolv.in): needs a DNS A record pointing at $IP first. Both names stay served.
+export SITE_ADDRESS="${DOMAIN:+$DOMAIN, }$SSLIP"
 echo "SITE_ADDRESS=$SITE_ADDRESS" > .compose.env
 
 sudo SITE_ADDRESS="$SITE_ADDRESS" docker compose --env-file .compose.env up -d --build
 echo
-echo "Deployed: https://$SITE_ADDRESS  (first HTTPS request can take ~30 s while the certificate is issued)"
+echo "Deployed: https://${DOMAIN:-$SSLIP}  (first HTTPS request can take ~30 s while the certificate is issued)"

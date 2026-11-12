@@ -48,3 +48,10 @@ Re-run the same command to redeploy after changes.
 * The new-VCN wizard created the internet gateway and route but did **not** attach a public IP: add an
   ephemeral one under VNIC → IP administration → ⋯ → Edit (the ⋯ menu opens with Enter if clicks do nothing).
 * Never run two `push.sh` at once: each builds a fresh index folder and rsync `--delete` makes them clobber each other.
+
+## Custom domain (e.g. study.medevolv.in)
+1. At the medevolv.in DNS provider add an **A record**: `study` → `130.210.60.153` (TTL 300). For the bare
+   domain use host `@` instead.
+2. Wait until `dig +short study.medevolv.in` prints the IP.
+3. `DOMAIN=study.medevolv.in deploy/oci/push.sh 130.210.60.153` — Caddy gets a certificate for the domain and
+   keeps serving the sslip.io name too.
