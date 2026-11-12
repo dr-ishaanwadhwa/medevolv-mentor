@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import functools
 import json
+import time
+import urllib.error
 import urllib.request
 
 from rag import config
@@ -61,8 +63,20 @@ def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900
             **({"format": schema} if schema else ({"format": "json"} if json_mode else {})),
         }).encode()
         req = urllib.request.Request(f"{config.OLLAMA_URL}/api/chat", body, {"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=300) as r:
-            return json.load(r)["message"]["content"]
+        for attempt in range(3):                   # Ollama returns 500 / drops connections under contention
+            try:
+                with urllib.request.urlopen(req, timeout=300) as r:
+                    return json.load(r)["message"]["content"]
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    raise RuntimeError(f"Ollama has no model '{model or config.OLLAMA_MODEL}'. "
+                                       f"Run: ollama pull {model or config.OLLAMA_MODEL}") from e
+                err = e
+            except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+                err = e
+            time.sleep(1.5 * (attempt + 1))
+        raise RuntimeError(f"The local LLM (Ollama at {config.OLLAMA_URL}) is not responding: {err}. "
+                           "Start the Ollama app and try again.") from err
 
     if config.LLM_BACKEND == "oci":
         from oci.generative_ai_inference import models as m

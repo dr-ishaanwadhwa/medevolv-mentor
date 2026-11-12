@@ -41,3 +41,7 @@ TOP_K = int(os.getenv("TOP_K", "6"))
 # Below this cosine similarity the best hit is treated as "not in my sources". Calibrate with eval/.
 # bge-small on Tripathi: on-topic queries scored 0.71–0.81, off-topic ~0.50 (2026-11-07 probe).
 MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0.60"))
+
+# The ToC router and STAIR are kept in the repo but hidden from the demo UI (router scored 32% chapter@1 vs 77% for
+# vector on the local 3B model; STAIR training is optional future work). EXPERIMENTAL=1 shows them again.
+EXPERIMENTAL = os.getenv("EXPERIMENTAL", "0") == "1"

@@ -1,7 +1,8 @@
 # med-rag: structure-aware multi-hop medical study companion
 
 RAG chatbot for medical students (framed as an Eka Care extension): BODHI clinical graphs plan the hops,
-textbooks supply cited evidence, STAIR (fine-tuned ToC retriever) finds the section.
+textbooks supply cited evidence. The demo runs on vector retrieval plus graph-planned hops; the ToC router and
+STAIR (fine-tuned ToC retriever) are kept as experiments behind `EXPERIMENTAL=1` (see `docs/stair.md`).
 
 ## Setup
 ```bash

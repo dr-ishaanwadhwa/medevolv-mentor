@@ -71,3 +71,19 @@ def test_symptoms_rank_arboviral_conditions():
     ents = link_entities("high fever, headache and joint pain after a mosquito bite")
     top = [c["name"] for c in conditions_for_symptoms([e["ids"] for e in ents if e["type"] == "Symptom"], top=5)]
     assert {"Chikungunya fever", "Dengue fever"} <= set(top)
+
+
+def test_clean_strips_echoed_headers():
+    from rag.answer import clean
+    assert clean("[1] (Robbins, 2 Cell › Morphology (pp. 52-61))\n\nThe area is grey [1].") == "The area is grey [1]."
+    assert clean("[3] [8]\n\nValproate [3].") == "Valproate [3]."
+    assert clean("Valproate is the drug of choice [2].") == "Valproate is the drug of choice [2]."
+
+
+def test_graph_route_only_for_case_questions():
+    from rag.hops import is_case
+    one = [{"name": "Seizure"}]
+    assert not is_case("What is the drug of choice for absence seizures?", one)
+    assert is_case("A 30 year old presents with seizures. Likely diagnosis?", one)
+    assert is_case("fever and joint pain", [{"name": "Fever"}, {"name": "Joint pain"}])
+    assert not is_case("Mechanism of penicillin", [])

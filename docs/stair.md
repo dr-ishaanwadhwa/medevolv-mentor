@@ -1,5 +1,8 @@
 # STAIR workflow (owner: Hardik)
 
+> **Status (2026-11-12): dropped from the demo, kept as future work.** The dataset, training script and Kaggle
+> notebook are complete but untrained. The app shows STAIR only with `EXPERIMENTAL=1`.
+
 STAIR = a fine-tuned LLM that answers a question with the **ToC title** of the section that contains the answer.
 We train it in two stages so prompts stay ~750 tokens (fits 8 GB GPUs):
 

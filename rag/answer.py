@@ -29,7 +29,8 @@ Rules:
 - Cite every claim with the passage number in square brackets, e.g. [2]. Use only numbers that exist.
 - If the evidence does not contain the answer, reply exactly: INSUFFICIENT_CONTEXT
 - If only part of the question is covered, answer that part and state plainly which part the sources do not cover.
-- Be concise and exam-oriented: short paragraphs or bullet points.
+- Be concise and exam-oriented: short paragraphs or bullet points. Start directly with the answer; do not repeat
+  the passage headers or source lines.
 - Never give dosing or treatment advice for a specific real person."""
 
 NOT_IN_SOURCES = ("I couldn't find this in my textbook sources, so I won't guess. "
@@ -49,8 +50,23 @@ class Answer:
     agreed_drugs: list[str] = field(default_factory=list)   # BODHI drug list ∩ textbook-grounded answer
 
 
+def evidence_block(i: int, h: Hit) -> str:
+    return f"[{i}] Source: {h.citation()}\n{h.passage}"
+
+
+LEADING_JUNK = re.compile(r"^\s*(?:\[G?\d+\]\s*)+(?:(?:Source:|\().*)?$")
+
+
+def clean(text: str) -> str:
+    """Small models sometimes open by echoing a passage header ("[1] (Robbins, ... pp. 52-61)") or a bare "[3] [8]"."""
+    lines = text.strip().splitlines()
+    while lines and (LEADING_JUNK.match(lines[0]) or not lines[0].strip()):
+        lines.pop(0)
+    return "\n".join(lines).strip() or text.strip()
+
+
 def build_prompt(question: str, hits: list[Hit]) -> str:
-    blocks = [f"[{i}] ({h.citation()})\n{h.passage}" for i, h in enumerate(hits, 1)]
+    blocks = [evidence_block(i, h) for i, h in enumerate(hits, 1)]
     return "Evidence passages:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}\nAnswer:"
 
 
@@ -80,7 +96,7 @@ def answer(question: str, section_ids: list[str] | None = None, retriever: str =
     if not hits or hits[0].similarity < config.MIN_SIMILARITY:
         return Answer(NOT_IN_SOURCES, hits=hits, status="not_in_sources")
 
-    text = chat(SYSTEM, build_prompt(question, hits)).strip()
+    text = clean(chat(SYSTEM, build_prompt(question, hits)))
     if "INSUFFICIENT_CONTEXT" in text:
         return Answer(NOT_IN_SOURCES, hits=hits, status="insufficient")
 
@@ -117,10 +133,10 @@ def answer_multihop(question: str) -> Answer:
         return Answer(NOT_IN_SOURCES, status="not_in_sources", plan=p)
 
     graph_block = "\n".join(f"[G{i}] {f}" for i, f in enumerate(p.graph_facts, 1))
-    text_block = "\n\n".join(f"[{i}] ({h.citation()})\n{h.passage}" for i, h in enumerate(p.evidence, 1))
+    text_block = "\n\n".join(evidence_block(i, h) for i, h in enumerate(p.evidence, 1))
     prompt = (f"Graph facts:\n{graph_block or '(none)'}\n\nTextbook passages:\n\n{text_block or '(none)'}"
               f"\n\nQuestion: {question}\nAnswer:")
-    text = chat(MULTIHOP_SYSTEM, prompt, max_tokens=1100).strip()
+    text = clean(chat(MULTIHOP_SYSTEM, prompt, max_tokens=1100))
     if "INSUFFICIENT_CONTEXT" in text:
         return Answer(NOT_IN_SOURCES, hits=p.evidence, status="insufficient", plan=p)
     return Answer(text, hits=p.evidence, plan=p,

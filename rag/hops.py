@@ -86,11 +86,22 @@ def looks_compound(question: str) -> bool:
         or bool(re.search(r"\band\b.*\b(why|how|what|which|when)\b", q))
 
 
+CASE_CUE = re.compile(r"\b(patient|presents?|presenting|complain\w*|year[- ]old|y/?o|history of|"
+                      r"(likely|probable|differential) diagnosis|diagnos\w*|what could|suffer\w*|"
+                      r"(man|woman|boy|girl|child|male|female) (with|has|having))\b", re.I)
+
+
+def is_case(question: str, symptoms: list[dict]) -> bool:
+    """Symptom -> condition hops only make sense for a clinical vignette, not for "drug of choice for seizures"
+    or "fall in blood pressure" (a physiology question that merely names a symptom)."""
+    return len(symptoms) >= 2 or (len(symptoms) == 1 and bool(CASE_CUE.search(question)))
+
+
 def plan(question: str) -> Plan:
     ents = link_entities(question)
     symptoms = [e for e in ents if e["type"] == "Symptom"]
 
-    if symptoms:
+    if is_case(question, symptoms):
         p = Plan(route="graph")
         names = ", ".join(e["name"] for e in symptoms)
         conds = conditions_for_symptoms([e["ids"] for e in symptoms], top=3)

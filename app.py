@@ -22,11 +22,14 @@ with st.sidebar:
             language=None)
     st.markdown(f"- Embeddings: `{config.EMBED_BACKEND}`\n- LLM: `{config.LLM_BACKEND}`\n"
                 f"- Top-k: `{config.TOP_K}`\n- Refusal threshold: `{config.MIN_SIMILARITY}`")
-    retriever = st.radio(
-        "Retriever", ["vector", "router", "stair"], horizontal=True,
-        format_func={"vector": "Vector", "router": "ToC router", "stair": "STAIR"}.get,
-        help="Vector = embedding search over all books · ToC router = LLM picks chapter/section from the table of "
-             "contents, then searches inside it · STAIR = fine-tuned model does that routing")
+    if config.EXPERIMENTAL:
+        retriever = st.radio(
+            "Retriever (experimental)", ["vector", "router", "stair"], horizontal=True,
+            format_func={"vector": "Vector", "router": "ToC router", "stair": "STAIR"}.get,
+            help="Vector = embedding search over all books · ToC router = LLM picks chapter/section from the table "
+                 "of contents, then searches inside it · STAIR = fine-tuned model does that routing")
+    else:
+        retriever = "vector"
     multihop = st.toggle("Multi-hop (BODHI graph + query decomposition)", value=True, disabled=retriever != "vector",
                          help="Off = baseline single-retrieval RAG, for before/after comparison. "
                               "Multi-hop runs on vector retrieval.")
@@ -95,10 +98,13 @@ if question:
                     res = answer(question, retriever=retriever)
                 else:
                     res = answer_multihop(question) if multihop else answer(question)
-        except RuntimeError as e:                 # e.g. STAIR model not installed yet
+        except RuntimeError as e:                 # LLM backend down, model missing, STAIR not installed
             st.warning(str(e))
             st.stop()
+        except Exception as e:                    # never show a raw traceback in the demo
+            st.error(f"Something went wrong while answering ({type(e).__name__}). Please try again.")
+            st.stop()
         st.markdown(res.text)
-        st.caption(f"retriever: {retriever}" + (" · multi-hop" if retriever == "vector" and multihop else ""))
+        st.caption("multi-hop" if retriever == "vector" and multihop else f"single retrieval · {retriever}")
         render_evidence(res)
     st.session_state.messages.append({"role": "assistant", "content": res.text, "result": res})

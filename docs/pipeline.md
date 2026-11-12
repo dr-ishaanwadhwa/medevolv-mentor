@@ -16,9 +16,9 @@ sources don't cover the question.
  BODHI-S + BODHI-M (Eka Care graph) ──► networkx graph (6,560 nodes) ──► entity linking
 
  question ─► guard (personal advice?) ─► route
-               ├─ symptoms found   → graph hops: symptoms→conditions→specialist ; textbook: treatment per condition
+               ├─ clinical vignette→ graph hops: symptoms→conditions→specialist ; textbook: treatment per condition
                ├─ compound question→ decomposition: ≤3 sub-questions, retrieved separately
-               └─ simple question  → retriever: vector | ToC router | STAIR  → search inside chosen sections
+               └─ simple question  → vector retrieval over all books (router / STAIR: experimental only)
            ─► evidence (graph facts [G#] + passages [#]) ─► LLM (answer only from evidence, cite) ─► answer + trace
 ```
 
@@ -53,7 +53,12 @@ Books are local study copies, never redistributed; only code and metrics are pub
 `BAAI/bge-small-en-v1.5` locally (OCI Cohere embeddings are a drop-in swap via `EMBED_BACKEND=oci`), cosine
 similarity, persisted in **Chroma** with every passage's book / chapter / section / pages as metadata for filtering.
 
-## 4. Retrieval — three interchangeable retrievers
+## 4. Retrieval — vector in the demo; two experimental retrievers
+
+The demo uses **vector** retrieval. We also built a prompt-only ToC router and the data and training code for STAIR.
+On held-out Tripathi questions with the local 3B model the router reached 32% chapter@1 against 77% for vector
+(failure case 8), so both are hidden from the UI unless `EXPERIMENTAL=1`. STAIR training is future work.
+
 | Retriever | How it finds the section | Training |
 |---|---|---|
 | **Vector** | nearest passages by embedding similarity | none |
@@ -63,7 +68,9 @@ similarity, persisted in **Chroma** with every passage's book / chapter / sectio
 Router and STAIR pick sections; vector search then runs **inside** those sections only.
 
 ## 5. Multi-hop (enhancement: query decomposition)
-* **Graph route**: symptoms in the question are linked to BODHI nodes (exact names, lay-term mapping such as
+* **Graph route** (only for clinical vignettes: ≥2 linked symptoms, or one symptom plus a case cue such as
+  "patient", "year old", "presents", "diagnosis" — so "drug of choice for absence seizures" stays a plain lookup):
+  symptoms in the question are linked to BODHI nodes (exact names, lay-term mapping such as
   "rash" → "Skin rash", and a semantic fallback). Conditions are ranked by how many symptoms point to them,
   weighted by BODHI's likelihood labels. Each top condition gives a speciality (graph) and a treatment sub-question
   (textbook). A textbook passage is only accepted for that hop if it names the condition — otherwise the answer
