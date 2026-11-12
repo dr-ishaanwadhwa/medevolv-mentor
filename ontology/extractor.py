@@ -78,6 +78,16 @@ def _chunk_body(body: str, max_words: int = 2500) -> list[str]:
     return chunks
 
 
+def cache_file_for(path: Path) -> Path:
+    """Where a section's extraction is cached. A missing file after a run means that section's LLM call failed
+    (failed sections are deliberately not cached)."""
+    meta, _ = parse_okf_section(path)
+    section_id = meta.get("id", path.stem)
+    book_id = meta.get("book_id", path.parent.parent.name)
+    cache_key = hashlib.md5(f"{section_id}:{path.stat().st_mtime}".encode()).hexdigest()
+    return CACHE_DIR / f"{book_id}_{cache_key}.json"
+
+
 def extract_from_section(path: Path, force: bool = False) -> SectionExtractionResult:
     """Extract clinical ontology triples from an OKF section with disk caching."""
     meta, body = parse_okf_section(path)
@@ -88,8 +98,7 @@ def extract_from_section(path: Path, force: bool = False) -> SectionExtractionRe
     book_title = meta.get("book", book_id.capitalize())
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_key = hashlib.md5(f"{section_id}:{path.stat().st_mtime}".encode()).hexdigest()
-    cache_file = CACHE_DIR / f"{book_id}_{cache_key}.json"
+    cache_file = cache_file_for(path)
 
     if not force and cache_file.exists():
         try:

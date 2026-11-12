@@ -20,7 +20,9 @@ from ontology.compiler import (
     load_compiled_facts,
     save_compiled_facts,
 )
-from ontology.extractor import extract_from_section, parse_okf_section
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from ontology.extractor import cache_file_for, extract_from_section, parse_okf_section
 from ontology.reconciler import reconcile_section_facts
 from ontology.schema import ProvenancedOntologyFact
 
@@ -104,7 +106,7 @@ def print_stats() -> None:
     print("=" * 60 + "\n")
 
 
-def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool = False) -> None:
+def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool = False, workers: int = 1) -> None:
     """Process OKF section files and update the compiled ontology. rebuild=True starts from an empty file
     (uses the extraction cache, so no LLM calls for cached sections) so stale facts don't survive."""
     existing_facts = [] if rebuild else load_compiled_facts()
@@ -112,14 +114,30 @@ def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool 
     stats: dict = {}
 
     new_count = 0
+    paths = [p for p in paths if p.exists() or logger.warning("Path does not exist: %s", p)]
     total = len(paths)
-    for i, path in enumerate(paths, 1):
-        if not path.exists():
-            logger.warning("Path does not exist: %s", path)
+    # 1) extraction: the slow, LLM-bound part, in parallel threads inside this one process
+    results: dict[Path, object] = {}
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {pool.submit(extract_from_section, p, force): p for p in paths}
+        for i, fut in enumerate(as_completed(futures), 1):
+            p = futures[fut]
+            try:
+                results[p] = fut.result()
+            except Exception as e:                       # one bad section must not stop the run
+                logger.error("Extraction crashed for %s: %s", p, e)
+            logger.info("[%d/%d] extracted %s", i, total, p.name)
+    failed = [p for p in paths if not cache_file_for(p).exists()]
+    if failed:
+        Path("reports").mkdir(exist_ok=True)
+        Path("reports/ontology_failed.txt").write_text("\n".join(str(p) for p in failed) + "\n")
+        logger.warning("%d section(s) failed (not cached; rerun to retry): see reports/ontology_failed.txt", len(failed))
+    # 2) reconciliation: sequential (the registry is not built for threads)
+    for path in paths:
+        if path not in results:
             continue
-        logger.info("[%d/%d] Processing %s ...", i, total, path.name)
         meta, body = parse_okf_section(path)
-        extraction_res = extract_from_section(path, force=force)
+        extraction_res = results[path]
         reconciled = reconcile_section_facts(extraction_res, meta, source_text=body, stats=stats)
         for f in reconciled:
             if f.id not in facts_dict:
@@ -141,20 +159,31 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="Force re-extraction ignoring disk cache")
     parser.add_argument("--stats", action="store_true", help="Print ontology stats and exit")
     parser.add_argument("--rebuild", action="store_true", help="Start from an empty compiled file (uses cache)")
+    parser.add_argument("--sections-file", type=str, help="Text file with one section path per line "
+                        "(e.g. reports/ontology_ranking.top.txt); combine with --high-yield to include the pilot")
+    parser.add_argument("--workers", type=int, default=1, help="Parallel LLM extraction threads (one process)")
     args = parser.parse_args()
 
     if args.stats:
         print_stats()
         return
 
+    if args.sections_file:
+        listed = [l.strip() for l in Path(args.sections_file).read_text().splitlines() if l.strip()]
+        wanted = list(dict.fromkeys((HIGH_YIELD_SECTIONS if args.high_yield else []) + listed))
+        logger.info("Processing %d sections (%s%d from %s)", len(wanted),
+                    f"{len(HIGH_YIELD_SECTIONS)} pilot + " if args.high_yield else "", len(listed), args.sections_file)
+        process_section_paths([Path(p) for p in wanted], force=args.force, rebuild=args.rebuild, workers=args.workers)
+        return
+
     if args.high_yield:
         paths = [Path(p) for p in HIGH_YIELD_SECTIONS if Path(p).exists()]
         logger.info("Running high-yield pilot over %d verified sections...", len(paths))
-        process_section_paths(paths, force=args.force, rebuild=args.rebuild)
+        process_section_paths(paths, force=args.force, rebuild=args.rebuild, workers=args.workers)
         return
 
     if args.section:
-        process_section_paths([Path(args.section)], force=args.force, rebuild=args.rebuild)
+        process_section_paths([Path(args.section)], force=args.force, rebuild=args.rebuild, workers=args.workers)
         return
 
     if args.book:
@@ -165,7 +194,7 @@ def main() -> None:
             book_files = sorted(glob.glob(f"data/okf/{args.book}/sections/*.md"))
             paths = [Path(p) for p in book_files[:args.limit]]
         logger.info("Processing %d sections for book '%s'...", len(paths), args.book)
-        process_section_paths(paths, force=args.force, rebuild=args.rebuild)
+        process_section_paths(paths, force=args.force, rebuild=args.rebuild, workers=args.workers)
         return
 
     parser.print_help()
