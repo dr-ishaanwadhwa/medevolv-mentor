@@ -97,4 +97,36 @@ def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900
         resp = _oci_client().chat(details).data.chat_response
         return resp.choices[0].message.content[0].text
 
+    if config.LLM_BACKEND == "deepseek":
+        return _deepseek_chat(system, user, temperature, max_tokens, json_mode or schema is not None)
+
     raise ValueError(f"Unknown LLM_BACKEND={config.LLM_BACKEND}")
+
+
+def _deepseek_chat(system: str, user: str, temperature: float, max_tokens: int, json_mode: bool) -> str:
+    """DeepSeek's OpenAI-compatible chat API. No enum-constrained decoding here: callers that need a fixed label set
+    (the router) snap the reply to the nearest real title themselves."""
+    if not config.DEEPSEEK_API_KEY:
+        raise RuntimeError("LLM_BACKEND=deepseek but DEEPSEEK_API_KEY is not set (add it to .env or the host's secrets).")
+    if json_mode:                                   # DeepSeek's JSON mode requires the word "json" in the prompt
+        system += "\nReply with a single JSON object."
+    body = json.dumps({
+        "model": config.DEEPSEEK_MODEL, "temperature": temperature, "max_tokens": max_tokens, "stream": False,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        **({"response_format": {"type": "json_object"}} if json_mode else {}),
+    }).encode()
+    req = urllib.request.Request(f"{config.DEEPSEEK_BASE_URL}/chat/completions", body, {
+        "Content-Type": "application/json", "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}"})
+    err: Exception | None = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.load(r)["choices"][0]["message"]["content"] or ""
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 402, 403):           # bad key / no balance: retrying will not help
+                raise RuntimeError(f"DeepSeek API refused the request (HTTP {e.code}). Check the key and balance.") from e
+            err = e                                 # 429 rate limit, 5xx overload
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            err = e
+        time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"DeepSeek API is not responding: {err}") from err

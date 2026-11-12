@@ -2,7 +2,7 @@
 
 Backends are swappable so the team can develop before OCI is set up:
   EMBED_BACKEND = local | oci      local = sentence-transformers on this machine
-  LLM_BACKEND   = ollama | oci     ollama = a local model, also the offline demo backup
+  LLM_BACKEND   = ollama | oci | deepseek     ollama = a local model, also the offline demo backup
 Changing EMBED_BACKEND needs a re-index (each backend gets its own Chroma collection).
 """
 import os
@@ -32,6 +32,11 @@ OCI_REGION = os.getenv("OCI_REGION", "us-chicago-1")
 OCI_COMPARTMENT_ID = os.getenv("OCI_COMPARTMENT_ID", "")
 OCI_EMBED_MODEL = os.getenv("OCI_EMBED_MODEL", "cohere.embed-english-v3.0")
 OCI_CHAT_MODEL = os.getenv("OCI_CHAT_MODEL", "meta.llama-3.3-70b-instruct")
+
+# DeepSeek (OpenAI-compatible). The key lives only in .env / the host's secret store, never in git or chat.
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 OKF_DIR = Path(os.getenv("OKF_DIR", "data/okf"))
 CHROMA_DIR = Path(os.getenv("CHROMA_DIR", "data/chroma"))

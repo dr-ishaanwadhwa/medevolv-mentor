@@ -1,10 +1,24 @@
 """Streamlit chat UI.  Run:  .venv/bin/streamlit run app.py"""
+import hmac
+import os
+
 import streamlit as st
 
 from rag import config
 from rag.answer import answer, answer_multihop
 
 st.set_page_config(page_title="Eka Study Companion", page_icon="💊", layout="wide")
+
+# Optional login gate for hosted copies (set APP_PASSWORD as a secret on the host; unset = no gate locally)
+if os.getenv("APP_PASSWORD") and not st.session_state.get("authed"):
+    st.title("💊 Eka Study Companion")
+    pw = st.text_input("Password", type="password")
+    if pw and hmac.compare_digest(pw.encode(), os.environ["APP_PASSWORD"].encode()):
+        st.session_state.authed = True
+        st.rerun()
+    elif pw:
+        st.error("Wrong password.")
+    st.stop()
 
 STATUS_LABEL = {
     "answered": ("Grounded answer", "green"),
