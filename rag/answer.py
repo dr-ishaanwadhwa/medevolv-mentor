@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from rag import config
+from rag import config, trace
 from rag.backends import chat
 from rag.retrieve import Hit, search
 
@@ -70,6 +70,32 @@ def build_prompt(question: str, hits: list[Hit]) -> str:
     return "Evidence passages:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}\nAnswer:"
 
 
+def _guard(question: str) -> bool:
+    """True = refuse. Runs before any retrieval, so nothing about a real patient reaches the model."""
+    m = PERSONAL.search(question)
+    if m:
+        trace.record("guard", "Personal-advice check", f'Matched "{m.group()}": this asks for advice about a real '
+                     "person, so the bot declines before searching anything.", status="stop")
+        trace.record("refuse", "Declined: personal medical advice", "Study aid only; points the user to a doctor.",
+                     status="stop")
+    else:
+        trace.record("guard", "Personal-advice check", "No request for dosing or treatment of a real person: continue.")
+    return bool(m)
+
+
+def _cite_step(text: str, n_passages: int, cited: list[int], graph_cited: list[int] | None = None,
+               n_graph: int = 0) -> None:
+    nums = {int(x) for grp in re.findall(r"\[([\d,\s]+)\]", text) for x in re.findall(r"\d+", grp)}
+    invalid = sorted(n for n in nums if not 1 <= n <= n_passages)
+    detail = f"{len(cited)} of {n_passages} textbook passages cited"
+    if n_graph:
+        detail += f", {len(graph_cited or [])} of {n_graph} graph facts cited"
+    detail += ". Every [n] in the answer was checked against the evidence list"
+    detail += f"; {len(invalid)} invalid reference(s) found." if invalid else "; none point to missing evidence."
+    trace.record("cite", "Citation check", detail, status="warn" if invalid or not (cited or graph_cited) else "ok",
+                 cited=cited, invalid=invalid)
+
+
 def routed_section_ids(question: str, retriever: str) -> list[str] | None:
     """vector = search everything; router = prompt-based ToC routing; stair = fine-tuned ToC retriever."""
     if retriever == "router":
@@ -86,23 +112,37 @@ def routed_section_ids(question: str, retriever: str) -> list[str] | None:
     return None
 
 
-def answer(question: str, section_ids: list[str] | None = None, retriever: str = "vector") -> Answer:
-    if PERSONAL.search(question):
+def answer(question: str, section_ids: list[str] | None = None, retriever: str = "vector",
+           _guarded: bool = False) -> Answer:
+    if not _guarded and _guard(question):
         return Answer(PERSONAL_REFUSAL, status="personal_refusal")
 
     if section_ids is None and retriever != "vector":
         section_ids = routed_section_ids(question, retriever)
     hits = search(question, section_ids=section_ids)
-    if not hits or hits[0].similarity < config.MIN_SIMILARITY:
+    best = hits[0].similarity if hits else 0.0
+    if not hits or best < config.MIN_SIMILARITY:
+        trace.record("filter", "Relevance threshold", f"Best match scored {best:.2f}, below the {config.MIN_SIMILARITY:.2f} "
+                     "threshold: the books do not cover this, so the language model is never called.", status="stop")
+        trace.record("refuse", "Declined: not in the textbooks", "Answers only from its sources; no guessing.",
+                     status="stop")
         return Answer(NOT_IN_SOURCES, hits=hits, status="not_in_sources")
+    trace.record("filter", "Relevance threshold", f"Best match scored {best:.2f} (threshold {config.MIN_SIMILARITY:.2f}): "
+                 "the books cover this topic.")
+    books = sorted({h.meta.get("book_id") for h in hits})
+    trace.record("evidence", f"{len(hits)} numbered passages sent to the model", "From: " + ", ".join(books)
+                 + ". The model is told to answer only from these and cite each claim as [n].")
 
-    text = clean(chat(SYSTEM, build_prompt(question, hits)))
+    text = clean(chat(SYSTEM, build_prompt(question, hits), purpose="Write the grounded answer"))
     if "INSUFFICIENT_CONTEXT" in text:
+        trace.record("refuse", "Declined: evidence insufficient", "The model read the passages and found they do "
+                     "not actually answer the question.", status="stop")
         return Answer(NOT_IN_SOURCES, hits=hits, status="insufficient")
 
     # Accept [2], [1, 3] and [1][3]
     nums = [n for group in re.findall(r"\[([\d,\s]+)\]", text) for n in re.findall(r"\d+", group)]
     cited = sorted({int(n) for n in nums if 1 <= int(n) <= len(hits)})
+    _cite_step(text, len(hits), cited)
     return Answer(text, hits=hits, cited=cited)
 
 
@@ -122,27 +162,43 @@ def _cited(text: str, pattern: str, n: int) -> list[int]:
 def answer_multihop(question: str) -> Answer:
     from rag.hops import cross_check, plan as make_plan
 
-    if PERSONAL.search(question):
+    if _guard(question):
         return Answer(PERSONAL_REFUSAL, status="personal_refusal")
     p = make_plan(question)
     if p.route == "single":                       # nothing to hop over: identical to the baseline
-        a = answer(question)
+        a = answer(question, _guarded=True)
         a.plan = p
         return a
     if not p.evidence and not p.graph_facts:
+        trace.record("refuse", "Declined: no usable evidence", "Neither the graph nor the books had anything relevant.",
+                     status="stop")
         return Answer(NOT_IN_SOURCES, status="not_in_sources", plan=p)
+    books = sorted({h.meta.get("book_id") for h in p.evidence})
+    trace.record("evidence", f"{len(p.graph_facts)} graph facts + {len(p.evidence)} textbook passages sent to the model",
+                 ("Passages from: " + ", ".join(books) + ". " if books else "")
+                 + "Graph facts are cited [G#], passages [#]; passages below the relevance threshold were dropped.")
 
     graph_block = "\n".join(f"[G{i}] {f}" for i, f in enumerate(p.graph_facts, 1))
     text_block = "\n\n".join(evidence_block(i, h) for i, h in enumerate(p.evidence, 1))
     prompt = (f"Graph facts:\n{graph_block or '(none)'}\n\nTextbook passages:\n\n{text_block or '(none)'}"
               f"\n\nQuestion: {question}\nAnswer:")
-    text = clean(chat(MULTIHOP_SYSTEM, prompt, max_tokens=1100))
+    text = clean(chat(MULTIHOP_SYSTEM, prompt, max_tokens=1100, purpose="Write the answer from graph facts + passages"))
     if "INSUFFICIENT_CONTEXT" in text:
+        trace.record("refuse", "Declined: evidence insufficient", "The model found the evidence does not answer it.",
+                     status="stop")
         return Answer(NOT_IN_SOURCES, hits=p.evidence, status="insufficient", plan=p)
-    return Answer(text, hits=p.evidence, plan=p,
-                  cited=_cited(text, r"\[([\d,\s]+)\]", len(p.evidence)),
-                  graph_cited=_cited(text, r"\[(G\d+(?:\s*,\s*G?\d+)*)\]", len(p.graph_facts)),
-                  agreed_drugs=cross_check(text, p))
+    res = Answer(text, hits=p.evidence, plan=p,
+                 cited=_cited(text, r"\[([\d,\s]+)\]", len(p.evidence)),
+                 graph_cited=_cited(text, r"\[(G\d+(?:\s*,\s*G?\d+)*)\]", len(p.graph_facts)),
+                 agreed_drugs=cross_check(text, p))
+    _cite_step(text, len(p.evidence), res.cited, res.graph_cited, len(p.graph_facts))
+    if p.bodhi_drugs:
+        trace.record("crosscheck", "Drug cross-check against the graph",
+                     ("Drugs named in the answer that the graph also links to the condition: "
+                      + ", ".join(res.agreed_drugs[:5])) if res.agreed_drugs else
+                     "No drug in the answer matched the graph's drug list for these conditions.",
+                     status="ok" if res.agreed_drugs else "warn")
+    return res
 
 
 if __name__ == "__main__":

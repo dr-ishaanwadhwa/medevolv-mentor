@@ -7,9 +7,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
 OUT="$(mktemp -d)/eka"
 
 # Secrets: only the three variables the server needs, taken from .env without printing them
-for v in DEEPSEEK_API_KEY APP_PASSWORD; do
-  grep -q "^$v=." .env || { echo "Add $v=... to .env first (APP_PASSWORD is required: the VM has a public IP)"; exit 1; }
-done
+grep -q "^DEEPSEEK_API_KEY=." .env || { echo "Add DEEPSEEK_API_KEY=... to .env first"; exit 1; }
+grep -q "^APP_PASSWORD=." .env || echo "Note: no APP_PASSWORD in .env, so the site will be public (no login)."
 
 .venv/bin/python -m deploy.build_hf_bundle "$OUT"
 cp deploy/oci/docker-compose.yml deploy/oci/Caddyfile deploy/oci/setup.sh "$OUT/"

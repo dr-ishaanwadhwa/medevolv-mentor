@@ -23,6 +23,7 @@ def main(out: Path) -> None:
     for f in (ROOT / "deploy/hf").iterdir():
         shutil.copy(f, out / f.name)
     shutil.copy(ROOT / "app.py", out / "app.py")
+    shutil.copytree(ROOT / ".streamlit", out / ".streamlit")
     shutil.copytree(ROOT / "rag", out / "rag", ignore=shutil.ignore_patterns("__pycache__"))
     for part in ("BODHI-S", "BODHI-M"):
         for name in ("triples.jsonl", "nl_facts.jsonl"):

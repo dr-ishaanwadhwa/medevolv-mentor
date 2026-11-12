@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from rag import config
+from rag import config, trace
 from rag.backends import embed
 from rag.index import get_collection
 
@@ -43,11 +43,17 @@ def search(query: str, k: int = config.TOP_K, section_ids: list[str] | None = No
     if book_ids:
         filters.append({"book_id": {"$in": book_ids}})
     where = filters[0] if len(filters) == 1 else ({"$and": filters} if filters else None)
-    res = get_collection().query(
-        query_embeddings=embed([query], is_query=True), n_results=k, where=where,
-        include=["documents", "metadatas", "distances"],
-    )
-    return [
+    with trace.timer() as t:
+        res = get_collection().query(
+            query_embeddings=embed([query], is_query=True), n_results=k, where=where,
+            include=["documents", "metadatas", "distances"],
+        )
+    hits = [
         Hit(id=i, passage=d, meta=m, similarity=1 - dist)
         for i, d, m, dist in zip(res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0])
     ]
+    trace.record("retrieve", "Vector search over 16,032 textbook passages", query, ms=t.ms, query=query, k=k,
+                 hits=[{"book": h.meta.get("book_id"), "where": h.citation().removeprefix(h.meta.get("book", "") + ", "),
+                        "sim": round(h.similarity, 3)}
+                       for h in hits])
+    return hits

@@ -7,7 +7,7 @@ import time
 import urllib.error
 import urllib.request
 
-from rag import config
+from rag import config, trace
 
 BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
@@ -51,8 +51,25 @@ def embed(texts: list[str], is_query: bool = False) -> list[list[float]]:
 
 
 # ---------- chat ----------
+def model_name(model: str | None = None) -> str:
+    if model:
+        return model
+    return {"deepseek": config.DEEPSEEK_MODEL, "ollama": config.OLLAMA_MODEL,
+            "oci": config.OCI_CHAT_MODEL}.get(config.LLM_BACKEND, config.LLM_BACKEND)
+
+
 def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900, json_mode: bool = False,
-         schema: dict | None = None, model: str | None = None) -> str:
+         schema: dict | None = None, model: str | None = None, purpose: str = "LLM call") -> str:
+    with trace.timer() as t:
+        out = _chat(system, user, temperature, max_tokens, json_mode, schema, model)
+    n_in = len(system) + len(user)
+    trace.record("llm", purpose, f"{config.LLM_BACKEND} · {model_name(model)}", ms=t.ms, model=model_name(model),
+                 approx_tokens_in=n_in // 4, approx_tokens_out=len(out) // 4, temperature=temperature)
+    return out
+
+
+def _chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900, json_mode: bool = False,
+          schema: dict | None = None, model: str | None = None) -> str:
     """json_mode asks for a JSON object; schema (a JSON Schema) constrains decoding on Ollama -- e.g. an enum of
     real ToC titles, so the model cannot output a title that does not exist. On OCI the caller must validate."""
     if config.LLM_BACKEND == "ollama" or model:          # a named local model (e.g. STAIR) always runs on Ollama

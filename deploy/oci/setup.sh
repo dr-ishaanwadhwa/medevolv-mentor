@@ -25,5 +25,8 @@ export SITE_ADDRESS="${DOMAIN:+$DOMAIN, }$SSLIP"
 echo "SITE_ADDRESS=$SITE_ADDRESS" > .compose.env
 
 sudo SITE_ADDRESS="$SITE_ADDRESS" docker compose --env-file .compose.env up -d --build
+# The Caddyfile is a single-file bind mount and rsync replaces it with a new inode, so a running container keeps
+# reading the old file. Recreate Caddy so it mounts the new one (certificates persist in the caddy_data volume).
+sudo SITE_ADDRESS="$SITE_ADDRESS" docker compose --env-file .compose.env up -d --force-recreate --no-deps caddy
 echo
 echo "Deployed: https://${DOMAIN:-$SSLIP}  (first HTTPS request can take ~30 s while the certificate is issued)"

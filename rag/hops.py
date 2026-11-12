@@ -19,7 +19,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from rag import config
+from rag import config, trace
 from rag.backends import chat
 from rag.graph import conditions_for_symptoms, drugs_for, link_entities, specialities_for
 from rag.retrieve import Hit, search
@@ -72,7 +72,8 @@ def mentions(hit: Hit, condition: str) -> bool:
 
 def decompose(question: str) -> list[str]:
     try:
-        raw = chat(DECOMPOSE_SYSTEM, question, temperature=0.0, max_tokens=300, json_mode=True)
+        raw = chat(DECOMPOSE_SYSTEM, question, temperature=0.0, max_tokens=300, json_mode=True,
+                   purpose="Split the question into sub-questions")
         subs = json.loads(raw[raw.find("{"): raw.rfind("}") + 1]).get("sub_questions", [])
         subs = [" ".join(str(s).split()) for s in subs if str(s).strip()][:3]
         return subs or [question]
@@ -98,13 +99,36 @@ def is_case(question: str, symptoms: list[dict]) -> bool:
 
 
 def plan(question: str) -> Plan:
-    ents = link_entities(question)
+    with trace.timer() as t:
+        ents = link_entities(question)
     symptoms = [e for e in ents if e["type"] == "Symptom"]
+    others = [e for e in ents if e["type"] != "Symptom"]
+    trace.record("link", f"{len(symptoms)} symptom(s) linked to the clinical graph",
+                 ("; ".join(f'"{e.get("via", e["name"])}" → {e["name"]}' for e in symptoms) or "No symptoms found.")
+                 + (f" Also recognised: {', '.join(e['name'] + ' (' + e['type'].lower() + ')' for e in others[:4])}."
+                    if others else ""), ms=t.ms, symptoms=[e["name"] for e in symptoms])
 
-    if is_case(question, symptoms):
+    case = is_case(question, symptoms)
+    cue = CASE_CUE.search(question)
+    if case:
+        why = (f"{len(symptoms)} symptoms" if len(symptoms) >= 2 else f'1 symptom plus the case cue "{cue.group()}"')
+        trace.record("route", "Clinical vignette → graph route", f"{why}: find likely conditions in the graph, then "
+                     "look up their treatment in the textbooks.")
+    elif looks_compound(question):
+        trace.record("route", "Compound question → split into parts", "It asks about more than one thing, so each part "
+                     "is searched separately and no topic crowds out the other.")
+    else:
+        trace.record("route", "Single question → direct textbook search", "Not a clinical case and only one topic.")
+
+    if case:
         p = Plan(route="graph")
         names = ", ".join(e["name"] for e in symptoms)
-        conds = conditions_for_symptoms([e["ids"] for e in symptoms], top=3)
+        with trace.timer() as t:
+            conds = conditions_for_symptoms([e["ids"] for e in symptoms], top=3)
+        trace.record("graph", "Symptoms → candidate conditions",
+                     "; ".join(f"{c['name']} ({c['symptoms_matched']}/{len(symptoms)} symptoms, score {c['score']:.1f})"
+                               for c in conds) or "No condition matches these symptoms.",
+                     status="ok" if conds else "warn", ms=t.ms)
         p.hops.append(Hop("graph", f"symptoms → conditions ({names})",
                           "; ".join(f"{c['name']} ({c['symptoms_matched']}/{len(symptoms)} symptoms)" for c in conds)
                           or "no matching conditions"))
@@ -119,12 +143,20 @@ def plan(question: str) -> Plan:
                 p.bodhi_drugs[c["name"]] = drugs
                 p.graph_facts.append(f"BODHI drug links for {c['name']}: {', '.join(drugs[:8])}.")
         if conds:
+            trace.record("graph", "Conditions → specialist and drug links",
+                         "; ".join(f"{c['name']}: {', '.join(specialities_for(c['id'])[:2]) or 'no specialist listed'}, "
+                                   f"{len(p.bodhi_drugs.get(c['name'], []))} linked drugs" for c in conds))
             p.hops.append(Hop("graph", "conditions → speciality, drugs",
                               "; ".join(f"{c['name']}: {', '.join(specialities_for(c['id'])[:2]) or '—'}"
                                         for c in conds)))
         for c in conds[:2]:                      # textbook evidence for the top two conditions
             q = f"treatment and drug of choice for {c['name']}"
-            hits = [h for h in search(q, k=PER_SUBQUERY_K * 2) if mentions(h, c["name"])][:PER_SUBQUERY_K]
+            found = search(q, k=PER_SUBQUERY_K * 2)
+            hits = [h for h in found if mentions(h, c["name"])][:PER_SUBQUERY_K]
+            trace.record("filter", f"Relevance filter: {c['name']}",
+                         f"Kept {len(hits)} of {len(found)} passages that actually name the condition"
+                         + ("." if hits else "; none do, so the answer will say the books don't cover its treatment."),
+                         status="ok" if hits else "warn")
             if hits:
                 _add_hits(p, hits)
                 p.hops.append(Hop("retrieve", q, hits[0].citation(), hits))
@@ -141,6 +173,7 @@ def plan(question: str) -> Plan:
     if looks_compound(question):
         p = Plan(route="decompose")
         subs = decompose(question)
+        trace.record("decompose", f"Split into {len(subs)} sub-question(s)", " | ".join(subs))
         p.hops.append(Hop("decompose", question, " | ".join(subs)))
         for s in subs:
             hits = search(s, k=PER_SUBQUERY_K)
@@ -148,11 +181,8 @@ def plan(question: str) -> Plan:
             p.hops.append(Hop("retrieve", s, hits[0].citation() if hits else "no evidence", hits))
         return p
 
-    p = Plan(route="single")
-    hits = search(question)
-    _add_hits(p, hits)
-    p.hops.append(Hop("retrieve", question, hits[0].citation() if hits else "no evidence", hits))
-    return p
+    # Single route: answer() does the one search itself, so nothing is retrieved twice.
+    return Plan(route="single")
 
 
 def cross_check(answer_text: str, plan: Plan) -> list[str]:

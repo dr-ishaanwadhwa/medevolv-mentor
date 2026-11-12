@@ -1,4 +1,9 @@
 {$SITE_ADDRESS} {
 	encode gzip
+	# Keep the app out of search engines (it serves short textbook excerpts)
+	header X-Robots-Tag "noindex, nofollow"
+	respond /robots.txt "User-agent: *
+Disallow: /
+" 200
 	reverse_proxy app:7860
 }
