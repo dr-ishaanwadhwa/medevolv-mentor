@@ -1,6 +1,6 @@
-# med-rag: structure-aware multi-hop medical study companion
+# MedEvolv Mentor: multi-hop medical study companion (repo: med-rag)
 
-RAG chatbot for medical students (framed as an Eka Care extension): BODHI clinical graphs plan the hops,
+RAG chatbot for medical students, by MedEvolv. Eka Care's open BODHI clinical graphs plan the hops,
 textbooks supply cited evidence. The demo runs on vector retrieval plus graph-planned hops; the ToC router and
 STAIR (fine-tuned ToC retriever) are kept as experiments behind `EXPERIMENTAL=1` (see `docs/stair.md`).
 

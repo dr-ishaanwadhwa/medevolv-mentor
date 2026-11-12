@@ -1,4 +1,4 @@
-<title>Eka Study Companion Report</title>
+<title>MedEvolv Mentor Report</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -75,7 +75,7 @@ code { font-family: var(--mono); font-size: 0.86em; background: var(--accent-sof
 <div class="wrap">
 <header>
   <div class="eyebrow">Product report · group RAG assignment</div>
-  <h1>Eka Study Companion</h1>
+  <h1>MedEvolv Mentor</h1>
   <p class="lede">A study companion for medical students. It answers exam-style and clinical-vignette questions from five standard textbooks and Eka Care's BODHI clinical graph, cites every claim, and declines when its sources don't cover the question.</p>
   <div class="meta"><span>12 Nov 2026</span><span>Demo 17 Nov</span><span>commit dd899e5</span><span>LLM deepseek-chat</span><span>embeddings bge-small-en-v1.5</span></div>
 </header>
@@ -202,7 +202,7 @@ code { font-family: var(--mono); font-size: 0.86em; background: var(--accent-sof
     <tbody>
       <tr><td>RAG pipeline</td><td class="num">50%</td><td>ToC-aware chunking, embeddings, Chroma, cited answers. Enhancement: query decomposition plus graph-planned hops, with a visible reasoning trace.</td></tr>
       <tr><td>Grounding and fallback</td><td class="num">15%</td><td>Three refusal layers. 9/9 off-topic and personal questions handled. Citations on every answer.</td></tr>
-      <tr><td>Problem and data</td><td class="num">15%</td><td>Med-student study aid on 5 standard textbooks plus the BODHI graph, framed as an Eka Care product.</td></tr>
+      <tr><td>Problem and data</td><td class="num">15%</td><td>Med-student study aid on 5 standard textbooks plus the BODHI graph, built by MedEvolv on Eka Care's open BODHI graph.</td></tr>
       <tr><td>UI</td><td class="num">10%</td><td>Streamlit chat with status badge, evidence panel, reasoning path, BODHI cross-check badge and a baseline/multi-hop toggle.</td></tr>
       <tr><td>Evaluation</td><td class="num">10%</td><td>Retrieval@k on 446 questions, a 36-question product evaluation, 8 documented failure cases.</td></tr>
     </tbody>

@@ -1,6 +1,6 @@
 # Pipeline: data → chunking → embeddings → vector store → retrieval → LLM → answer
 
-**Product framing.** A study companion for medical students, positioned as an extension of **Eka Care**, the
+**Product framing.** **MedEvolv Mentor**, a study companion for medical students by MedEvolv. It builds on **Eka Care**, the
 Indian health-tech company that publishes the BODHI clinical knowledge graphs. Users ask exam-style questions,
 including multi-step clinical vignettes ("fever + joint pain after a mosquito bite → likely condition → which
 specialist → treatment?"). Every claim is cited to a textbook section or a graph fact, and the bot declines when its
