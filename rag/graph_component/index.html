@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Clinical graph visualizer: a minimal Streamlit custom component (no build step) around vis-network.
+     Speaks the Streamlit component protocol directly over postMessage: componentReady -> render -> setComponentValue. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; font-family: "Instrument Sans", system-ui, sans-serif; }
+  #legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 2px 8px; font-size: 13px; }
+  #legend span { display: inline-flex; align-items: center; gap: 6px; }
+  #legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  #legend .hint { opacity: .7; margin-left: auto; }
+  #net { border-radius: 10px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div id="legend"></div>
+<div id="net"></div>
+<script>
+const DARK_TEXT = new Set(["stage", "diagnostic"]);   // light fills get dark text; the rest get white
+let network = null, lastKey = null;
+
+function send(type, data) {
+  window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type }, data), "*");
+}
+function hexA(hex, a) {      // #rrggbb + alpha -> rgba()
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function render(args, theme) {
+  const dark = theme && theme.base === "dark";
+  const text = (theme && theme.textColor) || (dark ? "#e8eef0" : "#15232a");
+  const bg = (theme && theme.backgroundColor) || (dark ? "#0e1117" : "#ffffff");
+  const line = dark ? "rgba(255,255,255,.18)" : "rgba(21,35,42,.16)";
+  document.body.style.color = text;
+  document.documentElement.style.setProperty("--line", line);
+
+  const kinds = args.kinds, g = args.graph, height = args.height || 560;
+  height_current = height;
+  document.getElementById("legend").innerHTML =
+    Object.entries(kinds).map(([k, [name, c]]) => `<span><i style="background:${c}"></i>${name}</span>`).join("") +
+    `<span class="hint">Click a purple condition to drill in · click a line for its source</span>`;
+
+  const nodes = g.nodes.map(n => {
+    const c = kinds[n.kind][1], focus = n.kind === "condition" && n.level === 2 && n.group === n.label;
+    return {
+      id: n.id, level: n.level, title: n.title,
+      label: (n.label.length > 30 ? n.label.slice(0, 28) + "…" : n.label) + (n.tag ? `\n${n.tag}` : ""),
+      shape: "box", widthConstraint: { maximum: 190 }, margin: { top: 7, bottom: 7, left: 10, right: 10 }, borderWidth: focus ? 3 : 1,
+      shapeProperties: { borderRadius: 8, borderDashes: n.kind === "contra" ? [5, 3] : false },
+      color: { background: c, border: focus ? text : hexA(c, 1), highlight: { background: c, border: text },
+               hover: { background: c, border: text } },
+      font: { color: DARK_TEXT.has(n.kind) ? "#1b1530" : "#ffffff", size: focus ? 15 : 13,
+              bold: focus, face: "Instrument Sans, system-ui, sans-serif" },
+    };
+  });
+  const edges = g.edges.map(e => ({
+    id: e.id, from: e.from, to: e.to, dashes: e.dashes,   // relation shown on hover: labels crowd long edges arrows: { to: { enabled: true, scaleFactor: .5 } },
+    color: { color: e.label.startsWith("contraindicated") ? kinds.contra[1] : (dark ? "#8796a0" : "#9aa8ae"),
+             highlight: text, hover: text, opacity: e.fact ? 1 : .6 },
+    width: e.fact ? 1.6 : 1, hoverWidth: 1.5, selectionWidth: 1.5,
+    font: { size: 10, color: text, strokeWidth: 3, strokeColor: bg, align: "middle" },
+    title: e.fact ? `${e.label} · click for the textbook source` : "graph match · no certified fact states this link",
+    smooth: { type: "cubicBezier", forceDirection: "horizontal", roundness: .4 },
+  }));
+
+  const container = document.getElementById("net");
+  container.style.height = height + "px";
+  const options = {
+    layout: { hierarchical: { direction: "LR", levelSeparation: 210, nodeSpacing: 58, sortMethod: "directed",
+                              shakeTowards: "roots" } },
+    physics: false,
+    interaction: { hover: true, tooltipDelay: 120, navigationButtons: false, zoomView: true, dragView: true },
+    edges: { selectionWidth: 1.5 },
+  };
+  const key = JSON.stringify(g.nodes.map(n => n.id)) + JSON.stringify(g.edges.map(e => e.id)) + (dark ? "d" : "l");
+  if (!network) {
+    network = new vis.Network(container, { nodes, edges }, options);
+    network.on("click", p => {
+      if (p.nodes.length) send("streamlit:setComponentValue", { value: { kind: "node", id: p.nodes[0], nonce: Date.now() }, dataType: "json" });
+      else if (p.edges.length) send("streamlit:setComponentValue", { value: { kind: "edge", id: p.edges[0], nonce: Date.now() }, dataType: "json" });
+    });
+    // level titles above each column
+    network.on("beforeDrawing", ctx => {
+      const xs = {};
+      for (const n of g_current.nodes) {
+        const pos = network.getPositions([n.id])[n.id];
+        if (pos) (xs[n.level] = xs[n.level] || []).push(pos);
+      }
+      const top = Math.min(...Object.values(xs).flat().map(p => p.y)) - 46;
+      ctx.font = "600 13px Instrument Sans, system-ui, sans-serif";
+      ctx.fillStyle = text_current; ctx.textAlign = "center";
+      for (const [lv, ps] of Object.entries(xs)) {
+        const x = ps.reduce((s, p) => s + p.x, 0) / ps.length;
+        ctx.fillText(`${lv} · ${args_current.levels[lv - 1]}`, x, top);
+      }
+    });
+  } else if (key !== lastKey) {
+    network.setOptions(options);
+    network.setData({ nodes, edges });
+  }
+  g_current = g; text_current = text; args_current = args;
+  if (key !== lastKey) setTimeout(fitView, 30);   // after the hierarchical layout of the new data has run
+  lastKey = key;
+  sendHeight();
+}
+let height_current = 560;
+function sendHeight() {
+  // A collapsed expander lays the frame out at 0 px, so never trust a 0 measurement: fall back to the known size.
+  const legend = document.getElementById("legend").offsetHeight || 34;
+  send("streamlit:setFrameHeight", { height: legend + height_current + 6 });
+}
+// When the frame becomes visible (expander opened) or changes width, re-fit the graph to the new canvas.
+let lastSize = "";
+new ResizeObserver(() => {
+  const el = document.getElementById("net"), size = `${el.clientWidth}x${el.clientHeight}`;
+  if (network && el.clientWidth > 0 && size !== lastSize) { lastSize = size; network.redraw(); fitView(); }
+}).observe(document.getElementById("net"));
+function fitView() {
+  network.fit({ animation: false });
+  if (network.getScale() > 1.1) network.moveTo({ scale: 1.1 });
+}
+let g_current = null, text_current = "#15232a", args_current = null;
+
+window.addEventListener("message", ev => {
+  if (ev.data && ev.data.type === "streamlit:render") render(ev.data.args, ev.data.theme);
+});
+send("streamlit:componentReady", { apiVersion: 1 });
+</script>
+</body>
+</html>

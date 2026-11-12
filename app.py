@@ -5,16 +5,19 @@ Three tabs:
   How it works        the pipeline explained for a first-time viewer (diagram, stages, safety rules, evaluation)
   Explore conditions  5-level drill-down over the certified clinical ontology, with a source on every fact
 """
+import functools
 import hmac
 import html
 import os
 import re
+from collections import Counter
 
 import streamlit as st
 
-from rag import config, trace
+from rag import clinical_graph, config, diagrams, trace
 from rag import ontology_facts as onto
 from rag.answer import answer, answer_multihop
+from rag.graph_component import clinical_graph as clinical_graph_view
 from rag.trace import STAGES
 
 st.set_page_config(page_title="MedEvolv Mentor", page_icon="🩺", layout="wide",
@@ -232,7 +235,87 @@ def render_sources(res) -> None:
             f'<div class="mm-src-ex">{esc(ex)}</div></div>', unsafe_allow_html=True)
 
 
-def render_answer(res, steps, total_ms) -> None:
+def _cg_click(key: str, conds: list[str]) -> None:
+    """Graph click (runs before the rerun): a click on a candidate condition drills one level deeper; a click on a
+    textbook differential adds it as a candidate; any click selects the node/edge for the inspector."""
+    v, s = st.session_state.get(key), st.session_state[f"{key}_state"]
+    if not v or v.get("nonce") == s["nonce"]:
+        return
+    s["nonce"], s["selected"] = v["nonce"], (v["kind"], v["id"])
+    if v["kind"] == "node" and v["id"].startswith("condition:"):
+        name = next((c for c in conds + s["extra"] if f"condition:{c.strip().lower()}" == v["id"]), None)
+        if name is None:                                     # a differential: promote it to a candidate
+            name = s["labels"].get(v["id"], v["id"].split(":", 1)[1])
+            s["extra"].append(name)
+        g = clinical_graph.build([], [name])
+        s["depth"][name] = clinical_graph.next_depth(s["depth"].get(name, 2), g["levels"].get(name, []))
+        s["focus"] = name
+
+
+def render_clinical_graph(symptoms: list[str], conditions: list[str], key: str, height: int = 700) -> None:
+    """Five-level clinical graph (complaints → differential → phases → workup → therapy) from certified facts."""
+    if not onto.available() or not conditions:
+        return
+    s = st.session_state.setdefault(f"{key}_state", {"depth": {}, "extra": [], "selected": None, "nonce": None,
+                                                     "focus": None, "labels": {}})
+    conds = list(dict.fromkeys(conditions + s["extra"]))[:clinical_graph.CAPS["conditions"]]
+    g = clinical_graph.build(symptoms, conds, s["depth"])
+    s["labels"] = {n["id"]: n["label"] for n in g["nodes"]}
+    focus = s["focus"] if s["focus"] in conds else conds[0]
+    shown = max(s["depth"].get(focus, 2), 2)
+    avail = {1, 2, *g["levels"].get(focus, [])}
+    crumbs = "".join(
+        f'<span class="mm-pill {"good" if lv <= shown else "info"}" style="opacity:{1 if lv <= shown else .5}">'
+        f'{"✓ " if lv <= shown else ""}{lv} · {name}{"" if lv in avail else " (none in ontology)"}</span>'
+        for lv, name in enumerate(clinical_graph.LEVELS, 1))
+    st.markdown(f'<div class="mm-label">Clinical graph · {esc(focus)}</div>{crumbs}', unsafe_allow_html=True)
+    rows = max(Counter(n["level"] for n in g["nodes"]).values(), default=1)
+    height = min(height, max(300, 100 + 58 * rows))          # tallest column decides the height
+    clinical_graph_view(g, key=key, height=height, on_change=functools.partial(_cg_click, key, conds))
+
+    c1, c2, c3, _ = st.columns([1, 1, 1, 3])
+    nxt = clinical_graph.next_depth(shown, g["levels"].get(focus, []))
+    if c1.button(f"Drill in: {clinical_graph.LEVELS[nxt - 1]}" if nxt > shown else "Collapse",
+                 key=f"{key}_drill", use_container_width=True, disabled=not g["levels"].get(focus)):
+        s["depth"][focus] = nxt
+        st.rerun()
+    if c2.button("Show all 5 levels", key=f"{key}_all", use_container_width=True):
+        s["depth"] = {c: 5 for c in conds}
+        st.rerun()
+    if c3.button("Reset", key=f"{key}_reset", use_container_width=True):
+        s.update(depth={}, extra=[], selected=None, focus=None)
+        st.rerun()
+
+    sel = s["selected"]
+    if sel and sel[0] == "edge":
+        e = next((e for e in g["edges"] if e["id"] == sel[1]), None)
+        f = g["facts"].get(e["fact"]) if e else None
+        if f:
+            cf = f.get("clinical_facets") or {}
+            extra = " · ".join(x for x in (
+                onto.LINE_LABEL.get(cf.get("line_of_therapy")) if cf.get("line_of_therapy") else "",
+                f"{cf['contraindication_severity'].lower()} contraindication" if cf.get("contraindication_severity") else "",
+                f"Why: {cf['rationale']}" if cf.get("rationale") else "") if x)
+            quote = (f.get("provenance") or {}).get("verbatim_quote") or ""
+            st.markdown(
+                f'<div class="mm-src cited"><div class="mm-src-head"><span class="mm-pill good">certified fact</span>'
+                f'<span class="mm-src-where"><b>{esc(f["subject_label"])} → {esc(f["predicate"])} → '
+                f'{esc(f["object_label"])}</b></span></div><div class="mm-src-ex">{esc(f.get("nl_fact", ""))}</div>'
+                + (f'<div class="mm-src-ex">{esc(extra)}</div>' if extra else "")
+                + f'<div class="mm-src-where">📖 {esc(onto.cite(f))}</div>'
+                + (f'<div class="mm-src-ex"><i>“{esc(quote)}”</i></div>' if quote else "") + "</div>",
+                unsafe_allow_html=True)
+        elif e:
+            st.caption(f"{s['labels'].get(e['from'], '')} → {s['labels'].get(e['to'], '')}: linked by the symptom "
+                       "graph only; no certified textbook fact states this link.")
+    elif sel and sel[0] == "node":
+        n = next((n for n in g["nodes"] if n["id"] == sel[1]), None)
+        if n and n["kind"] != "condition":
+            links = [e for e in g["edges"] if sel[1] in (e["from"], e["to"]) and e["fact"]]
+            st.caption(f"**{n['label']}** · {n['title']} · {len(links)} cited link(s). Click a line for its source.")
+
+
+def render_answer(res, steps, total_ms, key: str = "", question: str = "") -> None:
     label, tone = STATUS[res.status]
     route = ROUTE.get(res.plan.route) if res.plan is not None else None
     pills = f'<span class="mm-pill {tone}">{label}</span>'
@@ -240,6 +323,12 @@ def render_answer(res, steps, total_ms) -> None:
         pills += f'<span class="mm-pill info">{route}</span>'
     st.markdown(pills, unsafe_allow_html=True)
     st.markdown(res.text)
+    conds = getattr(res.plan, "conditions", None) if res.plan is not None else None
+    if key and question:      # on-demand Graphviz flowchart from certified facts; renders nothing when n/a
+        diagrams.render(st, question, res.text, condition=(conds or [None])[0], key=f"diagram_{key}")
+    if conds and key and onto.available():
+        with st.expander("🕸️  Clinical graph · complaints → differential → phases → workup → therapy", expanded=True):
+            render_clinical_graph(getattr(res.plan, "symptoms", []), conds, key=f"cg_{key}")
     if steps:
         with st.expander(f"🔬  How this answer was made · {len(steps)} steps · {total_ms / 1000:.1f} s", expanded=False):
             render_process(steps, total_ms)
@@ -259,12 +348,13 @@ with tab_ask:
                 if st.button(q, key=f"ex{n}", use_container_width=True):
                     st.session_state.pending = q
 
-    for m in st.session_state.messages:
+    for i, m in enumerate(st.session_state.messages):
         with st.chat_message(m["role"], avatar="🧑‍⚕️" if m["role"] == "user" else "🩺"):
             if m["role"] == "user":
                 st.markdown(m["content"])
             else:
-                render_answer(m["result"], m["steps"], m["ms"])
+                render_answer(m["result"], m["steps"], m["ms"], key=f"m{i}",
+                              question=st.session_state.messages[i - 1]["content"] if i else "")
 
     question = st.chat_input("Ask a medicine, pharmacology, pathology, physiology or microbiology question…")
     question = question or st.session_state.pop("pending", None)
@@ -297,7 +387,7 @@ with tab_ask:
             trace.stop()
             total = tr.total_ms
             box.update(label=f"Done · {len(tr.steps)} steps in {total / 1000:.1f} s", state="complete", expanded=False)
-            render_answer(res, tr.steps, total)
+            render_answer(res, tr.steps, total, key=f"m{len(st.session_state.messages)}", question=question)
         st.session_state.messages.append({"role": "assistant", "content": res.text, "result": res,
                                           "steps": tr.steps, "ms": total})
 
@@ -461,6 +551,8 @@ with tab_explore:
         cond = st.selectbox("Condition", [c for c, _ in conds], key=f"ex_cond_{system}_{category}",
                             format_func=lambda c: f"{c} · {counts[c]} facts", label_visibility="collapsed")
         prof = onto.profile(cond)
+        with st.expander("🕸️  Clinical graph for this condition", expanded=False):
+            render_clinical_graph([], [cond], key="cg_ex_" + re.sub(r"\W+", "_", cond.lower())[:48])
         if prof["stages"]:
             st.markdown('<div class="mm-label">Stages</div>' + "".join(
                 f'<span class="mm-pill info">{esc(f["object_label"])}</span>' for f in prof["stages"]),
