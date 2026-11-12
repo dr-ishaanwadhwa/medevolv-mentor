@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import subprocess
 import sys
 import urllib.request
@@ -42,9 +43,26 @@ def labels(book: str) -> dict:
     return load_labels(book)
 
 
+LLAMA_URL = os.environ.get("STAIR_URL")   # llama-server with the LoRA loaded (Ollama >=0.40 dropped adapters)
+
+
+def _llama(prompt: str, options: list[str]) -> str:
+    """Exactly the training format ([INST] system+user [/INST] -> bare title); a grammar allows only real titles."""
+    lit = lambda o: '"' + o.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    grammar = "root ::= " + " | ".join(lit(o) for o in options)
+    body = json.dumps({"prompt": f"[INST] {prompt} [/INST]", "grammar": grammar, "temperature": 0,
+                       "n_predict": 120, "cache_prompt": True}).encode()
+    req = urllib.request.Request(f"{LLAMA_URL}/completion", body, {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return json.load(r)["content"].strip()
+
+
 def _pick(system: str, user: str, options: list[str], book: str) -> str:
     # Training folded the system prompt into the user turn (Mistral has no system role); do the same here.
     schema = {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "enum": options}}}
+    if LLAMA_URL:
+        out = _llama(system + "\n\n" + user, options)
+        return out if out in options else options[0]
     raw = chat("", system + "\n\n" + user + '\n\nReply as JSON {"title": "..."}.', temperature=0.0,
                max_tokens=80, schema=schema, model=model_name(book))
     try:
@@ -54,7 +72,7 @@ def _pick(system: str, user: str, options: list[str], book: str) -> str:
 
 
 def retrieve(question: str, book: str = "tripathi", k: int = 1) -> list[tuple[str, str]]:
-    if not _installed(model_name(book)):
+    if not LLAMA_URL and not _installed(model_name(book)):
         raise RuntimeError(f"Ollama model '{model_name(book)}' not installed -- train it, then "
                            f"`python -m stair.serve install --book {book} --gguf <file>`")
     lab = labels(book)
@@ -70,13 +88,20 @@ def retrieve(question: str, book: str = "tripathi", k: int = 1) -> list[tuple[st
     return [(chapter, f"{chapter} › {section}")]
 
 
-def install(book: str, gguf: str) -> None:
-    gguf_path = Path(gguf).resolve()
-    if not gguf_path.exists():
-        raise SystemExit(f"{gguf_path} not found")
-    modelfile = gguf_path.parent / "Modelfile"
+BASE = "mistral:7b-instruct-v0.2-q4_K_M"   # Ollama's quantised copy of the model the adapters were trained on
+
+
+def install(book: str, gguf: str | None = None, adapter: str | None = None) -> None:
+    """Register stair-<book> in Ollama, from a merged GGUF or from a LoRA adapter dir applied to BASE."""
+    src = Path(gguf or adapter or "").resolve()
+    if not (gguf or adapter) or not src.exists():
+        raise SystemExit(f"{src} not found")
+    if gguf:
+        head, modelfile = f"FROM {src}", src.parent / "Modelfile"
+    else:
+        head, modelfile = f"FROM {BASE}\nADAPTER {src}", src / "Modelfile"
     # Mistral-instruct template; temperature 0 because retrieval should be deterministic.
-    modelfile.write_text(f'FROM {gguf_path}\nTEMPLATE "[INST] {{{{ .Prompt }}}} [/INST]"\n'
+    modelfile.write_text(f'{head}\nTEMPLATE "[INST] {{{{ .Prompt }}}} [/INST]"\n'
                          "PARAMETER temperature 0\nPARAMETER stop [INST]\nPARAMETER stop [/INST]\n")
     subprocess.run(["ollama", "create", model_name(book), "-f", str(modelfile)], check=True)
     print(f"installed {model_name(book)}")
@@ -88,9 +113,11 @@ if __name__ == "__main__":
         ap = argparse.ArgumentParser()
         ap.add_argument("cmd")
         ap.add_argument("--book", required=True)
-        ap.add_argument("--gguf", required=True)
+        src = ap.add_mutually_exclusive_group(required=True)
+        src.add_argument("--gguf")
+        src.add_argument("--adapter", help="LoRA adapter dir (adapter_model.safetensors) to apply to " + BASE)
         a = ap.parse_args()
-        install(a.book, a.gguf)
+        install(a.book, a.gguf, a.adapter)
     elif len(sys.argv) >= 2 and sys.argv[1] == "ask":
         import argparse
         ap = argparse.ArgumentParser()

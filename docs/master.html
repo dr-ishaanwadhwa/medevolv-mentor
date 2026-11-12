@@ -78,7 +78,7 @@ td code { white-space: nowrap; }
   <div class="eyebrow">Team handbook · group RAG assignment</div>
   <h1>MedEvolv Mentor Handbook</h1>
   <p class="lede">Everything the team needs to understand, run, change, deploy and present MedEvolv Mentor: a study companion for medical students that answers from five standard textbooks and Eka Care's open BODHI clinical graph, cites every claim, declines when its sources don't cover a question, and shows exactly how each answer was made.</p>
-  <div class="meta"><span>Updated 12 Nov 2026</span><span>Demo 17 Nov 2026</span><span>Repo HEAD 64afda7</span><span>Owner: Ishaan</span></div>
+  <div class="meta"><span>Updated 13 Nov 2026</span><span>Demo 17 Nov 2026</span><span>Repo HEAD 64afda7</span><span>Owner: Ishaan</span></div>
 </header>
 
 <div class="links">
@@ -122,7 +122,7 @@ td code { white-space: nowrap; }
       <tr><td>UI with live answer trace + How it works tab</td><td><span class="pill good">Done</span></td><td>Streamlit</td></tr>
       <tr><td>Hosting on mentor.medevolv.in</td><td><span class="pill good">Live</span></td><td>Public, no password, noindex</td></tr>
       <tr><td>Vignette differentials (TB, measles)</td><td><span class="pill warn">Weak</span></td><td>Graph data gaps; see <a href="#limits">section 11</a></td></tr>
-      <tr><td>STAIR (fine-tuned ToC retriever)</td><td><span class="pill info">Future work</span></td><td>Data and training code ready; hidden behind a flag</td></tr>
+      <tr><td>STAIR (fine-tuned ToC retriever)</td><td><span class="pill warn">Negative result</span></td><td>Trained and evaluated; did not beat vector search or untrained DeepSeek (section 10); hidden behind a flag</td></tr>
       <tr><td>Hand-written gold evaluation set</td><td><span class="pill warn">Open</span></td><td>Template in <code>eval/questions.template.jsonl</code></td></tr>
     </tbody>
   </table></div>
@@ -349,6 +349,17 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
       <p class="note">Generated questions share wording with the passages, which favours vector search.</p>
     </div>
   </div>
+  <h3 id="stair-result">STAIR: result (negative)</h3>
+  <p>STAIR is a two-stage generative table-of-contents retriever. A fine-tuned Mistral-7B-Instruct v0.2 (QLoRA via Unsloth, rank 16) picks a chapter from the chapter list, then a section from that chapter's section list, with output constrained to real titles. It was trained on a free Kaggle T4: Davidson, 1 epoch, 5,460 examples, 683 steps, 1.62 h, peak 5.0 GB VRAM, final eval loss 0.130. The Tripathi run was cancelled after the Davidson result. Ollama 0.40 no longer loads LoRA adapters, so the adapter was converted with llama.cpp <code>convert_lora_to_gguf.py</code> and served by <code>llama-server --lora</code> on the stock Mistral Q4_K_M base. <code>stair/serve.py</code> uses it when <code>STAIR_URL</code> is set; prompts match training exactly and a grammar restricts output to real titles.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Retriever (338 held-out Davidson questions)</th><th class="num">Ch@1</th><th class="num">Ch@3</th><th class="num">Sec@1</th><th class="num">Sec@3</th><th class="num">s / question</th></tr></thead>
+    <tbody>
+      <tr><td>Vector search (bge-small, current product)</td><td class="num">78.4%</td><td class="num">94.7%</td><td class="num">57.1%</td><td class="num">79.0%</td><td class="num">0.04</td></tr>
+      <tr><td>DeepSeek ToC router (no training)</td><td class="num">75.1%</td><td class="num">90.8%</td><td class="num">38.5%</td><td class="num">50.0%</td><td class="num">2.1</td></tr>
+      <tr><td>STAIR fine-tuned</td><td class="num">73.4%</td><td class="num">73.4%</td><td class="num">36.4%</td><td class="num">36.4%</td><td class="num">2.1</td></tr>
+    </tbody>
+  </table></div>
+  <p>Fine-tuning gave no edge over an untrained DeepSeek reading the same ToC. Both ToC methods are capped by section titles, many of which are generic (for example "Overview" and "Presenting problems"), while vector search reads the passage text. The test set came from the same generator as STAIR's training data, which favours STAIR, and it still lost. <b>Decision:</b> STAIR is a documented negative result and is not used in the product. Retrieval stays vector + graph + ontology, and DeepSeek is used for reasoning, not section-finding.</p>
 <pre><code>.venv/bin/python -m eval.product_eval               # writes reports/product_eval.json (git-ignored)
 .venv/bin/python -m eval.run_eval retrieval --retrievers vector</code></pre>
 </section>
@@ -377,6 +388,7 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
     <tbody>
       <tr><td>7 Nov</td><td>Medical study companion ("Hard" option) over the visa assistant</td><td>Stronger multi-hop story; domain expert on the team</td></tr>
       <tr><td>7 Nov</td><td>Books named by ISBN, OKF markdown bundle per book</td><td>Reproducible ingest; section-level citations</td></tr>
+      <tr><td>13 Nov</td><td>STAIR closed as a negative result; Tripathi training cancelled</td><td>Davidson STAIR 36% section@1 vs vector 57% (DeepSeek ToC router 39%); see section 10</td></tr>
       <tr><td>12 Nov</td><td>STAIR and the ToC router dropped from the demo, kept as future work</td><td>Router 32% vs vector 77%; Kaggle training not run</td></tr>
       <tr><td>12 Nov</td><td>DeepSeek as the LLM</td><td>The 3B local model made faithfulness errors</td></tr>
       <tr><td>12 Nov</td><td>Oracle VM (E5, trial credit) + Caddy, not Vercel or Hugging Face</td><td>Vercel can't run Streamlit or hold the index; HF Docker needs PRO; no free A1 capacity</td></tr>
@@ -445,7 +457,7 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
       <tr><td>Clean the drug cross-check (filter non-drugs, skip negated mentions)</td><td>Claude</td><td><span class="pill good">Done</span></td></tr>
       <tr><td>Add Harrison's Principles of Internal Medicine (22nd ed.)</td><td>Ishaan</td><td><span class="pill good">Done</span></td></tr>
       <tr><td>Give repo access for the MEDPATH-AI comparison review</td><td>Hardik</td><td><span class="pill info">Medium</span></td></tr>
-      <tr><td>STAIR training on Kaggle (speed test, then full run)</td><td>Hardik</td><td><span class="pill info">Future</span></td></tr>
+      <tr><td>STAIR training on Kaggle</td><td>Hardik</td><td><span class="pill good">Done</span> (negative result, section 10)</td></tr>
       <tr><td>Decide the VM's future before the Oracle trial ends (upgrade, or move to A1 when capacity frees)</td><td>Ishaan</td><td><span class="pill info">After demo</span></td></tr>
     </tbody>
   </table></div>
