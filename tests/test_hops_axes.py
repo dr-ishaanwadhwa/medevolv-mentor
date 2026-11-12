@@ -131,3 +131,52 @@ def test_decompose_case_survives_backend_error(stubs):
     set_reply, _ = stubs
     set_reply(RuntimeError("HTTP 402"))
     assert hops.decompose_case(CASE) == ("", [], [CASE])
+
+
+def test_hard_eval_helpers(monkeypatch):
+    from eval import hard_eval
+    case = {"rubric": [{"id": "e1", "axis": "etiology", "point": "x"}, {"id": "p1", "axis": "pharmacology", "point": "y"}],
+            "traps": [{"id": "t1", "trap": "z"}]}
+    monkeypatch.setattr(hard_eval, "chat", lambda *a, **k: '{"covered": ["e1", "bogus"], "traps_hit": ["t1", "t9"]}')
+    assert hard_eval.judge_rubric(case, "answer") == {"covered": ["e1"], "traps_hit": ["t1"]}
+    plan = hops.Plan(route="case", hops=[hops.Hop("decompose", "q", "r"), hops.Hop("retrieve", "[etiology] a", "r"),
+                                         hops.Hop("retrieve", "[pharmacology] b", "r"), hops.Hop("retrieve", "c", "r")])
+    assert hard_eval.axes_used(plan) == ["etiology", "pharmacology"]
+    rows = [{"id": "h1", "expected_axes": ["etiology", "pharmacology"], "axes_used": ["etiology", "stabilization"],
+             "points": {"e1": "etiology", "p1": "pharmacology"}, "covered": ["e1"], "traps_hit": [], "latency_s": 1.0}]
+    s = hard_eval.summarise(rows)
+    assert s["rubric_recall"] == 0.5 and s["rubric_recall_by_axis"]["pharmacology"] == 0.0
+    assert s["axis_selection"]["precision"] == 0.5 and s["axis_selection"]["recall"] == 0.5
+
+
+def test_hard_cases_file_is_well_formed():
+    from pathlib import Path
+    cases = [json.loads(l) for l in Path("eval/hard_cases.jsonl").read_text().splitlines() if l.strip()]
+    assert len({c["id"] for c in cases}) == len(cases)
+    for c in cases:
+        assert len(c["question"].split()) >= hops.CASE_MIN_WORDS          # must reach the case route
+        assert set(c["expected_axes"]) <= set(hops.AXES)
+        assert {p["axis"] for p in c["rubric"]} == set(c["expected_axes"])
+
+
+def test_case_route_sets_graph_view_fields(stubs, monkeypatch):
+    set_reply, _ = stubs
+    monkeypatch.setattr(hops.clinical_graph, "symptoms_in_text", lambda text, conds: ["Chest pain", "Hypotension"])
+    set_reply(GOOD)
+    p = hops.plan_case(CASE)
+    assert p.conditions == ["Inferior wall myocardial infarction"] and p.symptoms == ["Chest pain", "Hypotension"]
+    set_reply(json.dumps({"likely_condition": "", "axes": [{"axis": "etiology", "query": "causes of chest pain"}]}))
+    p = hops.plan_case(CASE)
+    assert p.conditions == [] and p.symptoms == []
+
+
+def test_graph_route_sets_graph_view_fields(stubs, monkeypatch):
+    monkeypatch.setattr(hops, "link_entities", lambda q: [
+        {"type": "Symptom", "name": "Fever", "ids": [1]}, {"type": "Symptom", "name": "Joint pain", "ids": [2]}])
+    monkeypatch.setattr(hops, "conditions_for_symptoms", lambda ids, top: [
+        {"id": 10, "name": "Chikungunya", "symptoms_matched": 2}, {"id": 11, "name": "Dengue", "symptoms_matched": 2}])
+    monkeypatch.setattr(hops, "specialities_for", lambda cid: [])
+    monkeypatch.setattr(hops, "drugs_for", lambda cid: [])
+    p = hops.plan("Patient with fever and joint pain, what is the likely diagnosis?")
+    assert p.route == "graph"
+    assert p.symptoms == ["Fever", "Joint pain"] and set(p.conditions) == {"Chikungunya", "Dengue"}

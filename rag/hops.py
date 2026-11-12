@@ -23,7 +23,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from rag import config, ontology_facts, trace
+from rag import clinical_graph, config, ontology_facts, trace
 from rag.backends import chat
 from rag.graph import conditions_for_symptoms, drugs_for, link_entities, specialities_for
 from rag.retrieve import Hit, search
@@ -51,6 +51,8 @@ class Plan:
     graph_facts: list[str] = field(default_factory=list)     # cited as [G1], [G2] ...
     evidence: list[Hit] = field(default_factory=list)       # cited as [1], [2] ...
     bodhi_drugs: dict[str, list[str]] = field(default_factory=dict)
+    symptoms: list[str] = field(default_factory=list)       # for the clinical-graph view in app.py
+    conditions: list[str] = field(default_factory=list)
 
 
 def _add_hits(plan: Plan, hits: list[Hit]) -> None:
@@ -302,6 +304,8 @@ def plan(question: str) -> Plan:
                                                    for c in pool[:5]) or "none"),
                      status="ok" if pool else "warn", ms=t.ms)
         conds, case_hits = textbook_rerank(question, pool)
+        p.symptoms = [e["name"] for e in symptoms]
+        p.conditions = [c["name"] for c in conds]
         trace.record("graph", "Textbook check of candidates",
                      "; ".join(f"{c['name']}: {c['symptoms_matched']}/{len(symptoms)} symptoms, named in "
                                f"{c['text_support']} of {len(case_hits)} case passages" for c in conds)
@@ -441,6 +445,9 @@ def _plan_axes(question: str, p: Plan, axes: CaseAxes) -> Plan:
     for a, hits in zip(axes.axes, per_axis):
         p.hops.append(Hop("retrieve", f"[{a.axis}] {a.query}", hits[0].citation() if hits else "no evidence", hits))
     _add_hits(p, interleave(whole, *per_axis, limit=MAX_EVIDENCE + 3))
+    if axes.condition:
+        p.conditions = [axes.condition]
+        p.symptoms = clinical_graph.symptoms_in_text(question, [axes.condition])
     onto = axis_ontology_lines(axes)
     for a in axes.axes:
         for line in onto.get(a.axis, []):
