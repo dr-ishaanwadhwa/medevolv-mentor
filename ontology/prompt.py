@@ -29,7 +29,7 @@ You must extract facts strictly matching this clinical metamodel:
 4. MANIFESTS_AS: Condition -> ClinicalPhenotype (cardinal signs, symptoms)
 5. CONFIRMED_BY: Condition -> DiagnosticModality (definitive lab, imaging, or criteria)
 6. HAS_CLINICAL_STAGE: Condition -> ClinicalStage
-7. TREATED_BY: Condition -> TherapeuticAgent (MUST specify line_of_therapy: FIRST_LINE, SECOND_LINE, ADJUNCT, REFRACTORY, SUPPORTIVE)
+7. TREATED_BY: Condition -> TherapeuticAgent (line_of_therapy: FIRST_LINE, SECOND_LINE, ADJUNCT, REFRACTORY, SUPPORTIVE, or null. Use FIRST_LINE ONLY when the quoted sentence itself says first-line, drug/treatment of choice, preferred or mainstay; a drug that is merely used, an alternative, or one option among several is NOT first-line. If the text does not state the line, use null. Never use CONTRAINDICATED here: that is a CONTRAINDICATES fact.)
 8. CONTRAINDICATES: Condition/Phenotype -> TherapeuticAgent (MUST specify contraindication_severity: STRICT or CAUTIONARY, and clinical rationale)
 9. TARGETS_MECHANISM: TherapeuticAgent -> MolecularTarget
 10. CAUSES_ADVERSE_EFFECT: TherapeuticAgent -> ClinicalPhenotype

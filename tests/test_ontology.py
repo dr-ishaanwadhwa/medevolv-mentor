@@ -44,3 +44,15 @@ def test_condition_matching_rules():
     assert not m("zzz unknown condition")
     # every catalog condition has an organ system
     assert "Other" not in ontology_facts.catalog()
+
+
+def test_first_line_needs_support_in_the_quote():
+    from ontology.reconciler import gate_line_of_therapy
+    from ontology.schema import LineOfTherapy as L
+    assert gate_line_of_therapy(R.TREATED_BY, L.FIRST_LINE, "Drug Y is the drug of choice for X.")[0] == "keep"
+    assert gate_line_of_therapy(R.TREATED_BY, L.FIRST_LINE, "Drug Y is a well tolerated alternative.")[0] == "downgrade"
+    assert gate_line_of_therapy(R.TREATED_BY, L.FIRST_LINE, "Treatment with drug Y reduces mortality.")[0] == "keep"
+    assert gate_line_of_therapy(R.TREATED_BY, L.FIRST_LINE, "Y can also be effective for Z.")[0] == "downgrade"
+    assert gate_line_of_therapy(R.TREATED_BY, L.CONTRAINDICATED, "Avoid drug Y in X.")[0] == "drop"
+    assert gate_line_of_therapy(R.CAUSES_ADVERSE_EFFECT, L.FIRST_LINE, "Y causes Z.") == ("clear", None)
+    assert gate_line_of_therapy(R.TREATED_BY, L.ADJUNCT, "Y may be added.")[0] == "keep"

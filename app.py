@@ -361,9 +361,11 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
 
     st.markdown("**Two newer additions.** Long clinical cases (35+ words) take a *case route*: the model names the "
                 "case's focus and what it asks, and the whole case plus short focused queries are searched together. "
-                "A pilot **clinical ontology** (certified facts extracted from 20 high-yield sections, each checked "
-                "word-for-word against its source) adds first-line drugs, confirmatory tests and contraindication "
-                "warnings to answers. Browse it in the *Explore conditions* tab.")
+                "A **clinical ontology** (facts extracted by a language model from 120 high-yield sections) adds "
+                "first-line drugs, confirmatory tests and contraindication warnings to answers. A fact is kept only if "
+                "its quote is found word-for-word in the source; reversed or mistyped facts are corrected or dropped, "
+                "and a first-line tag is removed when the source hedges. The quote is verified, not the medical "
+                "judgement, so check the source before relying on a fact. Browse it in the *Explore conditions* tab.")
     left, right = st.columns(2)
     with left:
         st.markdown("#### Three ways it says no")
@@ -435,9 +437,10 @@ with tab_explore:
         cat = onto.catalog()
         n_cond = sum(len(c) for s in cat.values() for c in s.values())
         st.markdown("### Explore certified clinical facts")
-        st.markdown("Certified facts extracted from the textbooks and checked word-for-word against the source; "
-                    "pilot covers 20 high-yield sections. Drill down from organ system to a single condition, "
-                    "then open the source of any fact.")
+        st.markdown("Facts extracted by a language model from 120 high-yield textbook sections. Each fact's quote "
+                    "was found word-for-word in its source, which proves the source says it, not that the fact was "
+                    "read correctly. Open *Source* under any fact to check. Drill down from organ system to a single "
+                    "condition.")
         st.markdown(f'<div class="mm-chips"><span class="mm-chip">{n_cond} conditions</span>'
                     f'<span class="mm-chip">{len(onto.facts()):,} certified facts</span></div>', unsafe_allow_html=True)
         st.write("")

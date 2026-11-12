@@ -55,6 +55,36 @@ def check_direction(pred, s_type, o_type) -> str:
     return "drop"
 
 
+# The extractor over-promotes drugs to FIRST_LINE when the source hedges ("a well tolerated alternative",
+# "can also be effective", "if X fails"). Measured on 704 cached FIRST_LINE items: 108 state it explicitly,
+# 43 hedge, 553 are neutral (a 12-item sample of neutral ones was ~10/12 sound). So: explicit -> keep,
+# hedged -> downgrade, neutral -> keep. A strict "must say first-line" rule removed 87% and emptied MI.
+FIRST_LINE_CUE = re.compile(
+    r"first[- ](line|tier|choice)|(drugs?|agents?|treatment|therapy) of (first )?choice|preferred|mainstay|"
+    r"cornerstone|standard (therapy|treatment|of care|regimen|practice)|initial (therapy|treatment|drug)|"
+    r"recommended (as|for|first)|primary (therapy|treatment)", re.I)
+HEDGE_CUE = re.compile(
+    r"\balternative|\b(may|can) (also )?be (used|tried|considered|added|given|useful|effective)|\boptions?\b|"
+    r"\bin (some|selected|certain)\b|\bsecond[- ]line|\bif\b.{0,40}\b(fail|not toleran|intoleran|contraindicat|resistan)|"
+    r"\brefractory|\breserved\b|\boccasional|\bhas been (used|tried)|\badjunct|\badd[- ]on|"
+    r"\bless (commonly|often)|\binstead\b|\bexperimental|\bunder (study|investigation)|\bmay benefit|"
+    r"\bsome patients", re.I)
+
+
+def gate_line_of_therapy(pred, line, quote: str):
+    """('keep'|'downgrade'|'clear'|'drop', new_line). Line of therapy only means something for TREATED_BY;
+    FIRST_LINE is removed when the quote hedges (and doesn't also say first-line); 'TREATED_BY ... CONTRAINDICATED'
+    contradicts itself."""
+    value = getattr(line, "value", line)
+    if pred != R.TREATED_BY:
+        return ("clear", None) if value else ("keep", line)
+    if value == "CONTRAINDICATED":
+        return "drop", None
+    if value == "FIRST_LINE" and HEDGE_CUE.search(quote or "") and not FIRST_LINE_CUE.search(quote or ""):
+        return "downgrade", None
+    return "keep", line
+
+
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.lower())).strip()
 
@@ -104,6 +134,13 @@ def reconcile_section_facts(
                 "object_name": item.subject_name, "object_type": item.subject_type})
 
         # Reconcile subject and object with canonical registry (BODHI SNOMED/INN or minted URI)
+        gate, line = gate_line_of_therapy(item.predicate, item.line_of_therapy, item.verbatim_quote)
+        if gate == "drop":
+            stats["self_contradictory"] = stats.get("self_contradictory", 0) + 1
+            continue
+        if gate != "keep":
+            stats[f"line_{gate}d" if gate == "clear" else "first_line_downgraded"] = \
+                stats.get(f"line_{gate}d" if gate == "clear" else "first_line_downgraded", 0) + 1
         verified = quote_in_source(item.verbatim_quote, source_norm) if source_norm is not None else False
         stats["verified" if verified else "unverified"] = stats.get("verified" if verified else "unverified", 0) + 1
         sub_id, sub_label, sub_type = registry.resolve(item.subject_name, item.subject_type, book_id)
@@ -114,7 +151,7 @@ def reconcile_section_facts(
         fact_id = f"ont-{book_id}-{hash_suffix}"
 
         facets = ClinicalFacet(
-            line_of_therapy=item.line_of_therapy,
+            line_of_therapy=line,
             contraindication_severity=item.contraindication_severity,
             timing_phase=item.timing_phase,
             rationale=item.rationale,
