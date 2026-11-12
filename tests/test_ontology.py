@@ -56,3 +56,14 @@ def test_first_line_needs_support_in_the_quote():
     assert gate_line_of_therapy(R.TREATED_BY, L.CONTRAINDICATED, "Avoid drug Y in X.")[0] == "drop"
     assert gate_line_of_therapy(R.CAUSES_ADVERSE_EFFECT, L.FIRST_LINE, "Y causes Z.") == ("clear", None)
     assert gate_line_of_therapy(R.TREATED_BY, L.ADJUNCT, "Y may be added.")[0] == "keep"
+
+
+def test_negated_treatment_is_dropped():
+    from ontology.reconciler import negated_in_quote as neg
+    assert neg(R.TREATED_BY, "Cephalosporins", "Ampicillin is preferred. Cephalosporins are not effective.")
+    assert neg(R.CONFIRMED_BY, "Viral culture", "Clinicians should not use viral culture for initial diagnosis.")
+    assert not neg(R.TREATED_BY, "Topiramate", "If acetazolamide is ineffective, topiramate is the next choice.")
+    assert not neg(R.TREATED_BY, "Lactase", "Lactase may need to be titrated to avoid symptoms.")
+    # the rejection is about another drug in another sentence
+    assert not neg(R.TREATED_BY, "Ampicillin", "Ampicillin is preferred. Cephalosporins are not effective.")
+    assert not neg(R.MANIFESTS_AS, "Rash", "Rash should not be confused with X.")

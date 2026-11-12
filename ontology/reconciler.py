@@ -85,6 +85,36 @@ def gate_line_of_therapy(pred, line, quote: str):
     return "keep", line
 
 
+# A treatment/diagnostic fact whose own quote rejects it ("Cephalosporins are not effective", "lidocaine infusion
+# is not recommended") is the opposite of the fact. Tier A run: 213 of 9,144 TREATED_BY/CONFIRMED_BY quotes had a
+# negation cue, about half real reversals; the rest were conditionals ("If ineffective, topiramate is next"),
+# hence the sentence + object + not-after-if/when rule below.
+NEGATION_CUE = re.compile(
+    r"\b(should (be )?avoided|avoid(ed)?|should not|must not|not (be )?(recommended|indicated|effective|useful|"
+    r"helpful|beneficial)|contraindicated|ineffective|no (role|benefit|proven)|impractical|of no value|not proved|"
+    r"has not been shown)\b", re.I)
+CONDITIONAL = re.compile(r"\b(if|when|unless|whom|where|or)\b[^.;]{0,40}$", re.I)
+
+
+def negated_in_quote(pred, obj_name: str, quote: str) -> bool:
+    """True when a sentence of the quote that names the object (or the drug's first word) also rejects it,
+    and the rejection is not a condition ('if ... ineffective', 'when contraindicated')."""
+    if pred not in (R.TREATED_BY, R.CONFIRMED_BY) or not quote:
+        return False
+    tokens = [w for w in re.findall(r"[a-z]{4,}", (obj_name or "").lower())][:2]
+    for sent in re.split(r"(?<=[.;!?])\s+", quote):
+        low = sent.lower()
+        if tokens and not any(t[:6] in low for t in tokens):
+            continue
+        for m in NEGATION_CUE.finditer(sent):
+            before = sent[:m.start()]
+            if re.search(r"\b(to|and|so as to)\s+$", before, re.I):   # purpose: 'titrated to avoid symptoms'
+                continue
+            if not CONDITIONAL.search(before):
+                return True
+    return False
+
+
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.lower())).strip()
 
@@ -137,6 +167,9 @@ def reconcile_section_facts(
         gate, line = gate_line_of_therapy(item.predicate, item.line_of_therapy, item.verbatim_quote)
         if gate == "drop":
             stats["self_contradictory"] = stats.get("self_contradictory", 0) + 1
+            continue
+        if negated_in_quote(item.predicate, item.object_name, item.verbatim_quote):
+            stats["negated_dropped"] = stats.get("negated_dropped", 0) + 1
             continue
         if gate != "keep":
             stats[f"line_{gate}d" if gate == "clear" else "first_line_downgraded"] = \

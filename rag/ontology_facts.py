@@ -184,11 +184,54 @@ def profile(label: str) -> dict:
     }
 
 
-def group_of(chapter: str) -> tuple[str, str]:
+# Harrison 22e: chapter-number ranges from the book's own PART/SECTION tree (data/okf/harrison section_path).
+HARRISON_SYSTEMS = [
+    (1, 13, "General medicine"), (14, 33, "Cardinal symptoms & signs"), (34, 38, "Eye, ENT & oral"),
+    (39, 58, "Cardinal symptoms & signs"), (59, 64, "Skin"), (65, 70, "Cardinal symptoms & signs"), (71, 72, "General medicine"),
+    (73, 100, "Oncology"), (101, 123, "Blood & immunology"), (124, 242, "Infectious"),
+    (243, 294, "Cardiovascular"), (295, 310, "Respiratory"), (311, 318, "Critical care"),
+    (319, 331, "Renal & urinary"), (332, 359, "Gastrointestinal & liver"), (360, 381, "Blood & immunology"),
+    (382, 387, "Musculoskeletal & rheumatology"), (388, 432, "Endocrine & metabolic"),
+    (433, 468, "Nervous system & psychiatry"), (469, 478, "Toxicology & environment"), (479, 505, "General medicine"),
+]
+ROBBINS_SYSTEMS = {
+    1: "General pathology", 2: "General pathology", 3: "General pathology", 4: "Cardiovascular",
+    5: "General pathology", 6: "Blood & immunology", 7: "Oncology", 8: "Infectious", 9: "Toxicology & environment",
+    10: "General pathology", 11: "Cardiovascular", 12: "Cardiovascular", 13: "Blood & immunology",
+    14: "Blood & immunology", 15: "Respiratory", 16: "Eye, ENT & oral", 17: "Gastrointestinal & liver",
+    18: "Gastrointestinal & liver", 19: "Gastrointestinal & liver", 20: "Renal & urinary",
+    21: "Renal & urinary", 22: "Reproductive & breast", 23: "Reproductive & breast", 24: "Endocrine & metabolic",
+    25: "Skin", 26: "Musculoskeletal & rheumatology", 27: "Nervous system & psychiatry",
+    28: "Nervous system & psychiatry", 29: "Eye, ENT & oral",
+}
+
+
+def _book_system(book: str, chapter: str) -> str | None:
+    m = re.match(r"(\d+)", chapter)
+    if not m:
+        return None
+    n = int(m.group(1))
+    if book == "harrison":
+        return next((s for lo, hi, s in HARRISON_SYSTEMS if lo <= n <= hi), None)
+    if book == "robbins":
+        return ROBBINS_SYSTEMS.get(n)
+    return None
+
+
+def group_of(chapter: str, book: str = "") -> tuple[str, str]:
+    """(organ system, category) for a source chapter. Named disease categories first (Diabetes mellitus, ...),
+    then the book's own structure (Harrison parts, Robbins chapters), then system keywords; the category is
+    otherwise the chapter's title, like the book's contents page."""
+    title = re.sub(r"^\d+[a-z]?\.?\s*", "", chapter)[:60]
     for pattern, system, category in CHAPTER_GROUPS:
-        if re.search(pattern, chapter, re.I):
-            return system, category or (re.sub(r"^\d+[a-z]?\.?\s*", "", chapter)[:60] or system)
-    return "Other", re.sub(r"^\d+\.?\s*", "", chapter)[:60] or "Other"
+        if category and re.search(pattern, chapter, re.I):
+            return system, category
+    if system := _book_system(book, chapter):
+        return system, title or system
+    for pattern, system, category in CHAPTER_GROUPS:
+        if not category and re.search(pattern, chapter, re.I):
+            return system, title or system
+    return "Other", title or "Other"
 
 
 @functools.cache
@@ -198,10 +241,12 @@ def catalog() -> dict:
     chapters: dict[str, Counter] = defaultdict(Counter)
     for f in facts():
         if f["subject_type"] in CONDITION_TYPES:
-            chapters[f["subject_label"]][f["provenance"].get("chapter", "")] += 1
+            p = f["provenance"]
+            chapters[f["subject_label"]][(p.get("book_id", ""), p.get("chapter", ""))] += 1
     out: dict = defaultdict(lambda: defaultdict(dict))
     for label, cnt in chapters.items():
-        system, category = group_of(cnt.most_common(1)[0][0])
+        book, chapter = cnt.most_common(1)[0][0]
+        system, category = group_of(chapter, book)
         out[system][category][label] = sum(cnt.values())
     return {s: dict(c) for s, c in sorted(out.items())}
 
