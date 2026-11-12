@@ -137,7 +137,9 @@ AXES = {
 }
 # which certified ontology fact lines each axis pulls in for the named condition (prefixes of graph_facts_for lines)
 AXIS_TO_ONTOLOGY = {"etiology": ("confirmed by",), "stabilization": (), "pharmacology": ("first-line", "WARNING")}
-AXIS_QUERY_MAX_WORDS = 20
+AXIS_QUERY_MAX_WORDS = 12
+MAX_QUERIES_PER_AXIS = 2
+MAX_AXIS_QUERIES = 5
 
 AXES_SYSTEM = """You plan textbook look-ups for a medical student's clinical case. Decompose the case along up to three
 clinical axes, and include an axis ONLY if the case or its question genuinely needs it:
@@ -145,17 +147,21 @@ clinical axes, and include an axis ONLY if the case or its question genuinely ne
 - "stabilization": emergency stabilization and acute triage (airway, breathing, circulation, immediate life-saving
   steps). Omit it when nothing in the case is acute or life-threatening (e.g. a stable chronic-disease question).
 - "pharmacology": definitive drug treatment, drug of choice, and contraindications for THIS patient
-For each included axis write one short search query (under 20 words) that names the condition, drug or organism the
-way a textbook heading or index entry would. Do not answer the question.
+For each included axis write 1 or 2 search queries (at most 5 in total). Each query covers ONE specific thing the case
+asks -- never pack several points into one query -- and is phrased like a textbook heading or index entry, under 10
+words, naming the condition, drug or organism. Good: "Management of thyroid storm", "Aspirin in thyrotoxicosis",
+"Nitrates contraindicated in right ventricular infarction". Bad: "thyroid storm propylthiouracil iodine aspirin
+cooling management". Do not answer the question.
 "likely_condition" is the single most likely diagnosis if the case points to one, else "".
 Return JSON exactly in this shape:
-{"likely_condition": "<diagnosis or empty>", "axes": [{"axis": "etiology|stabilization|pharmacology", "query": "..."}]}"""
+{"likely_condition": "<diagnosis or empty>", "axes": [{"axis": "etiology|stabilization|pharmacology", "query": "..."}]}
+(repeat an axis entry for its second query)"""
 
 AXES_SCHEMA = {
     "type": "object",
     "properties": {
         "likely_condition": {"type": "string"},
-        "axes": {"type": "array", "maxItems": 3, "items": {
+        "axes": {"type": "array", "maxItems": MAX_AXIS_QUERIES, "items": {
             "type": "object",
             "properties": {"axis": {"type": "string", "enum": list(AXES)}, "query": {"type": "string"}},
             "required": ["axis", "query"]}},
@@ -192,12 +198,14 @@ def parse_axes(raw: str) -> CaseAxes | None:
         if not isinstance(item, dict):
             continue
         axis, query = item.get("axis"), item.get("query")
-        if axis not in AXES or axis in seen or not isinstance(query, str):
+        if axis not in AXES or not isinstance(query, str):
             continue
         query = " ".join(query.split())
-        if not query or len(query.split()) > AXIS_QUERY_MAX_WORDS:
+        if not query or len(query.split()) > AXIS_QUERY_MAX_WORDS or (axis, query.lower()) in seen:
             continue
-        seen.add(axis)
+        if sum(a.axis == axis for a in out) >= MAX_QUERIES_PER_AXIS or len(out) >= MAX_AXIS_QUERIES:
+            continue
+        seen.add((axis, query.lower()))
         out.append(AxisQuery(axis, query))
     if not out:
         return None
@@ -434,7 +442,7 @@ def plan_case(question: str) -> Plan:
 
 def _plan_axes(question: str, p: Plan, axes: CaseAxes) -> Plan:
     """One retrieval sub-query per clinical axis (plus the whole case), and per-axis ontology facts."""
-    trace.record("decompose", f"{len(axes.axes)} clinical axis/axes" + (f" · likely {axes.condition}" if axes.condition else ""),
+    trace.record("decompose", f"{len({a.axis for a in axes.axes})} clinical axis/axes, {len(axes.axes)} look-ups" + (f" · likely {axes.condition}" if axes.condition else ""),
                  " | ".join(f"{AXES[a.axis]}: {a.query}" for a in axes.axes)
                  + (". Skipped: " + ", ".join(AXES[k] for k in AXES if k not in {a.axis for a in axes.axes})
                     if len(axes.axes) < len(AXES) else ""))

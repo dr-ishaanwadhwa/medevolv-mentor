@@ -72,10 +72,20 @@ def test_parse_axes_rejects_junk(raw):
 
 def test_parse_axes_drops_bad_items_keeps_good_and_dedupes():
     raw = json.dumps({"likely_condition": 42, "axes": [
-        {"axis": "etiology", "query": "causes of chest pain"}, {"axis": "etiology", "query": "duplicate axis"},
+        {"axis": "etiology", "query": "causes of chest pain"}, {"axis": "etiology", "query": "Causes  of chest pain"},
         {"axis": "bogus", "query": "x"}, "junk", {"axis": "pharmacology", "query": 7}]})
     a = hops.parse_axes(raw)
     assert a.condition == "" and [(x.axis, x.query) for x in a.axes] == [("etiology", "causes of chest pain")]
+
+
+def test_parse_axes_caps_queries_per_axis_and_total():
+    items = [{"axis": "pharmacology", "query": f"drug point {i}"} for i in range(3)] + \
+            [{"axis": "etiology", "query": f"cause {i}"} for i in range(2)] + \
+            [{"axis": "stabilization", "query": f"step {i}"} for i in range(2)]
+    a = hops.parse_axes(json.dumps({"likely_condition": "x", "axes": items}))
+    assert len(a.axes) == hops.MAX_AXIS_QUERIES
+    assert sum(x.axis == "pharmacology" for x in a.axes) == hops.MAX_QUERIES_PER_AXIS
+    assert [x.axis for x in a.axes] == sorted((x.axis for x in a.axes), key=list(hops.AXES).index)   # clinical order
 
 
 def test_case_uses_three_axes_and_routes_ontology_facts(stubs):
