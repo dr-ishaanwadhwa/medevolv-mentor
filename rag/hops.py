@@ -8,6 +8,10 @@ Two routes (both are the rubric's "query decomposition" enhancement):
      hop 3  "treatment / drug of choice for <condition>"        (textbook retrieval, cited as [1], [2] ...)
      cross-check: drugs named in the textbook evidence vs BODHI's drug list for that condition
 
+  Case route -- a long vignette (35+ words) is decomposed along three clinical axes (etiology & differential,
+     emergency stabilization, definitive pharmacology & contraindications); each axis that applies gets its own
+     textbook query plus matching certified ontology facts. Falls back to a simpler focus/queries split.
+
   Decomposition route -- no symptoms linked, but the question has several parts ("compare X and Y")
      the LLM splits it into <= 3 sub-questions; each is retrieved separately so no part crowds out another
 
@@ -117,8 +121,111 @@ def decompose_case(question: str) -> tuple[str, list[str], list[str]]:
         d = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
         queries = [" ".join(str(q).split()) for q in d.get("queries", []) if str(q).strip()][:3]
         return str(d.get("focus", "")).strip(), [str(a).lower() for a in d.get("asks", [])], queries or [question]
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError, RuntimeError):     # RuntimeError: backend down / out of credit
         return "", [], [question]
+
+
+# ---- Three-axis case decomposition -------------------------------------------------------------------------
+# A long case is split along the clinical-ontology axes a clinician reasons in. Each axis that applies gets its own
+# textbook query; axes that do not apply (no emergency in a chronic-disease question) are left out, not invented.
+AXES = {
+    "etiology": "Etiology & differential diagnosis",
+    "stabilization": "Emergency stabilization & acute triage",
+    "pharmacology": "Definitive pharmacology & contraindications",
+}
+# which certified ontology fact lines each axis pulls in for the named condition (prefixes of graph_facts_for lines)
+AXIS_TO_ONTOLOGY = {"etiology": ("confirmed by",), "stabilization": (), "pharmacology": ("first-line", "WARNING")}
+AXIS_QUERY_MAX_WORDS = 20
+
+AXES_SYSTEM = """You plan textbook look-ups for a medical student's clinical case. Decompose the case along up to three
+clinical axes, and include an axis ONLY if the case or its question genuinely needs it:
+- "etiology": etiology, pathophysiology and differential diagnosis of the presentation
+- "stabilization": emergency stabilization and acute triage (airway, breathing, circulation, immediate life-saving
+  steps). Omit it when nothing in the case is acute or life-threatening (e.g. a stable chronic-disease question).
+- "pharmacology": definitive drug treatment, drug of choice, and contraindications for THIS patient
+For each included axis write one short search query (under 20 words) that names the condition, drug or organism the
+way a textbook heading or index entry would. Do not answer the question.
+"likely_condition" is the single most likely diagnosis if the case points to one, else "".
+Return JSON exactly in this shape:
+{"likely_condition": "<diagnosis or empty>", "axes": [{"axis": "etiology|stabilization|pharmacology", "query": "..."}]}"""
+
+AXES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "likely_condition": {"type": "string"},
+        "axes": {"type": "array", "maxItems": 3, "items": {
+            "type": "object",
+            "properties": {"axis": {"type": "string", "enum": list(AXES)}, "query": {"type": "string"}},
+            "required": ["axis", "query"]}},
+    },
+    "required": ["likely_condition", "axes"],
+}
+
+
+@dataclass
+class AxisQuery:
+    axis: str                 # a key of AXES
+    query: str
+
+
+@dataclass
+class CaseAxes:
+    condition: str            # "" when the case does not point to one diagnosis
+    axes: list[AxisQuery]
+
+
+def parse_axes(raw: str) -> CaseAxes | None:
+    """Validate the LLM's JSON against AXES_SCHEMA by hand (DeepSeek's JSON mode guarantees JSON, not the shape).
+    Returns None for anything unusable, so the caller falls back to the older decomposition."""
+    try:
+        d = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(d, dict) or not isinstance(d.get("axes"), list):
+        return None
+    cond = d.get("likely_condition", "")
+    cond = " ".join(cond.split())[:80] if isinstance(cond, str) else ""
+    out, seen = [], set()
+    for item in d["axes"]:
+        if not isinstance(item, dict):
+            continue
+        axis, query = item.get("axis"), item.get("query")
+        if axis not in AXES or axis in seen or not isinstance(query, str):
+            continue
+        query = " ".join(query.split())
+        if not query or len(query.split()) > AXIS_QUERY_MAX_WORDS:
+            continue
+        seen.add(axis)
+        out.append(AxisQuery(axis, query))
+    if not out:
+        return None
+    out.sort(key=lambda a: list(AXES).index(a.axis))          # stable, clinical order in the trace
+    return CaseAxes(cond, out)
+
+
+def decompose_axes(question: str) -> tuple[CaseAxes | None, str]:
+    """(axes, why) -- axes is None when the call failed or returned junk; why says which, for the trace."""
+    try:
+        raw = chat(AXES_SYSTEM, question, temperature=0.0, max_tokens=350, json_mode=True, schema=AXES_SCHEMA,
+                   purpose="Decompose the case along clinical axes")
+    except RuntimeError as e:
+        return None, f"backend error: {e}"
+    axes = parse_axes(raw)
+    return axes, ("ok" if axes else "invalid JSON or schema")
+
+
+def axis_ontology_lines(axes: CaseAxes) -> dict[str, list[str]]:
+    """Certified ontology facts for the case's likely condition, routed to the axes that asked for them."""
+    if not axes.condition or not ontology_facts.available():
+        return {}
+    lines = ontology_facts.graph_facts_for(axes.condition)
+    out = {}
+    for a in axes.axes:
+        keys = AXIS_TO_ONTOLOGY.get(a.axis, ())
+        picked = [l for l in lines if any(k.lower() in l.lower() for k in keys)]
+        if picked:
+            out[a.axis] = picked
+    return out
 
 
 def interleave(*lists: list[Hit], limit: int) -> list[Hit]:
@@ -290,7 +397,15 @@ def plan_case(question: str) -> Plan:
     trace.record("route", "Long clinical case → focused look-ups",
                  f"{len(question.split())} words: one embedding of the whole case blurs what is asked, so the case "
                  "is also searched as short, focused textbook queries.")
-    focus, asks, queries = decompose_case(question)
+    axes, why = decompose_axes(question)
+    if axes:
+        return _plan_axes(question, p, axes)
+    trace.record("decompose", "Clinical-axis split unavailable → simpler split",
+                 f"{why[:160]}.", status="warn")
+    if why.startswith("backend error"):                 # the backend is down: don't spend a second failing call
+        focus, asks, queries = "", [], [question]
+    else:
+        focus, asks, queries = decompose_case(question)
     trace.record("decompose", f"Focus: {focus or 'unclear'}",
                  ("Asks about: " + ", ".join(asks) + ". " if asks else "") + "Queries: " + " | ".join(queries))
     p.hops.append(Hop("decompose", question, f"{focus} :: " + " | ".join(queries)))
@@ -310,6 +425,34 @@ def plan_case(question: str) -> Plan:
                      + (f"; {len(lines)} certified fact(s) added for what the case asks" if lines else
                         "; nothing added (not covered, or the case doesn't ask about therapy/diagnostics)"),
                      status="ok" if lines else "warn")
+    return p
+
+
+def _plan_axes(question: str, p: Plan, axes: CaseAxes) -> Plan:
+    """One retrieval sub-query per clinical axis (plus the whole case), and per-axis ontology facts."""
+    trace.record("decompose", f"{len(axes.axes)} clinical axis/axes" + (f" · likely {axes.condition}" if axes.condition else ""),
+                 " | ".join(f"{AXES[a.axis]}: {a.query}" for a in axes.axes)
+                 + (". Skipped: " + ", ".join(AXES[k] for k in AXES if k not in {a.axis for a in axes.axes})
+                    if len(axes.axes) < len(AXES) else ""))
+    p.hops.append(Hop("decompose", question, f"{axes.condition} :: "
+                      + " | ".join(f"{a.axis}: {a.query}" for a in axes.axes)))
+    whole = search(question, k=5)
+    per_axis = [search(a.query, k=5) for a in axes.axes]
+    for a, hits in zip(axes.axes, per_axis):
+        p.hops.append(Hop("retrieve", f"[{a.axis}] {a.query}", hits[0].citation() if hits else "no evidence", hits))
+    _add_hits(p, interleave(whole, *per_axis, limit=MAX_EVIDENCE + 3))
+    onto = axis_ontology_lines(axes)
+    for a in axes.axes:
+        for line in onto.get(a.axis, []):
+            if line not in p.graph_facts:
+                p.graph_facts.append(line)
+    if axes.condition and ontology_facts.available():
+        n = sum(len(v) for v in onto.values())
+        trace.record("graph", "Textbook ontology lookup",
+                     f"{axes.condition}: " + (", ".join(ontology_facts.match_conditions(axes.condition)[:2])
+                                              or "not in the pilot ontology")
+                     + (f"; {n} certified fact(s) added for " + ", ".join(onto) if n else "; nothing added"),
+                     status="ok" if n else "warn")
     return p
 
 
