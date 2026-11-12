@@ -1,0 +1,19 @@
+# Runs on the Oracle Cloud VM: the Streamlit app behind Caddy (automatic HTTPS via an sslip.io hostname).
+services:
+  app:
+    build: .
+    env_file: .env                 # DEEPSEEK_API_KEY, APP_PASSWORD, LLM_BACKEND (copied by push.sh, never in git)
+    restart: unless-stopped
+    expose: ["7860"]
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [app]
+volumes:
+  caddy_data:

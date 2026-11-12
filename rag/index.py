@@ -10,7 +10,6 @@ import chromadb
 
 from rag import config
 from rag.backends import embed
-from rag.chunk import iter_chunks
 
 
 def collection_name() -> str:
@@ -29,6 +28,7 @@ def get_collection(create: bool = False):
 
 
 def build(batch: int = 128) -> None:
+    from rag.chunk import iter_chunks          # build-time only: keeps ingest/ (pymupdf) out of the server
     chunks = list(iter_chunks())
     col = get_collection(create=True)
     t0 = time.time()
