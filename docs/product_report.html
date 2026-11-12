@@ -1,0 +1,223 @@
+<title>Eka Study Companion Report</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column like a ward case file — summary first, then numbered findings, case sheets, risks, next steps */
+:root {
+  --bg: #f6f8f8; --surface: #ffffff; --fg: #15232a; --muted: #5a6b72; --line: #d7e0e2;
+  --accent: #0f6b74; --accent-soft: #e2f0f1;
+  --good: #1d7a46; --good-soft: #e3f3ea; --warn: #9a6200; --warn-soft: #fbf0db; --bad: #b0323a; --bad-soft: #f8e3e4;
+  --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f171a; --surface: #152126; --fg: #e3ecee; --muted: #93a6ac; --line: #26363c;
+  --accent: #5cc3cc; --accent-soft: #173238;
+  --good: #6bd197; --good-soft: #15302240; --warn: #e9b55a; --warn-soft: #3a2c1240; --bad: #f08a90; --bad-soft: #3c1a1d60;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f171a; --surface: #152126; --fg: #e3ecee; --muted: #93a6ac; --line: #26363c;
+  --accent: #5cc3cc; --accent-soft: #173238;
+  --good: #6bd197; --good-soft: #15302240; --warn: #e9b55a; --warn-soft: #3a2c1240; --bad: #f08a90; --bad-soft: #3c1a1d60;
+  color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--sans); }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 44px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 2.1rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.3rem; font-weight: 650; display: flex; gap: 10px; align-items: baseline; }
+h2 .n { font: 500 0.8rem var(--mono); color: var(--accent); }
+h3 { font-size: 1rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+section { display: grid; gap: 14px; min-width: 0; }
+.eyebrow { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lede { color: var(--muted); font-size: 1.02rem; }
+header { display: grid; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 28px; }
+.meta { font: 0.8rem var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.verdict { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; display: grid; gap: 14px; }
+.vgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.vitem { display: grid; gap: 4px; align-content: start; }
+.pill { display: inline-block; font: 500 0.72rem var(--mono); letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; justify-self: start; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 0.72rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--bg); }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.hl { color: var(--accent); font-weight: 600; }
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 0.82rem var(--mono); }
+.flow span { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; }
+.flow i { color: var(--muted); font-style: normal; }
+.cases { display: grid; gap: 10px; }
+.case { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid;
+  grid-template-columns: 1fr auto; gap: 6px 14px; }
+.case .q { font-weight: 500; min-width: 0; }
+.case .dd { grid-column: 1 / -1; font: 0.82rem var(--mono); color: var(--muted); }
+.case .dd b { color: var(--fg); font-weight: 500; }
+ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 70ch; }
+.risk { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: start; }
+.risk > .pill { margin-top: 3px; }
+.steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 10px; }
+.steps li { display: grid; grid-template-columns: 88px 1fr; gap: 12px; padding: 12px 14px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; }
+.steps .who { font: 500 0.75rem var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; padding-top: 2px; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.note { font-size: 0.85rem; color: var(--muted); }
+@media (max-width: 520px) { .steps li { grid-template-columns: 1fr; gap: 4px; } h1 { font-size: 1.7rem; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Product report · group RAG assignment</div>
+  <h1>Eka Study Companion</h1>
+  <p class="lede">A study companion for medical students. It answers exam-style and clinical-vignette questions from five standard textbooks and Eka Care's BODHI clinical graph, cites every claim, and declines when its sources don't cover the question.</p>
+  <div class="meta"><span>12 Nov 2026</span><span>Demo 17 Nov</span><span>commit dd899e5</span><span>LLM deepseek-chat</span><span>embeddings bge-small-en-v1.5</span></div>
+</header>
+
+<div class="verdict">
+  <h3>Where it stands</h3>
+  <div class="vgrid">
+    <div class="vitem"><span class="pill good">Ready locally</span><p>The full pipeline runs end to end on DeepSeek. All 36 product questions got the expected status in multi-hop mode. 23/23 unit tests pass.</p></div>
+    <div class="vitem"><span class="pill warn">Hosting blocked</span><p>Vercel can't run Streamlit or hold the 379 MB index. Hugging Face needs a PRO plan for Docker Spaces. The bundle is built and waiting.</p></div>
+    <div class="vitem"><span class="pill info">STAIR dropped</span><p>Moved to future work. The ToC router scored 32% chapter@1 against 77% for vector search. Both are hidden unless <code>EXPERIMENTAL=1</code>.</p></div>
+    <div class="vitem"><span class="pill warn">Clinical gaps</span><p>Two of five vignettes give a weak differential (TB and measles), because the graph is missing some links. Factual answers are strong.</p></div>
+  </div>
+</div>
+
+<section>
+  <h2><span class="n">01</span>What the product does</h2>
+  <p>Three kinds of questions, each with its own path through the system:</p>
+  <ul>
+    <li><b>Factual and comparison questions</b> (pharmacology, physiology, pathology, microbiology, medicine). Retrieval runs over 16,032 passages. Compound questions are split into sub-questions that are retrieved separately.</li>
+    <li><b>Clinical vignettes</b> ("fever, headache and joint pain after a mosquito bite"). Symptoms are linked to BODHI nodes. The graph ranks candidate conditions and their specialists. The textbooks supply the treatment, and the graph's drug list cross-checks the answer.</li>
+    <li><b>Refusals.</b> Personal dosing or treatment questions are declined before retrieval. Off-topic questions are declined when retrieval similarity falls below 0.60, or when the LLM finds the evidence insufficient.</li>
+  </ul>
+  <div class="flow" aria-label="Pipeline">
+    <span>5 textbook PDFs</span><i>→</i><span>ToC recovery</span><i>→</i><span>OKF sections (1,557)</span><i>→</i><span>~250-word passages</span><i>→</i><span>bge-small</span><i>→</i><span>Chroma</span>
+  </div>
+  <div class="flow">
+    <span>question</span><i>→</i><span>personal-advice guard</span><i>→</i><span>route: graph · decompose · single</span><i>→</i><span>evidence [G#] + [#]</span><i>→</i><span>DeepSeek</span><i>→</i><span>cited answer + reasoning trace</span>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Source</th><th>Subject</th><th class="num">Sections</th></tr></thead>
+    <tbody>
+      <tr><td>KD Tripathi, Essentials of Medical Pharmacology 7e</td><td>Pharmacology</td><td class="num">447</td></tr>
+      <tr><td>Davidson's Principles and Practice of Medicine 24e</td><td>Medicine</td><td class="num">338</td></tr>
+      <tr><td>Robbins &amp; Cotran Pathologic Basis of Disease</td><td>Pathology</td><td class="num">212</td></tr>
+      <tr><td>Guyton &amp; Hall Textbook of Medical Physiology 14e</td><td>Physiology</td><td class="num">478</td></tr>
+      <tr><td>Microbiology textbook (ISBN 978-81-947090-1-5)</td><td>Microbiology</td><td class="num">82</td></tr>
+      <tr><td>Eka Care BODHI-S + BODHI-M (CC BY-NC 4.0)</td><td>Clinical graph</td><td class="num">6,560 nodes</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="n">02</span>Answer quality: 36 questions, two modes</h2>
+  <p>A question set written for this report covers every question type: 19 factual, 3 comparison, 5 vignettes, 5 off-topic and 4 personal-advice. Each question was run through the baseline (one retrieval) and through multi-hop. The LLM is DeepSeek <code>deepseek-chat</code>.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Metric</th><th class="num">Baseline</th><th class="num">Multi-hop</th></tr></thead>
+    <tbody>
+      <tr><td>Expected status (answer / decline / refuse)</td><td class="num">35/36 · 97.2%</td><td class="num hl">36/36 · 100%</td></tr>
+      <tr><td>Factual</td><td class="num">19/19</td><td class="num">19/19</td></tr>
+      <tr><td>Comparison</td><td class="num">3/3</td><td class="num">3/3</td></tr>
+      <tr><td>Clinical vignette</td><td class="num">4/5</td><td class="num hl">5/5</td></tr>
+      <tr><td>Off-topic declined</td><td class="num">5/5</td><td class="num">5/5</td></tr>
+      <tr><td>Personal advice refused</td><td class="num">4/4</td><td class="num">4/4</td></tr>
+      <tr><td>Cited passage comes from the right textbook</td><td class="num">22/22</td><td class="num">22/22</td></tr>
+      <tr><td>Answers that carry at least one citation</td><td class="num">26/26</td><td class="num">27/27</td></tr>
+      <tr><td>Claims supported by evidence (LLM judge)</td><td class="num">99.2%</td><td class="num">100%</td></tr>
+      <tr><td>Latency, median / 95th percentile</td><td class="num">3.2 s / 6.9 s</td><td class="num">3.9 s / 8.3 s</td></tr>
+      <tr><td>Runtime errors</td><td class="num">0</td><td class="num">0</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The groundedness judge is also DeepSeek, so it checks its own family's output, and it gave suspiciously round scores (several 12/12). Treat 99–100% as an upper bound. The domain-expert spot check below is the stronger signal. "Status" only shows that the system answered when it should have. It doesn't show that the answer was clinically right.</p>
+</section>
+
+<section>
+  <h2><span class="n">03</span>Retrieval accuracy</h2>
+  <p>Held-out generated questions with a known gold section (Tripathi), with all five books in the index. These questions were generated from the passages themselves, which favours vector search because the wording overlaps.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Retriever</th><th class="num">Questions</th><th class="num">Chapter@1</th><th class="num">Chapter@3</th><th class="num">Section@1</th><th class="num">Section@3</th></tr></thead>
+    <tbody>
+      <tr><td>Vector (in the demo)</td><td class="num">446</td><td class="num hl">76.7%</td><td class="num hl">91.0%</td><td class="num hl">65.5%</td><td class="num hl">84.3%</td></tr>
+      <tr><td>ToC router, all 78 chapters (3B model)</td><td class="num">120</td><td class="num">12.5%</td><td class="num">30.0%</td><td class="num">2.5%</td><td class="num">—</td></tr>
+      <tr><td>ToC router, 4-chapter vector shortlist (3B model)</td><td class="num">40</td><td class="num">32%</td><td class="num">68%</td><td class="num">15%</td><td class="num">—</td></tr>
+      <tr><td>STAIR (fine-tuned)</td><td class="num" colspan="5">not trained, future work</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="n">04</span>Clinical vignettes: what the graph proposes</h2>
+  <p>Every vignette was "answered", but the quality of the differential varies. This review reflects my clinical judgement of the graph's top three conditions. A domain expert should confirm it.</p>
+  <div class="cases">
+    <div class="case"><div class="q">Fever, headache and joint pain after a mosquito bite</div><span class="pill good">Good</span>
+      <div class="dd">linked: <b>joint pain, headache, fever</b> → Chikungunya · Viral exanthem · Dengue</div></div>
+    <div class="case"><div class="q">55-year-old man with crushing chest pain to the left arm and sweating</div><span class="pill good">Good</span>
+      <div class="dd">linked: <b>chest pain, sweating</b> → Acute MI · Acute bronchitis · Angina (bronchitis is noise; "radiating to left arm" was not linked)</div></div>
+    <div class="case"><div class="q">Excessive thirst, frequent urination and weight loss</div><span class="pill warn">Partial</span>
+      <div class="dd">linked: <b>thirst, frequency</b> → Gestational DM · Type 1 DM · DKA (wrong order; weight loss was not linked)</div></div>
+    <div class="case"><div class="q">Child with fever, cough, runny nose and a rash spreading from the face</div><span class="pill warn">Weak</span>
+      <div class="dd">linked: <b>fever, cough, rash</b> → Viral exanthem · Viral disease · Dengue (measles missing; coryza and rash spread not linked)</div></div>
+    <div class="case"><div class="q">25-year-old with 3 weeks of cough, night sweats and weight loss</div><span class="pill bad">Wrong</span>
+      <div class="dd">linked: <b>night sweats, cough</b> → Lung abscess · COVID-19 · Infective endocarditis (TB missing: BODHI's TB node lacks these symptoms)</div></div>
+  </div>
+  <p>The textbook half of each vignette answer stays grounded. The weak spot is the graph's ranking: conditions tie on symptom count, and BODHI is missing classic symptom links.</p>
+</section>
+
+<section>
+  <h2><span class="n">05</span>What changed today</h2>
+  <ul>
+    <li><b>DeepSeek backend</b> (<code>LLM_BACKEND=deepseek</code>). The key is read from <code>.env</code> or the host's secret store only; it is never in git or chat. Calls retry on rate limits and 5xx responses, and fail with a clear message on a bad key.</li>
+    <li><b>Quality jump from the 3B model.</b> On the local model the baroreceptor answer had the physiology backwards and vignette answers cited no textbook passages. On DeepSeek both are correct and cited.</li>
+    <li><b>Graph route limited to vignettes.</b> It needs two or more symptoms, or one symptom plus a case cue. "Drug of choice for absence seizures" no longer goes through the symptom graph.</li>
+    <li><b>Answer cleanup.</b> Echoed passage headers and bare <code>[3] [8]</code> openers are stripped.</li>
+    <li><b>Resilience.</b> The app shows a readable message, never a traceback, when the LLM is down. This came up when Ollama quit during a test run.</li>
+    <li><b>Hosting kit:</b> a Dockerfile, a bundle script that compacts the index from 379 MB to 274 MB, and an optional <code>APP_PASSWORD</code> login gate.</li>
+    <li><b>Product evaluation:</b> <code>eval/product_eval.py</code> with 36 questions.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">06</span>Risks and known issues</h2>
+  <div class="risk"><span class="pill bad">High</span><p><b>No online host yet.</b> Options: a Cloudflare tunnel from the laptop (nothing uploaded, laptop must stay on), HF PRO for a private Space, or an Oracle Cloud VM.</p></div>
+  <div class="risk"><span class="pill bad">High</span><p><b>Copyright.</b> The index is derived from textbooks obtained without a licence. Any hosted copy must be private or password-gated, and the UI shows only 300-character excerpts. A public release still waits on institutional access.</p></div>
+  <div class="risk"><span class="pill warn">Medium</span><p><b>Data leaves the machine.</b> Every answer sends up to 9 textbook passages and the question to DeepSeek's API. That's fine for the demo, but the team should know it. The offline fallback is <code>LLM_BACKEND=ollama</code> (weaker answers).</p></div>
+  <div class="risk"><span class="pill warn">Medium</span><p><b>Vignette differentials</b>, as shown in section 04. Missing symptom links in BODHI, and tied rankings.</p></div>
+  <div class="risk"><span class="pill warn">Medium</span><p><b>Drug cross-check noise.</b> BODHI's drug links include non-drugs (for example "yellow fever virus" under viral exanthem), and a match can come from a sentence that says the drug is <i>not</i> covered.</p></div>
+  <div class="risk"><span class="pill info">Low</span><p><b>Evaluation depth.</b> The question set is mine and the judge is self-graded. Hand-written gold sections from the domain expert are still missing (<code>eval/questions.jsonl</code>).</p></div>
+  <div class="risk"><span class="pill info">Low</span><p><b>Latency.</b> Multi-hop answers take 8 s at the 95th percentile. That's acceptable live, but the spinner should stay.</p></div>
+</section>
+
+<section>
+  <h2><span class="n">07</span>Against the rubric</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Criterion</th><th class="num">Weight</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td>RAG pipeline</td><td class="num">50%</td><td>ToC-aware chunking, embeddings, Chroma, cited answers. Enhancement: query decomposition plus graph-planned hops, with a visible reasoning trace.</td></tr>
+      <tr><td>Grounding and fallback</td><td class="num">15%</td><td>Three refusal layers. 9/9 off-topic and personal questions handled. Citations on every answer.</td></tr>
+      <tr><td>Problem and data</td><td class="num">15%</td><td>Med-student study aid on 5 standard textbooks plus the BODHI graph, framed as an Eka Care product.</td></tr>
+      <tr><td>UI</td><td class="num">10%</td><td>Streamlit chat with status badge, evidence panel, reasoning path, BODHI cross-check badge and a baseline/multi-hop toggle.</td></tr>
+      <tr><td>Evaluation</td><td class="num">10%</td><td>Retrieval@k on 446 questions, a 36-question product evaluation, 8 documented failure cases.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="n">08</span>Before the 17 November demo</h2>
+  <ol class="steps">
+    <li><span class="who">You</span><span>Choose the host. Then set <code>DEEPSEEK_API_KEY</code> and <code>APP_PASSWORD</code> as secrets there.</span></li>
+    <li><span class="who">Claude</span><span>Fix the vignette ranking: add a small synonym table (coryza, polyuria, "radiating to the left arm"), break ties by symptom specificity, and add TB/measles links from the textbook.</span></li>
+    <li><span class="who">Claude</span><span>Clean the cross-check: filter non-drug nodes, and skip matches from sentences that say "not covered".</span></li>
+    <li><span class="who">You</span><span>Write 10–15 gold questions with sections in <code>eval/questions.jsonl</code>, and review the vignette verdicts above.</span></li>
+    <li><span class="who">Team</span><span>Rehearse the 5-minute demo: a factual question, a comparison, the mosquito vignette with its trace, an off-topic decline, a personal-advice refusal, then one failure case.</span></li>
+    <li><span class="who">Team</span><span>Keep a local fallback ready: the same app on the laptop with Ollama, in case the network or API fails.</span></li>
+  </ol>
+</section>
+</div>
