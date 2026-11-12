@@ -55,4 +55,6 @@ def mint_uri(book_id: str, label: str, entity_type: EntityType | str) -> str:
     """Mint a deterministic URI under the MED:OKF namespace for concepts lacking external codes."""
     type_str = entity_type.value.lower() if isinstance(entity_type, EntityType) else str(entity_type).lower()
     slug = slugify(label)
-    return f"MED:OKF/{book_id}/{type_str}/{slug}"
+    # The book is deliberately NOT part of the ID: the same concept from two books must be one node.
+    # (book_id is kept in the signature for compatibility; provenance records the book.)
+    return f"MED:OKF/{type_str}/{slug}"

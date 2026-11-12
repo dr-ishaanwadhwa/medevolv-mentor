@@ -104,10 +104,12 @@ def print_stats() -> None:
     print("=" * 60 + "\n")
 
 
-def process_section_paths(paths: list[Path], force: bool = False) -> None:
-    """Process a list of OKF section files and update the compiled ontology."""
-    existing_facts = load_compiled_facts()
+def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool = False) -> None:
+    """Process OKF section files and update the compiled ontology. rebuild=True starts from an empty file
+    (uses the extraction cache, so no LLM calls for cached sections) so stale facts don't survive."""
+    existing_facts = [] if rebuild else load_compiled_facts()
     facts_dict: dict[str, ProvenancedOntologyFact] = {f.id: f for f in existing_facts}
+    stats: dict = {}
 
     new_count = 0
     total = len(paths)
@@ -116,15 +118,16 @@ def process_section_paths(paths: list[Path], force: bool = False) -> None:
             logger.warning("Path does not exist: %s", path)
             continue
         logger.info("[%d/%d] Processing %s ...", i, total, path.name)
-        meta, _ = parse_okf_section(path)
+        meta, body = parse_okf_section(path)
         extraction_res = extract_from_section(path, force=force)
-        reconciled = reconcile_section_facts(extraction_res, meta)
+        reconciled = reconcile_section_facts(extraction_res, meta, source_text=body, stats=stats)
         for f in reconciled:
             if f.id not in facts_dict:
                 new_count += 1
             facts_dict[f.id] = f
 
     save_compiled_facts(list(facts_dict.values()))
+    logger.info("Reconciliation: %s", ", ".join(f"{k}={v}" for k, v in sorted(stats.items())))
     logger.info("Done! Added/updated %d facts. Total compiled facts: %d", new_count, len(facts_dict))
     print_stats()
 
@@ -137,6 +140,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=10, help="Max sections to process when --book is passed")
     parser.add_argument("--force", action="store_true", help="Force re-extraction ignoring disk cache")
     parser.add_argument("--stats", action="store_true", help="Print ontology stats and exit")
+    parser.add_argument("--rebuild", action="store_true", help="Start from an empty compiled file (uses cache)")
     args = parser.parse_args()
 
     if args.stats:
@@ -146,11 +150,11 @@ def main() -> None:
     if args.high_yield:
         paths = [Path(p) for p in HIGH_YIELD_SECTIONS if Path(p).exists()]
         logger.info("Running high-yield pilot over %d verified sections...", len(paths))
-        process_section_paths(paths, force=args.force)
+        process_section_paths(paths, force=args.force, rebuild=args.rebuild)
         return
 
     if args.section:
-        process_section_paths([Path(args.section)], force=args.force)
+        process_section_paths([Path(args.section)], force=args.force, rebuild=args.rebuild)
         return
 
     if args.book:
@@ -161,7 +165,7 @@ def main() -> None:
             book_files = sorted(glob.glob(f"data/okf/{args.book}/sections/*.md"))
             paths = [Path(p) for p in book_files[:args.limit]]
         logger.info("Processing %d sections for book '%s'...", len(paths), args.book)
-        process_section_paths(paths, force=args.force)
+        process_section_paths(paths, force=args.force, rebuild=args.rebuild)
         return
 
     parser.print_help()

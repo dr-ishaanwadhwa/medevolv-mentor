@@ -101,6 +101,7 @@ def extract_from_section(path: Path, force: bool = False) -> SectionExtractionRe
     chunks = _chunk_body(body, max_words=2500)
     # Cap at first 4 chunks (up to 10,000 words per section) to manage execution time & budget
     all_triples: list[ExtractionItem] = []
+    failed_chunks = 0
 
     for idx, chunk_text in enumerate(chunks[:4]):
         prompt = build_extraction_prompt(
@@ -136,6 +137,7 @@ def extract_from_section(path: Path, force: bool = False) -> SectionExtractionRe
                 except Exception as e:
                     logger.debug("Skipping invalid triple in %s: %s", section_id, e)
         except Exception as e:
+            failed_chunks += 1
             logger.error("LLM extraction failed for %s chunk %d: %s", section_id, idx, e)
 
     result = SectionExtractionResult(
@@ -145,7 +147,11 @@ def extract_from_section(path: Path, force: bool = False) -> SectionExtractionRe
         triples=all_triples,
     )
 
-    # Save to disk cache
+    # Save to disk cache, but never cache a section where any LLM call failed: a transient outage would
+    # otherwise be remembered forever as "this section has no facts".
+    if failed_chunks:
+        logger.warning("Not caching %s: %d chunk(s) failed; rerun to retry", section_id, failed_chunks)
+        return result
     try:
         cache_file.write_text(json.dumps(result.model_dump(), indent=2), encoding="utf-8")
     except Exception as e:
