@@ -39,3 +39,12 @@ Re-run the same command to redeploy after changes.
 | certificate error for the first ~30 s | Caddy is still getting the certificate |
 | "DeepSeek API refused the request" in the app | key or balance; check `.env` on the VM |
 | logs | `ssh ubuntu@<ip> 'cd eka && sudo docker compose logs -f app'` |
+
+## Live deployment (2026-11-12)
+* URL: https://130-210-60-153.sslip.io (password-gated; the password is in your `.env`, never in git)
+* VM: `eka-study-companion`, Mumbai, **VM.Standard.E5.Flex** 1 OCPU / 12 GB, Ubuntu 24.04 (x86).
+  A1 (Always Free) was out of capacity in Mumbai, so this runs on **trial credit** and will stop when the trial
+  ends unless the account is upgraded. Recreate on A1 later if capacity frees up.
+* The new-VCN wizard created the internet gateway and route but did **not** attach a public IP: add an
+  ephemeral one under VNIC → IP administration → ⋯ → Edit (the ⋯ menu opens with Enter if clicks do nothing).
+* Never run two `push.sh` at once: each builds a fresh index folder and rsync `--delete` makes them clobber each other.
