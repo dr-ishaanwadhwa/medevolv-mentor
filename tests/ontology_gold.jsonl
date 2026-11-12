@@ -1,0 +1,193 @@
+{"condition": "Status epilepticus", "predicate": "TREATED_BY", "object": "Valproate", "expected": true, "source": "ontology"}
+{"condition": "Status epilepticus", "predicate": "TREATED_BY", "object": "Phenobarbital", "expected": true, "source": "ontology"}
+{"condition": "Status epilepticus", "predicate": "TREATED_BY", "object": "Fosphenytoin", "expected": true, "source": "ontology"}
+{"condition": "Status epilepticus", "predicate": "CONFIRMED_BY", "object": "EEG monitoring", "expected": false, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "TREATED_BY", "object": "Levetiracetam", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "TREATED_BY", "object": "Vitamin k", "expected": false, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "TREATED_BY", "object": "lamotrigine", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "CONFIRMED_BY", "object": "MRI", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "CONFIRMED_BY", "object": "Brain MRI", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "CONTRAINDICATES", "object": "Cycloserine", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "CONTRAINDICATES", "object": "chlorpromazine", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "CONTRAINDICATES", "object": "Valproate", "expected": true, "source": "ontology"}
+{"condition": "Epilepsy", "predicate": "MANIFESTS_AS", "object": "Seizure", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "TREATED_BY", "object": "Dengue vaccines", "expected": false, "source": "ontology"}
+{"condition": "Dengue", "predicate": "TREATED_BY", "object": "Tetravalent live attenuated dengue vaccine", "expected": false, "source": "ontology"}
+{"condition": "Dengue", "predicate": "CONFIRMED_BY", "object": "Reverse transcriptase PCR", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "CONFIRMED_BY", "object": "Multiplex polymerase chain reaction", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "CONFIRMED_BY", "object": "IgM-capture ELISA", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "MANIFESTS_AS", "object": "Plasma leakage", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "MANIFESTS_AS", "object": "Fever and myalgia syndrome", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "MANIFESTS_AS", "object": "Thrombocytopenia", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "CAUSED_BY", "object": "Dengue virus", "expected": true, "source": "ontology"}
+{"condition": "Dengue", "predicate": "CAUSED_BY", "object": "Dengue viruses 1–4", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "TREATED_BY", "object": "Azithromycin", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "TREATED_BY", "object": "Amoxicillin", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "CONFIRMED_BY", "object": "Typhidot test", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "CONFIRMED_BY", "object": "Widal test", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "CONFIRMED_BY", "object": "Stool culture", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "MANIFESTS_AS", "object": "Step ladder pattern of remittent fever", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "MANIFESTS_AS", "object": "Leukopenia", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "MANIFESTS_AS", "object": "Fever", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "CAUSED_BY", "object": "Salmonella Paratyphi A", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "CAUSED_BY", "object": "Salmonella Typhi", "expected": true, "source": "ontology"}
+{"condition": "Enteric fever", "predicate": "CAUSED_BY", "object": "Salmonella Paratyphi B", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "TREATED_BY", "object": "Rifampicin", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "TREATED_BY", "object": "Directly observed treatment, short-course (dots)", "expected": false, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "TREATED_BY", "object": "Isoniazid", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "CONFIRMED_BY", "object": "Culture", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "CONFIRMED_BY", "object": "Chest radiography", "expected": false, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "CONFIRMED_BY", "object": "Mycobacterial culture", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "MANIFESTS_AS", "object": "Night sweating", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "MANIFESTS_AS", "object": "Productive cough", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "MANIFESTS_AS", "object": "Chronic granulomatous inflammation", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "CAUSED_BY", "object": "Mycobacterium tuberculosis complex", "expected": true, "source": "ontology"}
+{"condition": "Tuberculosis", "predicate": "CAUSED_BY", "object": "Mycobacterium tuberculosis", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "TREATED_BY", "object": "Isotonic saline", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "TREATED_BY", "object": "Bicarbonate", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "TREATED_BY", "object": "Intravenous fluid resuscitation", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "CONFIRMED_BY", "object": "Venous blood gas", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "CONFIRMED_BY", "object": "Blood ketone measurement", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "CONTRAINDICATES", "object": "Intravenous bicarbonate", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "MANIFESTS_AS", "object": "Acetone-like fruity odor", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "MANIFESTS_AS", "object": "Kussmaul breathing", "expected": true, "source": "ontology"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "MANIFESTS_AS", "object": "Acetone breath", "expected": true, "source": "ontology"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "TREATED_BY", "object": "eptifibatide", "expected": true, "source": "ontology"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "TREATED_BY", "object": "Cangrelor", "expected": true, "source": "ontology"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "TREATED_BY", "object": "Ace inhibitors or arbs", "expected": true, "source": "ontology"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "TREATED_BY", "object": "glimepiride", "expected": true, "source": "ontology"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "TREATED_BY", "object": "Sglt2 inhibitors", "expected": false, "source": "ontology"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "TREATED_BY", "object": "Continuous glucose monitoring", "expected": false, "source": "ontology"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "MANIFESTS_AS", "object": "Hyperglycemia", "expected": true, "source": "ontology"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "MANIFESTS_AS", "object": "Obesity", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "TREATED_BY", "object": "-glucose cotransporter 2 inhibitors", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "TREATED_BY", "object": "Angiotensin receptor-neprilysin inhibitors", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "TREATED_BY", "object": "Sglt2 inhibitors", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CONFIRMED_BY", "object": "Elevated natriuretic peptide levels", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CONFIRMED_BY", "object": "Objective evidence of cardiogenic pulmonary or systemic congestion", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CONTRAINDICATES", "object": "flecainide", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CONTRAINDICATES", "object": "dronedarone", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CONTRAINDICATES", "object": "pioglitazone", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "MANIFESTS_AS", "object": "Pulmonary edema", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "MANIFESTS_AS", "object": "Depressed ejection fraction", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "MANIFESTS_AS", "object": "Ankle swelling", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CAUSED_BY", "object": "Coronary artery disease", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CAUSED_BY", "object": "Diabetes mellitus", "expected": true, "source": "ontology"}
+{"condition": "Heart failure", "predicate": "CAUSED_BY", "object": "Ischemic heart disease", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "TREATED_BY", "object": "Bronchodilators", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "TREATED_BY", "object": "Allergen immunotherapy", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "TREATED_BY", "object": "Influenza vaccine", "expected": false, "source": "ontology"}
+{"condition": "Asthma", "predicate": "CONFIRMED_BY", "object": "Diffusing capacity of lung for carbon monoxide (DLCO)", "expected": false, "source": "ontology"}
+{"condition": "Asthma", "predicate": "CONFIRMED_BY", "object": "Methacholine challenge test", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "CONFIRMED_BY", "object": "Exhaled nitric oxide", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "CONTRAINDICATES", "object": "Ace inhibitors", "expected": false, "source": "ontology"}
+{"condition": "Asthma", "predicate": "CONTRAINDICATES", "object": "Zanamivir", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "CONTRAINDICATES", "object": "aspirin", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "MANIFESTS_AS", "object": "Breathlessness", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "MANIFESTS_AS", "object": "Chest tightness", "expected": true, "source": "ontology"}
+{"condition": "Asthma", "predicate": "MANIFESTS_AS", "object": "Intermittent dyspnea", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "TREATED_BY", "object": "Oxygen therapy", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "TREATED_BY", "object": "Vancomycin", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "CONFIRMED_BY", "object": "Blood culture", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "CONFIRMED_BY", "object": "Urinary antigen tests", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "CONFIRMED_BY", "object": "Sputum Gram stain and culture", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "MANIFESTS_AS", "object": "Leukocytosis", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "MANIFESTS_AS", "object": "Fever", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "CAUSED_BY", "object": "Influenza virus", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "CAUSED_BY", "object": "Streptococcus pneumoniae", "expected": true, "source": "ontology"}
+{"condition": "Community-acquired pneumonia", "predicate": "CAUSED_BY", "object": "SARS-CoV-2", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "TREATED_BY", "object": "Antihypertensive therapy", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "TREATED_BY", "object": "chlorthalidone", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "TREATED_BY", "object": "Angiotensin receptor blockers", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "CONFIRMED_BY", "object": "Ambulatory BP monitoring", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "CONFIRMED_BY", "object": "Home BP monitoring", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "CONFIRMED_BY", "object": "Basic laboratory testing", "expected": false, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "CONTRAINDICATES", "object": "Oral contraceptives", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "CONTRAINDICATES", "object": "Combined hormonal contraceptives", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "CONTRAINDICATES", "object": "Disulfiram", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "MANIFESTS_AS", "object": "Hyperplastic arteriolosclerosis", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "MANIFESTS_AS", "object": "Hyaline arteriolosclerosis", "expected": true, "source": "ontology"}
+{"condition": "Hypertension", "predicate": "MANIFESTS_AS", "object": "Ischemic heart disease", "expected": false, "source": "ontology"}
+{"condition": "Malaria", "predicate": "TREATED_BY", "object": "Vector control", "expected": false, "source": "ontology"}
+{"condition": "Malaria", "predicate": "TREATED_BY", "object": "Tafenoquine", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "TREATED_BY", "object": "Artemisinin-based combination therapy", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "CONFIRMED_BY", "object": "Giemsa-stained peripheral blood smear", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "MANIFESTS_AS", "object": "Anemia", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "MANIFESTS_AS", "object": "Thrombocytopenia", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "MANIFESTS_AS", "object": "Jaundice", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "CAUSED_BY", "object": "Plasmodium falciparum", "expected": true, "source": "ontology"}
+{"condition": "Malaria", "predicate": "CAUSED_BY", "object": "Plasmodium", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "TREATED_BY", "object": "Analgesia", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "TREATED_BY", "object": "Intravenous contrast", "expected": false, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "TREATED_BY", "object": "Gadolinium contrast", "expected": false, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "CONFIRMED_BY", "object": "Abdominal ultrasound", "expected": false, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "CONFIRMED_BY", "object": "Revised Atlanta Criteria", "expected": false, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "CONFIRMED_BY", "object": "Serum amylase", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "MANIFESTS_AS", "object": "Turner's sign", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "MANIFESTS_AS", "object": "Hyperglycemia", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "MANIFESTS_AS", "object": "Cullen's sign", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "CAUSED_BY", "object": "Mumps virus", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "CAUSED_BY", "object": "Alcoholism", "expected": true, "source": "ontology"}
+{"condition": "Acute pancreatitis", "predicate": "CAUSED_BY", "object": "Hypertriglyceridemia", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "TREATED_BY", "object": "Radioiodine ablation", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "TREATED_BY", "object": "Radioactive iodine (131i)", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "TREATED_BY", "object": "Subtotal thyroidectomy", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CONFIRMED_BY", "object": "Free T4", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CONFIRMED_BY", "object": "TSH receptor antibodies", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CONFIRMED_BY", "object": "Serum TSH level", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CONTRAINDICATES", "object": "carbimazole", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "MANIFESTS_AS", "object": "Thyroid dermopathy", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "MANIFESTS_AS", "object": "Pretibial myxedema", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "MANIFESTS_AS", "object": "Graves' ophthalmopathy", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CAUSED_BY", "object": "Thyroid-stimulating immunoglobulins", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CAUSED_BY", "object": "Thyroid-stimulating immunoglobulins (TRAb)", "expected": true, "source": "ontology"}
+{"condition": "Toxic diffuse goiter", "predicate": "CAUSED_BY", "object": "TSH receptor stimulating antibodies", "expected": true, "source": "ontology"}
+{"condition": "Status epilepticus", "predicate": "TREATED_BY", "object": "Lorazepam", "expected": true, "source": "added"}
+{"condition": "Status epilepticus", "predicate": "TREATED_BY", "object": "Phenytoin", "expected": true, "source": "added"}
+{"condition": "Epilepsy", "predicate": "CONFIRMED_BY", "object": "EEG", "expected": true, "source": "added"}
+{"condition": "Epilepsy", "predicate": "TREATED_BY", "object": "Carbamazepine", "expected": true, "source": "added"}
+{"condition": "Dengue", "predicate": "CONFIRMED_BY", "object": "NS1 antigen", "expected": true, "source": "added"}
+{"condition": "Dengue", "predicate": "MANIFESTS_AS", "object": "Hemorrhagic manifestations", "expected": true, "source": "added"}
+{"condition": "Dengue", "predicate": "CONTRAINDICATES", "object": "Aspirin", "expected": true, "source": "added"}
+{"condition": "Dengue", "predicate": "TREATED_BY", "object": "Intravenous fluids", "expected": true, "source": "added"}
+{"condition": "Enteric fever", "predicate": "TREATED_BY", "object": "Ceftriaxone", "expected": true, "source": "added"}
+{"condition": "Enteric fever", "predicate": "TREATED_BY", "object": "Ciprofloxacin", "expected": true, "source": "added"}
+{"condition": "Enteric fever", "predicate": "CONFIRMED_BY", "object": "Blood culture", "expected": true, "source": "added"}
+{"condition": "Tuberculosis", "predicate": "TREATED_BY", "object": "Pyrazinamide", "expected": true, "source": "added"}
+{"condition": "Tuberculosis", "predicate": "TREATED_BY", "object": "Ethambutol", "expected": true, "source": "added"}
+{"condition": "Tuberculosis", "predicate": "CONFIRMED_BY", "object": "Sputum AFB smear", "expected": true, "source": "added"}
+{"condition": "Tuberculosis", "predicate": "CONFIRMED_BY", "object": "GeneXpert MTB/RIF", "expected": true, "source": "added"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "TREATED_BY", "object": "Insulin", "expected": true, "source": "added"}
+{"condition": "Diabetic Ketoacidosis", "predicate": "TREATED_BY", "object": "Potassium", "expected": true, "source": "added"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "TREATED_BY", "object": "Aspirin", "expected": true, "source": "added"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "TREATED_BY", "object": "Percutaneous coronary intervention", "expected": true, "source": "added"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "CONFIRMED_BY", "object": "12-lead ECG", "expected": true, "source": "added"}
+{"condition": "ST-segment elevation myocardial infarction", "predicate": "CONFIRMED_BY", "object": "Troponin", "expected": true, "source": "added"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "TREATED_BY", "object": "Metformin", "expected": true, "source": "added"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "CONFIRMED_BY", "object": "HbA1c", "expected": true, "source": "added"}
+{"condition": "Type 2 Diabetes Mellitus", "predicate": "MANIFESTS_AS", "object": "Polyuria", "expected": true, "source": "added"}
+{"condition": "Heart failure", "predicate": "TREATED_BY", "object": "Furosemide", "expected": true, "source": "added"}
+{"condition": "Heart failure", "predicate": "TREATED_BY", "object": "Carvedilol", "expected": true, "source": "added"}
+{"condition": "Heart failure", "predicate": "CONFIRMED_BY", "object": "Echocardiography", "expected": true, "source": "added"}
+{"condition": "Asthma", "predicate": "TREATED_BY", "object": "Salbutamol", "expected": true, "source": "added"}
+{"condition": "Asthma", "predicate": "TREATED_BY", "object": "Inhaled corticosteroids", "expected": true, "source": "added"}
+{"condition": "Asthma", "predicate": "CONFIRMED_BY", "object": "Spirometry", "expected": true, "source": "added"}
+{"condition": "Asthma", "predicate": "MANIFESTS_AS", "object": "Wheezing", "expected": true, "source": "added"}
+{"condition": "Community-acquired pneumonia", "predicate": "TREATED_BY", "object": "Amoxicillin", "expected": true, "source": "added"}
+{"condition": "Community-acquired pneumonia", "predicate": "TREATED_BY", "object": "Ceftriaxone", "expected": true, "source": "added"}
+{"condition": "Community-acquired pneumonia", "predicate": "TREATED_BY", "object": "Azithromycin", "expected": true, "source": "added"}
+{"condition": "Community-acquired pneumonia", "predicate": "CONFIRMED_BY", "object": "Chest radiography", "expected": true, "source": "added"}
+{"condition": "Hypertension", "predicate": "TREATED_BY", "object": "Amlodipine", "expected": true, "source": "added"}
+{"condition": "Hypertension", "predicate": "TREATED_BY", "object": "Hydrochlorothiazide", "expected": true, "source": "added"}
+{"condition": "Hypertension", "predicate": "TREATED_BY", "object": "Lisinopril", "expected": true, "source": "added"}
+{"condition": "Malaria", "predicate": "TREATED_BY", "object": "Artesunate", "expected": true, "source": "added"}
+{"condition": "Malaria", "predicate": "TREATED_BY", "object": "Chloroquine", "expected": true, "source": "added"}
+{"condition": "Malaria", "predicate": "CONFIRMED_BY", "object": "Rapid diagnostic test", "expected": true, "source": "added"}
+{"condition": "Malaria", "predicate": "MANIFESTS_AS", "object": "Fever", "expected": true, "source": "added"}
+{"condition": "Acute pancreatitis", "predicate": "CONFIRMED_BY", "object": "Serum lipase", "expected": true, "source": "added"}
+{"condition": "Acute pancreatitis", "predicate": "MANIFESTS_AS", "object": "Epigastric pain", "expected": true, "source": "added"}
+{"condition": "Acute pancreatitis", "predicate": "CAUSED_BY", "object": "Gallstones", "expected": true, "source": "added"}
+{"condition": "Acute pancreatitis", "predicate": "TREATED_BY", "object": "Intravenous fluids", "expected": true, "source": "added"}
+{"condition": "Toxic diffuse goiter", "predicate": "TREATED_BY", "object": "Methimazole", "expected": true, "source": "added"}
+{"condition": "Toxic diffuse goiter", "predicate": "TREATED_BY", "object": "Propranolol", "expected": true, "source": "added"}
+{"condition": "Toxic diffuse goiter", "predicate": "MANIFESTS_AS", "object": "Tachycardia", "expected": true, "source": "added"}

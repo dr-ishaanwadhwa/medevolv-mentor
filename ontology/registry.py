@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import re
 from typing import Any
+from ontology.merge import merge_key
 from ontology.normalizer import clean_medical_text, mint_uri, normalize_drug_name, slugify
 from ontology.schema import EntityType
 
@@ -103,6 +104,7 @@ class EntityRegistry:
 
     def __init__(self) -> None:
         self._name_to_node: dict[str, dict[str, Any]] = {}
+        self._key_to_node: dict[str, dict[str, Any]] = {}     # punctuation/plural-insensitive (ontology/merge.py)
         self._id_to_node: dict[str, dict[str, Any]] = {}
         self._synsets = {k.lower(): v for k, v in MEDICAL_SYNSETS.items()}
         self._load_bodhi()
@@ -119,6 +121,7 @@ class EntityRegistry:
             clean_name = clean_medical_text(name).lower()
             if clean_name:
                 self._name_to_node.setdefault(clean_name, entry)
+                self._key_to_node.setdefault(merge_key(name), entry)
 
     def resolve(self, text: str, entity_type: EntityType | str, book_id: str = "okf") -> tuple[str, str, str]:
         """Resolve a raw mention to (canonical_id, canonical_label, resolved_type).
@@ -139,6 +142,11 @@ class EntityRegistry:
         # 2. Check exact / normalized match in BODHI
         if low in self._name_to_node:
             node = self._name_to_node[low]
+            return node["id"], node["name"], node["type"]
+
+        # 2b. Same name up to punctuation, hyphens or a plural ('Deep-venous thrombosis', 'Graves’ disease')
+        node = self._key_to_node.get(merge_key(raw))
+        if node:
             return node["id"], node["name"], node["type"]
 
         # 3. Check drug name normalization

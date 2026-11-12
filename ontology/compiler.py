@@ -27,20 +27,46 @@ ONTOLOGY_DATA_DIR = Path("data/ontology")
 ONTOLOGY_FILE = ONTOLOGY_DATA_DIR / "clinical_ontology.jsonl"
 
 
-def save_compiled_facts(facts: list[ProvenancedOntologyFact], path: Path = ONTOLOGY_FILE) -> None:
-    """Save reconciled facts to JSONL file, merging duplicates."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Deduplicate by (subject_id, predicate, object_id) while preserving highest confidence
-    dedup: dict[tuple[str, str, str], ProvenancedOntologyFact] = {}
-    for f in facts:
-        key = (f.subject_id, f.predicate.value, f.object_id)
-        if key not in dedup or f.confidence > dedup[key].confidence:
-            dedup[key] = f
+def _src_key(p) -> tuple[str, str]:
+    return (p.section_id, p.verbatim_quote)
 
-    lines = [f.model_dump_json() for f in dedup.values()]
+
+def merge_duplicates(facts: list[ProvenancedOntologyFact]) -> list[ProvenancedOntologyFact]:
+    """One fact per (subject, predicate, object), keeping every supporting source. The primary fact is the
+    best one (CERTIFIED first, then confidence); sources come only from facts with the primary's status."""
+    groups: dict[tuple[str, str, str], list[ProvenancedOntologyFact]] = {}
+    for f in facts:
+        groups.setdefault((f.subject_id, f.predicate.value, f.object_id), []).append(f)
+    out = []
+    for fs in groups.values():
+        best = max(fs, key=lambda f: (f.status == "CERTIFIED", f.confidence))
+        srcs: dict = {}
+        for f in fs:
+            if f.status == best.status:
+                for p in (f.sources or [f.provenance]):
+                    srcs.setdefault(_src_key(p), p)
+        out.append(best.model_copy(update={"sources": list(srcs.values())}))
+    return out
+
+
+def save_compiled_facts(facts: list[ProvenancedOntologyFact], path: Path = ONTOLOGY_FILE,
+                        merge_report: Path | None = None) -> None:
+    """Save reconciled facts to JSONL: merge entity spellings (ontology/merge.py), merge duplicate triples with
+    all their sources, and apply cached verifier verdicts (ontology/verifier.py; no LLM calls here)."""
+    from ontology.merge import apply_merges, plan_merges
+    from ontology.verifier import apply_verdicts
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mapping, report = plan_merges(facts)
+    facts = apply_verdicts(merge_duplicates(apply_merges(facts, mapping)))
+    if merge_report:
+        merge_report.parent.mkdir(parents=True, exist_ok=True)
+        merge_report.write_text("".join(f"{r['canonical_label']}\t{r['type']}\t{' | '.join(r['merged'])}\n"
+                                        for r in sorted(report, key=lambda r: r["canonical_label"].lower())))
+    lines = [f.model_dump_json() for f in facts]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     load_compiled_facts.cache_clear()
-    logger.info("Compiled %d unique clinical ontology facts to %s", len(lines), path)
+    logger.info("Compiled %d unique facts (%d entity merge groups) to %s", len(lines), len(report), path)
 
 
 @functools.cache

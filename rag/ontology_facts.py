@@ -7,6 +7,8 @@ Everything here returns [] / {} when the file is missing, so the app still works
     first_line_drugs_for("Tuberculosis")          -> [fact, ...]
     profile("Tuberculosis")                       -> {"presentation": [...], "therapy": {...}, ...}
     catalog()                                      -> {organ system: {category: {condition: n_facts}}}
+    books(fact) / corroboration(fact)              -> ["davidson", "harrison"] / 2  (books that state it)
+    contradictions_for("Tuberculosis")             -> [{"kind", "condition", "drug"/"by_book", "note", ...}]
 """
 from __future__ import annotations
 
@@ -144,9 +146,33 @@ def cite(f: dict) -> str:
     return ", ".join(x for x in (p.get("book_title", p["book_id"]), chapter, pg) if x)
 
 
+def sources(f: dict) -> list[dict]:
+    """Every textbook passage that supports the fact (older files have only the primary provenance)."""
+    return f.get("sources") or [f["provenance"]]
+
+
+def books(f: dict) -> list[str]:
+    return sorted({p["book_id"] for p in sources(f)})
+
+
+def corroboration(f: dict) -> int:
+    """How many different books state this fact. UI: show "stated in N books" when N >= 2."""
+    return len(books(f))
+
+
+def cite_all(f: dict) -> str:
+    """One citation per book, e.g. 'Harrison's ..., p. 12; Davidson's ..., p. 40'."""
+    seen, out = set(), []
+    for p in sources(f):
+        if p["book_id"] not in seen:
+            seen.add(p["book_id"])
+            out.append(cite({"provenance": p}))
+    return "; ".join(out)
+
+
 def _dedupe(fs: list[dict]) -> list[dict]:
     seen, out = set(), []
-    for f in fs:
+    for f in sorted(fs, key=corroboration, reverse=True):     # stable: facts stated by more books come first
         key = (f["predicate"], f["object_label"].lower())
         if key not in seen:
             seen.add(key)
@@ -277,3 +303,52 @@ def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_
         out.append(f"WARNING (textbook ontology): {f['object_label']} is {'strictly ' if sev == 'strict' else ''}"
                    f"contraindicated in {f['subject_label']}" + (f": {why}" if why else "") + f" ({cite(f)}).")
     return out
+
+
+# ---------- Where the books differ (shown to students as "books differ, see both", never as an error) ----------
+
+DIFFER_NOTE = "Books differ, see both."
+
+
+def _contradictions(labels: set[str] | None = None) -> list[dict]:
+    """Two kinds, per condition label:
+    - treated_and_contraindicated: the same drug is listed as a treatment and as a contraindication (often a
+      subgroup or timing nuance; both quotes are returned).
+    - first_line_differs: two or more books name first-line drugs and the books share none of them."""
+    tb, ci, fl = defaultdict(list), defaultdict(list), defaultdict(lambda: defaultdict(list))
+    for f in facts():
+        c = f["subject_label"]
+        if labels is not None and c not in labels:
+            continue
+        if f["predicate"] == "TREATED_BY":
+            tb[(c, f["object_id"])].append(f)
+            if f["clinical_facets"].get("line_of_therapy") == "FIRST_LINE":
+                for b in books(f):
+                    fl[c][b].append(f)
+        elif f["predicate"] == "CONTRAINDICATES":
+            ci[(c, f["object_id"])].append(f)
+    out = []
+    for key in sorted(tb.keys() & ci.keys()):
+        out.append({"kind": "treated_and_contraindicated", "condition": key[0],
+                    "drug": tb[key][0]["object_label"], "facts": tb[key] + ci[key], "note": DIFFER_NOTE})
+    for c, by_book in sorted(fl.items()):
+        if len(by_book) < 2:
+            continue
+        drug_sets = [{f["object_id"] for f in fs} for fs in by_book.values()]
+        if not set.intersection(*drug_sets):
+            out.append({"kind": "first_line_differs", "condition": c,
+                        "by_book": {b: sorted({f["object_label"] for f in fs}) for b, fs in by_book.items()},
+                        "facts": [f for fs in by_book.values() for f in fs], "note": DIFFER_NOTE})
+    return out
+
+
+@functools.cache
+def all_contradictions() -> tuple[dict, ...]:
+    return tuple(_contradictions())
+
+
+def contradictions_for(name: str) -> list[dict]:
+    """Where the books differ about one condition (matched like the other helpers). UI: render each item with
+    its note and both sides' citations (cite_all on item["facts"])."""
+    labels = set(match_conditions(name))
+    return _contradictions(labels) if labels else []

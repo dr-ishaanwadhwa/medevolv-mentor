@@ -121,3 +121,7 @@ class ProvenancedOntologyFact(BaseModel):
     clinical_facets: ClinicalFacet = Field(default_factory=ClinicalFacet)
     provenance: ClinicalProvenance
     nl_fact: str
+    # Every section that supports this triple (the compiler merges duplicates); provenance is the primary one.
+    sources: list[ClinicalProvenance] = Field(default_factory=list)
+    # Second-pass check that each quote states the triple (ontology/verifier.py): "yes" | "partial" | None
+    llm_check: str | None = None
