@@ -20,6 +20,12 @@ from rag.answer import answer, answer_multihop
 from rag.graph_component import clinical_graph as clinical_graph_view
 from rag.trace import STAGES
 
+
+@functools.cache
+def onto_sections() -> int:
+    """Distinct textbook sections that contributed at least one certified fact."""
+    return len({(src.get("book_id"), src.get("section_id")) for f in onto.facts() for src in onto.sources(f)})
+
 st.set_page_config(page_title="MedEvolv Mentor", page_icon="🩺", layout="wide",
                    initial_sidebar_state="collapsed")
 
@@ -30,6 +36,11 @@ st.html("""
 :root { --ink:#15232a; --muted:#5a6b72; --line:#d7e0e2; --accent:#0f6b74; --accent-soft:#e2f0f1;
         --good:#1d7a46; --good-soft:#e3f3ea; --warn:#9a6200; --warn-soft:#fbf0db; --bad:#b0323a; --bad-soft:#f8e3e4;
         --card:#ffffff; --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace; }
+@media (prefers-color-scheme: dark) {
+  :root { --ink:#e6eef0; --muted:#9fb2b8; --line:#2b3d43; --accent:#4fb3bd; --accent-soft:#17343a;
+          --good:#6fd39b; --good-soft:#173324; --warn:#e8b25a; --warn-soft:#3a2d12; --bad:#f08a90; --bad-soft:#3d1a1d;
+          --card:#14232a; }
+}
 .stApp, .stApp p, .stApp li, .stApp button, .stApp input, .stApp textarea, .stApp label { font-family: "Instrument Sans", system-ui, sans-serif; }
 /* never override Streamlit's icon font, or icon names render as text */
 [data-testid="stIconMaterial"], [class*="material-symbols"], [class*="MaterialSymbols"] { font-family: "Material Symbols Rounded" !important; }
@@ -37,6 +48,8 @@ st.html("""
 .stButton button { height: auto; min-height: 2.6rem; padding: .45rem .8rem; text-align: left; justify-content: flex-start; }
 .stButton button p, .stButton button div { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; text-align: left; line-height: 1.35; }
 .block-container { padding-top: 1.6rem; max-width: 1100px; }
+.mm-pills { display:flex; flex-wrap:wrap; gap:.3rem; margin:.1rem 0 .5rem; }
+.mm-pills .mm-pill { margin-right:0; }
 h1, h2, h3 { letter-spacing: -0.01em; }
 
 .mm-hero { display:grid; gap:.55rem; padding: .4rem 0 1.1rem; border-bottom:1px solid var(--line); margin-bottom: .4rem; }
@@ -48,7 +61,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
            padding: .18rem .6rem; border-radius: 999px; }
 
 .mm-label { font: 500 .72rem var(--mono); letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
-.mm-pill { display:inline-block; font:500 .74rem var(--mono); padding:.15rem .6rem; border-radius:999px; margin-right:.35rem; }
+.mm-pill { display:inline-block; font:500 .74rem var(--mono); padding:.15rem .6rem; border-radius:999px; margin:0 .35rem .2rem 0; white-space:nowrap; }
 .mm-pill.good { background:var(--good-soft); color:var(--good); }
 .mm-pill.warn { background:var(--warn-soft); color:var(--warn); }
 .mm-pill.bad  { background:var(--bad-soft);  color:var(--bad); }
@@ -59,7 +72,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .mm-step { display:grid; grid-template-columns: 2.1rem 1fr auto; gap:.2rem .75rem; position:relative; padding:.55rem 0; }
 .mm-step:not(:last-child)::before { content:""; position:absolute; left:1.02rem; top:2.3rem; bottom:-.4rem; width:2px; background:var(--line); }
 .mm-dot { width:2.1rem; height:2.1rem; border-radius:50%; display:grid; place-items:center; font-size:1rem;
-          background:var(--accent-soft); border:2px solid #fff; box-shadow:0 0 0 1px var(--line); z-index:1; }
+          background:var(--accent-soft); border:2px solid var(--card); box-shadow:0 0 0 1px var(--line); z-index:1; }
 .mm-step.warn .mm-dot { background:var(--warn-soft); }
 .mm-step.stop .mm-dot { background:var(--bad-soft); }
 .mm-step .mm-body { min-width:0; }
@@ -78,7 +91,12 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 
 /* sources */
 .mm-src { border:1px solid var(--line); border-radius:10px; padding:.7rem .85rem; background:var(--card); display:grid; gap:.3rem; margin-bottom:.5rem; }
-.mm-src.cited { border-color: var(--accent); }
+.mm-src.cited { border-color: var(--accent); border-left-width:4px; }
+.mm-src-ex { overflow-wrap:anywhere; }
+.mm-empty { border:1px dashed var(--line); border-radius:12px; padding:.9rem 1rem; color:var(--muted); font-size:.92rem; margin:.4rem 0 .8rem; }
+.mm-differ { border:1px solid var(--line); border-left:4px solid var(--warn); border-radius:10px; padding:.65rem .85rem; margin-bottom:.6rem; background:var(--card); display:grid; gap:.3rem; }
+.mm-side { font-size:.86rem; color:var(--muted); line-height:1.45; padding-left:.6rem; border-left:2px solid var(--line); }
+.mm-side b { color:var(--ink); }
 .mm-src-head { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
 .mm-src-n { font: 600 .8rem var(--mono); color:var(--accent); }
 .mm-src-where { font-size:.88rem; color:var(--ink); font-weight:500; }
@@ -89,6 +107,19 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .mm-card h4 { margin:0; font-size:1.02rem; }
 .mm-card p { margin:0; color:var(--muted); font-size:.92rem; line-height:1.5; }
 .mm-num { font: 600 .74rem var(--mono); color:var(--accent); }
+
+@media (max-width: 640px) {
+  .block-container { padding: 1rem .8rem 4rem; }
+  .mm-title { font-size: 1.65rem; }
+  .mm-sub { font-size: .95rem; }
+  .mm-step { grid-template-columns: 1.8rem 1fr; }
+  .mm-dot { width:1.8rem; height:1.8rem; font-size:.85rem; }
+  .mm-step:not(:last-child)::before { left:.86rem; top:2.1rem; }
+  .mm-ms { grid-column: 2; padding-top:0; }
+  .mm-hits li { grid-template-columns: 2.3rem 1fr; }
+  .mm-card { height:auto; }
+  .stTabs [data-baseweb="tab-list"] { overflow-x:auto; }
+}
 </style>
 """)
 
@@ -164,6 +195,29 @@ def esc(s) -> str:
     return html.escape(str(s))
 
 
+def corr_badge(f) -> str:
+    """'N books' pill when several textbooks state the same fact (empty string otherwise)."""
+    try:
+        n = onto.corroboration(f)
+    except Exception:
+        return ""
+    if n < 2:
+        return ""
+    names = ", ".join(BOOKS.get(b, b) for b in onto.books(f))
+    return f'<span class="mm-pill good" title="{esc(names)}">{n} books</span>'
+
+
+def cite_text(f) -> str:
+    try:
+        return onto.cite_all(f)
+    except Exception:
+        return onto.cite(f)
+
+
+def by_corroboration(fs):
+    return sorted(fs, key=lambda f: -onto.corroboration(f))      # stable: ties keep their order
+
+
 JUNK = re.compile(r"^(?:[A-Z]\s){2,}[A-Z0-9\s]*$")       # running-header debris such as "U N I T I V"
 
 
@@ -221,6 +275,8 @@ def render_sources(res) -> None:
             mark = " ✅" if j in res.graph_cited else ""
             st.markdown(f"**[G{j}]** {f}{mark}")
         st.markdown('<div class="mm-label" style="margin-top:.6rem">Textbook passages</div>', unsafe_allow_html=True)
+    if res.hits and not res.cited:
+        st.caption("None of the retrieved passages were cited in the answer.")
     for i, h in enumerate(res.hits, 1):
         cited = i in res.cited
         book = BOOKS.get(h.meta.get("book_id"), h.meta.get("book", ""))
@@ -298,11 +354,11 @@ def render_clinical_graph(symptoms: list[str], conditions: list[str], key: str, 
                 f"Why: {cf['rationale']}" if cf.get("rationale") else "") if x)
             quote = (f.get("provenance") or {}).get("verbatim_quote") or ""
             st.markdown(
-                f'<div class="mm-src cited"><div class="mm-src-head"><span class="mm-pill good">certified fact</span>'
+                f'<div class="mm-src cited"><div class="mm-src-head"><span class="mm-pill good">certified fact</span>{corr_badge(f)}'
                 f'<span class="mm-src-where"><b>{esc(f["subject_label"])} → {esc(f["predicate"])} → '
                 f'{esc(f["object_label"])}</b></span></div><div class="mm-src-ex">{esc(f.get("nl_fact", ""))}</div>'
                 + (f'<div class="mm-src-ex">{esc(extra)}</div>' if extra else "")
-                + f'<div class="mm-src-where">📖 {esc(onto.cite(f))}</div>'
+                + f'<div class="mm-src-where" title="{esc(cite_text(f))}">📖 {esc(cite_text(f))}</div>'
                 + (f'<div class="mm-src-ex"><i>“{esc(quote)}”</i></div>' if quote else "") + "</div>",
                 unsafe_allow_html=True)
         elif e:
@@ -321,7 +377,7 @@ def render_answer(res, steps, total_ms, key: str = "", question: str = "") -> No
     pills = f'<span class="mm-pill {tone}">{label}</span>'
     if route:
         pills += f'<span class="mm-pill info">{route}</span>'
-    st.markdown(pills, unsafe_allow_html=True)
+    st.markdown(f'<div class="mm-pills">{pills}</div>', unsafe_allow_html=True)
     st.markdown(res.text)
     conds = getattr(res.plan, "conditions", None) if res.plan is not None else None
     if key and question:      # on-demand Graphviz flowchart from certified facts; renders nothing when n/a
@@ -348,6 +404,10 @@ with tab_ask:
                 if st.button(q, key=f"ex{n}", use_container_width=True):
                     st.session_state.pending = q
 
+    hint = st.empty()   # cleared as soon as a question arrives this run
+    if not st.session_state.messages:
+        hint.markdown('<div class="mm-empty">No questions yet. Pick a demo question above or type your own below. '
+                      'Each answer lists its textbook sources and can show how it was made.</div>', unsafe_allow_html=True)
     for i, m in enumerate(st.session_state.messages):
         with st.chat_message(m["role"], avatar="🧑‍⚕️" if m["role"] == "user" else "🩺"):
             if m["role"] == "user":
@@ -359,6 +419,7 @@ with tab_ask:
     question = st.chat_input("Ask a medicine, pharmacology, pathology, physiology or microbiology question…")
     question = question or st.session_state.pop("pending", None)
     if question:
+        hint.empty()
         st.session_state.messages.append({"role": "user", "content": question})
         with st.chat_message("user", avatar="🧑‍⚕️"):
             st.markdown(question)
@@ -449,11 +510,13 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
                             f'<p>{body}</p></div>', unsafe_allow_html=True)
         st.write("")
 
-    st.markdown("**Two newer additions.** Long clinical cases (35+ words) take a *case route*: the model names the "
-                "case's focus and what it asks, and the whole case plus short focused queries are searched together. "
-                "A **clinical ontology** (facts extracted by a language model from 120 high-yield sections) adds "
+    st.markdown("**Two newer additions.** Long clinical cases (35+ words) take a *case route*: the model splits the case "
+                "along up to three clinical axes (cause and diagnosis, emergency stabilisation, drug treatment), searches "
+                "short textbook-style queries for each alongside the whole case, and answers axis by axis. "
+                f"A **clinical ontology** (facts extracted by a language model from {onto_sections():,} textbook sections) adds "
                 "first-line drugs, confirmatory tests and contraindication warnings to answers. A fact is kept only if "
-                "its quote is found word-for-word in the source; reversed or mistyped facts are corrected or dropped, "
+                "its quote is found word-for-word in the source, and a second model pass checks that the quote actually states "
+                "the fact; reversed or mistyped facts are corrected or dropped, "
                 "and a first-line tag is removed when the source hedges. The quote is verified, not the medical "
                 "judgement, so check the source before relying on a fact. Browse it in the *Explore conditions* tab.")
     left, right = st.columns(2)
@@ -502,20 +565,54 @@ def fact_row(f, uid: str, arrow: bool = False) -> None:
     cf = f.get("clinical_facets") or {}
     sev = cf.get("contraindication_severity")
     pill = ('<span class="mm-pill bad">strict</span>' if sev == "STRICT"
-            else '<span class="mm-pill warn">caution</span>' if sev == "CAUTIONARY" else "")
+            else '<span class="mm-pill warn">caution</span>' if sev == "CAUTIONARY" else "") + corr_badge(f)
     why = f'<div class="mm-src-ex">Why: {esc(cf["rationale"])}</div>' if f["predicate"] == "CONTRAINDICATES" and cf.get("rationale") else ""
     st.markdown(f'<div class="mm-src"><div class="mm-src-head">{pill}<span class="mm-src-where"><b>{esc(name)}</b></span></div>'
                 f'<div class="mm-src-ex">{esc(f.get("nl_fact", ""))}</div>{why}</div>', unsafe_allow_html=True)
     quote = (f.get("provenance") or {}).get("verbatim_quote") or ""
     quote = quote[:300] + ("…" if len(quote) > 300 else "")
     with st.expander("Source"):
-        st.caption(onto.cite(f))
+        st.caption(cite_text(f))
         if quote:
             st.markdown(f"> {quote}")
 
 
+def _book_cite(f, book: str) -> str:
+    for p in onto.sources(f):
+        if p.get("book_id") == book:
+            return onto.cite({"provenance": p})
+    return onto.cite(f)
+
+
+def books_differ(items) -> None:
+    """Neutral, collapsed note where textbooks give different recommendations; shows both sides."""
+    with st.expander(f"Books differ · {len(items)} case{'s' if len(items) != 1 else ''}", expanded=False):
+        st.caption("These textbooks give different recommendations. Neither is marked wrong, so read both sources.")
+        for c in items:
+            fs = c.get("facts") or []
+            if c.get("kind") == "first_line_differs":
+                sides = ""
+                for b, drugs in (c.get("by_book") or {}).items():
+                    src = next((f for f in fs if b in onto.books(f)), None)
+                    sides += (f'<div class="mm-side"><b>{esc(BOOKS.get(b, b))}</b>: {esc(", ".join(drugs))}'
+                              + (f'<br>📖 {esc(_book_cite(src, b))}' if src else "") + '</div>')
+                st.markdown(f'<div class="mm-differ"><div><b>{esc(c["condition"])}</b>: first-line drugs differ between books</div>'
+                            f'{sides}</div>', unsafe_allow_html=True)
+            else:
+                sides = ""
+                for f in fs:
+                    role = "Listed as a treatment" if f["predicate"] == "TREATED_BY" else "Listed as a contraindication"
+                    quote = (f.get("provenance") or {}).get("verbatim_quote") or ""
+                    quote = quote[:240] + ("…" if len(quote) > 240 else "")
+                    sides += (f'<div class="mm-side"><b>{role}</b> · {esc(cite_text(f))}'
+                              + (f'<br><i>“{esc(quote)}”</i>' if quote else "") + '</div>')
+                st.markdown(f'<div class="mm-differ"><div><b>{esc(c.get("drug", ""))}</b> in {esc(c["condition"])}: '
+                            f'recommendation depends on the source (often a subgroup or timing nuance)</div>'
+                            f'{sides}</div>', unsafe_allow_html=True)
+
+
 def fact_list(facts_, uid: str, arrow: bool = False) -> None:
-    for i, f in enumerate(facts_):
+    for i, f in enumerate(by_corroboration(facts_)):
         fact_row(f, f"{uid}{i}", arrow)
 
 
@@ -527,7 +624,7 @@ with tab_explore:
         cat = onto.catalog()
         n_cond = sum(len(c) for s in cat.values() for c in s.values())
         st.markdown("### Explore certified clinical facts")
-        st.markdown("Facts extracted by a language model from 120 high-yield textbook sections. Each fact's quote "
+        st.markdown(f"Facts extracted by a language model from {onto_sections():,} textbook sections. Each fact's quote "
                     "was found word-for-word in its source, which proves the source says it, not that the fact was "
                     "read correctly. Open *Source* under any fact to check. Drill down from organ system to a single "
                     "condition.")
@@ -553,6 +650,12 @@ with tab_explore:
         prof = onto.profile(cond)
         with st.expander("🕸️  Clinical graph for this condition", expanded=False):
             render_clinical_graph([], [cond], key="cg_ex_" + re.sub(r"\W+", "_", cond.lower())[:48])
+        try:
+            differ = onto.contradictions_for(cond)
+        except Exception:
+            differ = []
+        if differ:
+            books_differ(differ)
         if prof["stages"]:
             st.markdown('<div class="mm-label">Stages</div>' + "".join(
                 f'<span class="mm-pill info">{esc(f["object_label"])}</span>' for f in prof["stages"]),

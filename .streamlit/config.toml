@@ -1,10 +1,18 @@
+# Light and dark themes; Streamlit follows the viewer's system setting.
 [theme]
-base = "light"
 primaryColor = "#0f6b74"
+font = "sans serif"
+
+[theme.light]
 backgroundColor = "#f7f9f9"
 secondaryBackgroundColor = "#eaf1f2"
 textColor = "#15232a"
-font = "sans serif"
+
+[theme.dark]
+primaryColor = "#4fb3bd"
+backgroundColor = "#0f1a1e"
+secondaryBackgroundColor = "#17262b"
+textColor = "#e6eef0"
 
 [browser]
 gatherUsageStats = false

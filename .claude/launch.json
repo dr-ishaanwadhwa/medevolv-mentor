@@ -4,8 +4,28 @@
     {
       "name": "streamlit",
       "runtimeExecutable": ".venv/bin/streamlit",
-      "runtimeArgs": ["run", "app.py", "--server.headless", "true", "--server.port", "8501"],
+      "runtimeArgs": [
+        "run",
+        "app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8501"
+      ],
       "port": 8501
+    },
+    {
+      "name": "streamlit-8502",
+      "runtimeExecutable": ".venv/bin/streamlit",
+      "runtimeArgs": [
+        "run",
+        "app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8502"
+      ],
+      "port": 8502
     }
   ]
 }
