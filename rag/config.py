@@ -38,6 +38,13 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
+# Google Gemini (AI Studio key). Interactions API per aistudio.google.com/docs (2026-11): POST /v1beta/interactions,
+# header x-goog-api-key, thinking via generation_config.thinking_level. Key lives only in .env / host secrets.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_THINKING = os.getenv("GEMINI_THINKING", "minimal")      # minimal | low | medium | high
+GEMINI_URL = os.getenv("GEMINI_URL", "https://generativelanguage.googleapis.com/v1beta/interactions")
+
 OKF_DIR = Path(os.getenv("OKF_DIR", "data/okf"))
 CHROMA_DIR = Path(os.getenv("CHROMA_DIR", "data/chroma"))
 

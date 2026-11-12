@@ -55,7 +55,7 @@ def model_name(model: str | None = None) -> str:
     if model:
         return model
     return {"deepseek": config.DEEPSEEK_MODEL, "ollama": config.OLLAMA_MODEL,
-            "oci": config.OCI_CHAT_MODEL}.get(config.LLM_BACKEND, config.LLM_BACKEND)
+            "oci": config.OCI_CHAT_MODEL, "gemini": config.GEMINI_MODEL}.get(config.LLM_BACKEND, config.LLM_BACKEND)
 
 
 def chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 900, json_mode: bool = False,
@@ -117,6 +117,9 @@ def _chat(system: str, user: str, temperature: float = 0.1, max_tokens: int = 90
     if config.LLM_BACKEND == "deepseek":
         return _deepseek_chat(system, user, temperature, max_tokens, json_mode or schema is not None)
 
+    if config.LLM_BACKEND == "gemini":
+        return _gemini_chat(system, user, max_tokens, json_mode or schema is not None)
+
     raise ValueError(f"Unknown LLM_BACKEND={config.LLM_BACKEND}")
 
 
@@ -147,3 +150,50 @@ def _deepseek_chat(system: str, user: str, temperature: float, max_tokens: int, 
             err = e
         time.sleep(2 * (attempt + 1))
     raise RuntimeError(f"DeepSeek API is not responding: {err}") from err
+
+
+def _gemini_text(data: dict) -> str:
+    """Generated text from an Interactions API response: the last 'model_output' step's text parts."""
+    steps = data.get("steps") or []
+    outputs = [st for st in steps if st.get("type") == "model_output"] or steps
+    for step in reversed(outputs):
+        parts = [c.get("text", "") for c in (step.get("content") or []) if isinstance(c, dict)]
+        if any(parts):
+            return "".join(parts)
+    return data.get("output_text", "") or ""
+
+
+def _gemini_chat(system: str, user: str, max_tokens: int, json_mode: bool) -> str:
+    """Google Gemini via the Interactions API. Temperature is not sent: the docs say newer Gemini models ignore it
+    and do not state that the default model accepts it."""
+    if not config.GEMINI_API_KEY:
+        raise RuntimeError("LLM_BACKEND=gemini but GEMINI_API_KEY is not set (add it to .env or the host's secrets).")
+    body = {
+        "model": config.GEMINI_MODEL,
+        "system_instruction": system,
+        "input": user,
+        # thinking tokens count against max_output_tokens, so leave headroom above the answer budget
+        "generation_config": {"max_output_tokens": max_tokens + 2048, "thinking_level": config.GEMINI_THINKING},
+    }
+    if json_mode:
+        body["response_format"] = {"type": "text", "mime_type": "application/json"}
+    req = urllib.request.Request(config.GEMINI_URL, json.dumps(body).encode(), {
+        "Content-Type": "application/json", "x-goog-api-key": config.GEMINI_API_KEY, "Api-Revision": "2026-05-20"})
+    err: Exception | None = None
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                data = json.load(r)
+            text = _gemini_text(data)
+            if not text.strip():
+                raise RuntimeError(f"Gemini returned no text (status={data.get('status')!r})")
+            return text
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 401, 403):            # bad request / key: retrying will not help
+                detail = e.read().decode("utf-8", "replace")[:300]
+                raise RuntimeError(f"Gemini API refused the request (HTTP {e.code}): {detail}") from e
+            err = e                                   # 429 rate limit, 5xx overload
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            err = e
+        time.sleep(3 * (attempt + 1))
+    raise RuntimeError(f"Gemini API is not responding: {err}") from err
