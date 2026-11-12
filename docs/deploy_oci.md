@@ -41,7 +41,8 @@ Re-run the same command to redeploy after changes.
 | logs | `ssh ubuntu@<ip> 'cd eka && sudo docker compose logs -f app'` |
 
 ## Live deployment (2026-11-12)
-* URL: https://130-210-60-153.sslip.io (password-gated; the password is in your `.env`, never in git)
+* URL: **https://mentor.medevolv.in** (backup: https://130-210-60-153.sslip.io); password-gated, password in `.env`, never in git
+* Redeploy: `DOMAIN=mentor.medevolv.in deploy/oci/push.sh 130.210.60.153` (omit DOMAIN and Caddy drops the domain cert)
 * VM: `eka-study-companion`, Mumbai, **VM.Standard.E5.Flex** 1 OCPU / 12 GB, Ubuntu 24.04 (x86).
   A1 (Always Free) was out of capacity in Mumbai, so this runs on **trial credit** and will stop when the trial
   ends unless the account is upgraded. Recreate on A1 later if capacity frees up.
