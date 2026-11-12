@@ -359,6 +359,11 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
                             f'<p>{body}</p></div>', unsafe_allow_html=True)
         st.write("")
 
+    st.markdown("**Two newer additions.** Long clinical cases (35+ words) take a *case route*: the model names the "
+                "case's focus and what it asks, and the whole case plus short focused queries are searched together. "
+                "A pilot **clinical ontology** (certified facts extracted from 20 high-yield sections, each checked "
+                "word-for-word against its source) adds first-line drugs, confirmatory tests and contraindication "
+                "warnings to answers. Browse it in the *Explore conditions* tab.")
     left, right = st.columns(2)
     with left:
         st.markdown("#### Three ways it says no")

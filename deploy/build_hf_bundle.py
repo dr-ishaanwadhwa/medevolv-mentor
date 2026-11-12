@@ -31,6 +31,12 @@ def main(out: Path) -> None:
             (out / "data/bodhi" / part / "data").mkdir(parents=True, exist_ok=True)
             shutil.copy(src, out / "data/bodhi" / part / "data" / name)
 
+    # Certified ontology facts (git-ignored: they carry short textbook quotes). Optional: the app runs without them.
+    onto = ROOT / "data/ontology/clinical_ontology.jsonl"
+    if onto.exists():
+        (out / "data/ontology").mkdir(parents=True, exist_ok=True)
+        shutil.copy(onto, out / "data/ontology/clinical_ontology.jsonl")
+
     # Copy the one live collection into a fresh store (drops segments left behind by deleted collections)
     name = collection_name()
     src = chromadb.PersistentClient(str(ROOT / "data/chroma")).get_collection(name)
