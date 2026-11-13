@@ -25,6 +25,10 @@ def main(out: Path) -> None:
     shutil.copy(ROOT / "app.py", out / "app.py")
     shutil.copytree(ROOT / ".streamlit", out / ".streamlit")
     shutil.copytree(ROOT / "rag", out / "rag", ignore=shutil.ignore_patterns("__pycache__"))
+    # rag/crosswalk.py uses ontology.merge.merge_key (stdlib-only); ship just that module, not the extraction code
+    (out / "ontology").mkdir(exist_ok=True)
+    (out / "ontology/__init__.py").write_text("")
+    shutil.copy(ROOT / "ontology/merge.py", out / "ontology/merge.py")
     for part in ("BODHI-S", "BODHI-M"):
         for name in ("triples.jsonl", "nl_facts.jsonl"):
             src = ROOT / "data/bodhi" / part / "data" / name
