@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from api import main, spatial
 from api.schemas import (EXCERPT_FIELD_MAX, AnswerEvent, DoneEvent, ErrorEvent, SpatialEvent,
                          SpatialResolveResponse, StepEvent)
-from rag import answer as answer_mod, atlas, concepts, config, mentions, ontology_facts as onto, trace
+from rag import answer as answer_mod, atlas, concepts, config, graph, mentions, ontology_facts as onto, trace
 from rag.retrieve import Hit
 
 LONG = "SECRET-TEXTBOOK-PROSE " * 100          # 2200 chars: must never leave beyond 300 + ellipsis
@@ -120,7 +120,7 @@ def test_errors_stream_as_error_event(client, monkeypatch):
 
 
 def test_error_while_deriving_spatial(client, monkeypatch):
-    monkeypatch.setattr(spatial, "spatial_actions", lambda a: (_ for _ in ()).throw(ValueError("x")))
+    monkeypatch.setattr(spatial, "spatial_actions", lambda *a: (_ for _ in ()).throw(ValueError("x")))
     assert [e for e, _ in stream(client)][-1] == "error"
 
 
@@ -161,3 +161,63 @@ def test_resolve_survives_broken_mention_index(client, monkeypatch):
     monkeypatch.setattr(mentions, "sections_for", broken)
     r = client.get("/api/spatial/resolve", params={"fma": "FMA50050"})
     assert r.status_code == 200 and [c["section_id"] for c in r.json()["citations"]] == ["grays/s1"]
+
+
+CHIASM = {"label": "Optic chiasm", "key": "optic chiasm", "atlas_id": "FMA62045", "atlas_name": "optic chiasm",
+          "method": "exact", "score": 1.0}
+
+
+@pytest.fixture
+def fallback(client, monkeypatch):
+    """No plan conditions, no Gray's citation: only the question/answer text can produce actions."""
+    def ans(q):
+        return answer_mod.Answer("Compression of the optic chiasm by a pituitary tumour [1]. Also SLE.", hits=[hit(1, "robbins", "robbins/s9")],
+                                 cited=[1], plan=SimpleNamespace(route="single", conditions=[]))
+    monkeypatch.setattr(main, "answer_multihop", ans)
+    monkeypatch.setattr(spatial, "section_concept_labels", lambda sid: [])
+    monkeypatch.setattr(atlas, "links", lambda: {"optic chiasm": CHIASM, "heart": HEART, "right coronary artery": RCA})
+    nodes = {"optic chiasm": {"label": "Optic chiasm", "type": "AnatomicalStructure"},
+             "pituitary macroadenoma": {"label": "Pituitary macroadenoma", "type": "PathologicalCondition"},
+             "systemic lupus erythematosus": {"label": "Systemic lupus erythematosus", "type": "PathologicalCondition"}}
+    monkeypatch.setattr(concepts, "concept", lambda n: nodes.get(n.lower(), {}))
+    monkeypatch.setattr(concepts, "search_concepts", lambda q, limit=20: [])
+    monkeypatch.setattr(graph, "link_entities", lambda q: [{"name": "Bitemporal hemianopia", "type": "Symptom"}])
+    monkeypatch.setattr(onto, "match_conditions", lambda n: [n])
+    monkeypatch.setattr(atlas, "structures_for", lambda c: [{"label": "Optic chiasm", "atlas_name": "x", "url": "u"}]
+                        if c == "Pituitary macroadenoma" else [])
+    return client
+
+
+def test_fallback_structure_named_in_answer_and_condition_in_question(fallback):
+    acts = stream(fallback, "Pituitary macroadenoma with bitemporal hemianopia. Why?")[1][1]["actions"]
+    assert [a["fma_ids"] for a in acts] == [["FMA62045"]]               # chiasm found twice, emitted once
+    assert acts[0]["tier"] == "navigation"
+
+
+def test_fallback_systemic_condition_gets_no_highlight(fallback):
+    acts = stream(fallback, "Systemic lupus erythematosus features?")[1][1]["actions"]
+    assert all(a["label"] != "Systemic lupus erythematosus" for a in acts)
+    assert [a["fma_ids"] for a in acts] == [["FMA62045"]]               # only the chiasm named in the answer text
+
+
+def test_fallback_runs_after_plan_and_caps_at_five(fallback, monkeypatch):
+    many = {f"s{i}": {"label": f"S{i}", "key": f"s{i}", "atlas_id": f"FMA{i}", "atlas_name": f"s{i}"} for i in range(9)}
+    monkeypatch.setattr(atlas, "links", lambda: {**many, "optic chiasm": CHIASM})
+    monkeypatch.setattr(atlas, "structures_for", lambda c: [{"label": f"S{i}", "atlas_name": "x", "url": "u"} for i in range(9)])
+    monkeypatch.setattr(main, "answer_multihop", lambda q: answer_mod.Answer(
+        "x", hits=[], cited=[], plan=SimpleNamespace(route="graph", conditions=["Any"])))
+    acts = stream(fallback, "q")[1][1]["actions"]
+    assert [a["label"] for a in acts] == ["S0", "S1", "S2", "S3", "S4"]
+
+
+def test_fallback_survives_broken_entity_linker(fallback, monkeypatch):
+    monkeypatch.setattr(graph, "link_entities", lambda q: (_ for _ in ()).throw(RuntimeError("no graph")))
+    assert stream(fallback, "optic chiasm?")[1][1]["actions"][0]["fma_ids"] == ["FMA62045"]
+
+
+def test_fallback_never_guesses_by_prefix(fallback, monkeypatch):
+    """'inferior' must not become 'Inferior mesenteric artery' just because search_concepts prefix-matches it."""
+    monkeypatch.setattr(concepts, "search_concepts", lambda q, limit=20: [
+        {"id": "x", "label": "Inferior mesenteric artery", "type": "AnatomicalStructure", "degree": 1}])
+    monkeypatch.setattr(main, "answer_multihop", lambda q: answer_mod.Answer("inferior wall", hits=[], cited=[], plan=None))
+    assert stream(fallback, "inferior wall MI")[1][1]["actions"] == []

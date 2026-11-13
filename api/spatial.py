@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 
-from rag import atlas, concepts, config, mentions, ontology_facts as onto
+from rag import atlas, concepts, config, graph, mentions, ontology_facts as onto
 from api.schemas import (EXCERPT_MAX, AnswerCitation, AtlasLink, Citation, ConceptRef, RelatedConcept,
                          SpatialAction)
 
-MAX_ACTIONS = 8
+MAX_ACTIONS = 5
 MAX_CITATIONS = 10
 MAX_SECTION_CONCEPTS = 40
 BOOK_NAMES = {"tripathi": "KD Tripathi Pharmacology", "guyton": "Guyton & Hall Physiology", "robbins": "Robbins Pathology",
@@ -43,9 +43,45 @@ def section_concept_labels(section_id: str) -> list[str]:
     return [n["label"] for n in nodes[:MAX_SECTION_CONCEPTS]]
 
 
-def spatial_actions(answer) -> list[SpatialAction]:
-    """Highlight hints for an Answer: (1) the plan's conditions -> INVOLVES_STRUCTURE structures, (2) a cited Gray's
-    section's own topic, (3) anatomical concepts of the cited sections. Deduplicated by FMA ids, capped."""
+_WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_SKIP = {"the", "and", "with", "from", "that", "this", "what", "which", "does", "have", "into", "for", "are", "was", "why"}
+
+
+def _ngrams(text: str, longest: int = 4) -> list[str]:
+    ws = _WORD.findall(text)
+    out = []
+    for n in range(longest, 0, -1):
+        for i in range(len(ws) - n + 1):
+            g = ws[i:i + n]
+            if n == 1 and (len(g[0]) < 5 or g[0].lower() in _SKIP):
+                continue
+            out.append(" ".join(g))
+    return list(dict.fromkeys(out))
+
+
+def recognised_concepts(question: str, text: str) -> list[dict]:
+    """Concepts named in the question and answer text: the clinical-graph entity linker, then exact concept labels
+    over word n-grams (question first). No prefix search: 'inferior' would match 'Inferior mesenteric artery'.
+    Returns [{"label", "type"}]; each is later mapped through the atlas, so unmapped ones vanish."""
+    out: dict[str, str] = {}
+    try:
+        for e in graph.link_entities(question):
+            out.setdefault(e["name"], e.get("type", ""))
+    except Exception:           # optional layer
+        pass
+    for src in (question, text):
+        for g in _ngrams(src):
+            c = concepts.concept(g)
+            if c:
+                out.setdefault(c["label"], c["type"])
+    return [{"label": k, "type": v} for k, v in out.items()]
+
+
+def spatial_actions(answer, question: str = "") -> list[SpatialAction]:
+    """Highlight hints for an Answer, at most MAX_ACTIONS, deduplicated by FMA ids, atlas-crosswalk ids only:
+    (1) the plan's conditions -> INVOLVES_STRUCTURE structures, (2) a cited Gray's section's own topic and the
+    anatomical concepts of cited sections, (3) concepts recognised in the question and answer text (structures map
+    directly, conditions through their INVOLVES_STRUCTURE facts). A condition with no structure (systemic) adds none."""
     out: list[SpatialAction] = []
     seen: set[tuple[str, ...]] = set()
 
@@ -63,12 +99,19 @@ def spatial_actions(answer) -> list[SpatialAction]:
             add(s["label"], atlas.atlas_record(s["label"]))
     cited_hits = [answer.hits[i - 1] for i in answer.cited if 1 <= i <= len(answer.hits)]
     for h in cited_hits:
-        t = atlas.for_section(h.meta)
+        t = atlas.for_section(h.meta) if h.meta.get("book_id") == "grays" else None
         if t:
             add(t["label"], atlas.atlas_record(t["label"]))
     for sid in dict.fromkeys(h.meta.get("section_id", "") for h in cited_hits):
         for label in section_concept_labels(sid) if sid else []:
             add(label, atlas.atlas_record(label))
+    for c in recognised_concepts(question, answer.text):
+        if c["type"] == "AnatomicalStructure":
+            add(c["label"], atlas.atlas_record(c["label"]))
+        else:
+            for cond in dict.fromkeys([c["label"], *onto.match_conditions(c["label"])]):
+                for st in atlas.structures_for(cond):
+                    add(st["label"], atlas.atlas_record(st["label"]))
     return out
 
 

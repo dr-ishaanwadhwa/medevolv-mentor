@@ -73,7 +73,7 @@ async def chat_events(question: str):
                 break
         try:
             yield sse("answer", _answer_event(payload))
-            actions = await asyncio.to_thread(spatial.spatial_actions, payload)
+            actions = await asyncio.to_thread(spatial.spatial_actions, payload, question)
             yield sse("spatial", SpatialEvent(actions=actions))
         except Exception as e:                      # noqa: BLE001
             yield sse("error", ErrorEvent(message="The answer could not be assembled.", error_type=type(e).__name__))
