@@ -1,7 +1,7 @@
 # Copyrighted corpus and anything derived from it never leaves this machine.
 data/books/
 data/okf/
-data/chroma/
+data/chroma*/
 stair/adapters/
 stair/pairs/
 stair/data/
