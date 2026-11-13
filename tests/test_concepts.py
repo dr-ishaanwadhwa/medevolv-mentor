@@ -26,6 +26,7 @@ FACTS = (
 @pytest.fixture
 def onto(monkeypatch):
     monkeypatch.setattr(ontology_facts, "facts", lambda: FACTS)
+    monkeypatch.setattr(concepts, "_heading_nav", lambda: ({}, {}, {}))   # real headings must not be cached against fake facts
     concepts._index.cache_clear()
     yield
     concepts._index.cache_clear()
@@ -132,3 +133,40 @@ def test_answer_prompt_has_only_certified_facts_and_passages(graph_route, monkey
     assert all(f in ONTOLOGY_LINES or (f.startswith("BODHI") and "drug" not in f.lower()) for f in g)
     assert "textbook passage" in prompt
     assert res.plan.nav_hints                                   # hints exist for the UI but were not sent
+
+
+# ---- heading navigation data on concept pages (rag/headings.py, tier T2: never a fact, never in the prompt)
+
+def test_heading_fields_on_concept_page(onto, monkeypatch):
+    slim = {"heading_id": "h1", "book_id": "harrison", "section_id": "harrison/001-x", "heading": "Tuberculosis",
+            "path": ["Part 1", "Tuberculosis"], "method": "rule1:heading-exact", "tier": "T2"}
+    monkeypatch.setattr(concepts, "_heading_nav", lambda: (
+        {"tuberculosis": [slim]}, {"tuberculosis": [slim]}, {"tuberculosis": ["Koch disease", "Tuberculosis"]}))
+    c = concepts.concept("Tuberculosis")
+    assert [t["section_id"] for t in c["topic_sections"]] == ["harrison/001-x"]
+    assert c["topic_sections"][0]["tier"] == "T2" and len(c["headings"]) == 1
+    assert c["heading_aliases"] == ["Koch disease"]                    # the label itself is not an alias
+    assert "Koch disease" in c["aliases"]
+    other = concepts.concept("Cough")
+    assert other["topic_sections"] == [] and other["headings"] == [] and other["heading_aliases"] == []
+    assert not any("headings" in str(l) for ls in c["outgoing"].values() for l in ls)   # facts stay fact-only
+
+
+def test_non_name_parentheticals_are_not_aliases():
+    for junk in ("Table 7.7", "pp. 729-730", "anterior view", "Fig. 4", "12"):
+        assert concepts._NOT_AN_ALIAS.search(junk), junk
+    for ok in ("Rubeola", "VHF", "obstructive uropathy"):
+        assert not concepts._NOT_AN_ALIAS.search(ok), ok
+
+
+def test_real_headings_give_topic_sections_and_aliases():
+    from pathlib import Path
+    if not Path("data/graph/headings.jsonl").exists() or not Path("data/ontology/clinical_ontology.jsonl").exists():
+        pytest.skip("headings or ontology not built")
+    concepts._index.cache_clear()
+    concepts._heading_nav.cache_clear()
+    tb = concepts.concept("Tuberculosis")
+    assert "harrison/183-183-tuberculosis" in [t["section_id"] for t in tb["topic_sections"]]
+    assert all(t["tier"] == "T2" and "body" not in t for t in tb["topic_sections"])
+    some = [c for c in (concepts.concept(l) for l in ("Measles", "Rubella", "Pertussis")) if c.get("heading_aliases")]
+    assert some                                                         # at least one parenthetical alias reaches a page

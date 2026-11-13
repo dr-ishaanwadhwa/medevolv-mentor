@@ -30,6 +30,8 @@ NOISE_TITLE = re.compile(r"\b(bibliography|references|index|further reading|pref
 # "Stage 1 (T1D)" loses its qualifier and would match every "stage 1" in the books
 BARE_ORDINAL = re.compile(r"^(stage|grade|type|class|phase|group|level) \w+$")
 CERTIFIED_BONUS = 5.0     # the ontology fact itself cites this section
+PRIMARY_BONUS = 10.0      # the section's own heading names the entity (rag/headings.py primary topic): its own section ranks first
+HEADINGS = Path("data/graph/headings.jsonl")
 MAX_LEN = 8
 
 
@@ -51,6 +53,22 @@ def load_entities() -> dict[str, list[tuple[str, str, str]]]:
             if key:
                 by_key[key].append((eid, label, f[side + "_type"]))
     return by_key
+
+
+def load_primary() -> dict[str, set[str]]:
+    """entity id -> ids of sections whose heading is a matched primary topic of that entity (bridge matches excluded).
+    Navigation only: it re-ranks mention links, it creates no clinical claim."""
+    out: dict[str, set[str]] = defaultdict(set)
+    if not HEADINGS.exists():
+        return out
+    for line in HEADINGS.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        if r.get("class") == "matched" and r.get("section_id") and r.get("method") != "rule1:heading-bridge":
+            for cid in r.get("concept_ids", []):
+                out[cid].add(r["section_id"])
+    return out
 
 
 def load_aliases(by_key) -> tuple[dict[str, str], dict[str, str]]:
@@ -163,6 +181,21 @@ def main() -> None:
                 cnt = counts[sid].get(key, 0)
                 links[key][sid] = [cnt, round(strengths.get((key, sid), 0.0) + CERTIFIED_BONUS, 2), "certified"]
 
+    # heading primary topic: bonus on top of whatever the link already has (certified stays certified); added when missing
+    primary = load_primary()
+    n_primary = 0
+    for key, ents in by_key.items():
+        for eid, _, _ in ents:
+            for sid in primary.get(eid, set()) & ids:
+                cur = links[key].get(sid)
+                if cur is None:
+                    cur = [counts[sid].get(key, 0), strengths.get((key, sid), 0.0), "mention"]
+                    links[key][sid] = cur
+                if len(cur) == 3:
+                    cur[1] = round(cur[1] + PRIMARY_BONUS, 2)
+                    cur.append(True)
+                    n_primary += 1
+
     GRAPH_DIR.mkdir(parents=True, exist_ok=True)
     by_section = defaultdict(list)
     total = 0
@@ -170,18 +203,19 @@ def main() -> None:
         for key, ents in by_key.items():
             if not links.get(key):
                 continue
-            secrows = [[sid, v[0], v[1], v[2]] for sid, v in sorted(links[key].items(), key=lambda x: -x[1][1])]
+            secrows = [[sid, v[0], v[1], v[2]] + ([1] if len(v) > 3 else []) for sid, v in sorted(links[key].items(), key=lambda x: -x[1][1])]
             for eid, label, typ in ents:
                 out.write(json.dumps({"id": eid, "label": label, "type": typ, "key": key, "sections": secrows},
                                      separators=(",", ":")) + "\n")
                 total += len(secrows)
-                for sid, cnt, st, ev in secrows:
-                    by_section[sid].append({"label": label, "type": typ, "count": cnt, "strength": st, "evidence": ev})
+                for sid, cnt, st, ev, *pr in secrows:
+                    by_section[sid].append({"label": label, "type": typ, "count": cnt, "strength": st, "evidence": ev,
+                                            **({"primary": True} if pr else {})})
     with open(GRAPH_DIR / "by_section.jsonl", "w", encoding="utf-8") as out:
         for s in secs:
             out.write(json.dumps({"section_id": s["id"], "book_id": s["book_id"], "title": s["title"], "path": s["path"],
                                   "entities": by_section.get(s["id"], [])}, separators=(",", ":")) + "\n")
-    meta = {"sections": n, "max_df": args.max_df, "labels_dropped_as_generic": len(dropped), "links": total,
+    meta = {"sections": n, "max_df": args.max_df, "labels_dropped_as_generic": len(dropped), "links": total, "primary_links": n_primary,
             "build_seconds": round(time.time() - t0, 1)}
     (GRAPH_DIR / "meta.json").write_text(json.dumps(meta, indent=1))
     print(meta)

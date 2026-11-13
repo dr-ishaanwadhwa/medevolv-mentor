@@ -7,6 +7,7 @@ reports/merge_proposals.csv. The CSV is a list of PROPOSALS for a human to revie
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import re
@@ -201,12 +202,61 @@ def proposals(nodes: dict, degree: Counter) -> list[dict]:
     return out
 
 
+def heading_metrics() -> dict:
+    """Navigation-layer metrics from the textbook headings (rag/headings.py, tiers T2/T3/navigation, never answer facts).
+    The first block counts what headings.jsonl holds; the second block counts what the mention index and the concept
+    pages actually expose, so a re-run before and after wiring shows the change. Counts only, no textbook text."""
+    from rag import headings, mentions
+    leaves = [r for r in headings.all_headings(cls="matched") if r.get("is_section") and r.get("section_id")]
+    topics = [r for r in leaves if headings.primary_topic(r["section_id"])]
+    concept_ids = {cid for r in topics for cid in r["concept_ids"]}
+    n_sections = total_sections()
+    by_concept = defaultdict(set)                 # concept label -> its topic sections
+    for r in topics:
+        by_concept[r["concept_label"]].add(r["section_id"])
+    first = in5 = 0
+    for label, sids in by_concept.items():
+        top = mentions.sections_for(label, k=5)
+        first += bool(top) and top[0]["section_id"] in sids
+        in5 += any(t["section_id"] in sids for t in top)
+    by_section, rows = mentions._load()[1], mentions._load()[0]
+    flagged = sum(1 for slots in rows.values() for r in slots if len(r) > 4 and r[4])
+    aliases = headings.parenthetical_aliases()
+    subs = [r for r in headings.all_headings() if r.get("parent_id") and r.get("class") not in ("facet", "structural", "positional")]
+    from rag import concepts                       # concept pages: absent fields count as 0 on a pre-wiring checkout
+    topics_nav, _recs, alias_nav = concepts._heading_nav() if hasattr(concepts, "_heading_nav") else ({}, {}, {})
+    return {
+        "sections_with_primary_topic": len(topics),
+        "sections_with_primary_topic_pct": pct(len(topics), n_sections) if n_sections else None,
+        "concepts_with_topic_section": len(concept_ids),
+        "concept_labels_with_topic_section": len(by_concept),
+        "alias_headings": len(aliases),
+        "alias_count": sum(len(a["aliases"]) for a in aliases),
+        "subtopic_of_links": len(subs),
+        "concept_pages_with_topic_sections": len(topics_nav),
+        "concept_pages_with_heading_aliases": len(alias_nav),
+        "heading_alias_strings_on_concept_pages": sum(len(v) for v in alias_nav.values()),
+        "mention_index_primary_links": flagged,
+        "topic_concepts_ranked_first_in_mentions": first,
+        "topic_concepts_ranked_first_pct": pct(first, len(by_concept)),
+        "topic_concepts_in_top5_in_mentions": in5,
+        "topic_concepts_in_top5_pct": pct(in5, len(by_concept)),
+    }
+
+
 def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", help="output json path (default reports/graph_metrics_<date>.json)")
+    args = ap.parse_args()
     facts = ontology_facts.facts()
     if not facts:
         sys.exit("No certified ontology found at data/ontology/clinical_ontology.jsonl")
     m = compute(facts)
-    out = ROOT / f"reports/graph_metrics_{m['date']}.json"
+    try:
+        m["headings"] = heading_metrics()
+    except Exception as e:                        # headings layer is optional
+        m["headings"] = {"error": type(e).__name__}
+    out = Path(args.out) if args.out else ROOT / f"reports/graph_metrics_{m['date']}.json"
     out.write_text(json.dumps(m, indent=2), encoding="utf-8")
 
     nodes, degree = load_nodes(facts)
@@ -218,10 +268,14 @@ def main() -> None:
         w.writerows(sorted(props, key=lambda r: (r["kind"], r["label_a"].lower())))
 
     for k, v in m.items():
-        print(f"{k:34} {v}")
+        if k == "headings":
+            for hk, hv in v.items():
+                print(f"headings.{hk:34} {hv}")
+        else:
+            print(f"{k:34} {v}")
     kinds = Counter(p["kind"] for p in props)
     print("\nmerge proposals (reports/merge_proposals.csv): " + ", ".join(f"{k}={n}" for k, n in sorted(kinds.items())))
-    print(f"wrote {out.relative_to(ROOT)}")
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":
