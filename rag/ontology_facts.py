@@ -52,6 +52,14 @@ CHAPTER_GROUPS = [
     (r"antirheumatoid|antigout|rheumat", "Musculoskeletal & rheumatology", None),
     (r"fungal|antimicrobial|antiprotozoal|antiamoebic|antileprotic|vaccine|hiv|antibacterial|macrolide",
      "Infectious", None),
+    (r"virolog|bacteriolog|antiviral|antimalarial|sexually transmitted|infections?\b|streptococ|staphylococ|"
+     r"pertussis|malaria|brucell|leptospir", "Infectious", None),
+    (r"acute medicine|critical illness|critical care", "Critical care", None),
+    (r"maternal|obstetric|pregnan", "Reproductive & breast", None),
+    (r"haematolog|hematolog|transfusion|immunolog", "Blood & immunology", None),
+    (r"antiarrhythmic|arrhythm", "Cardiovascular", None),
+    (r"calcium balance|bone|parathyroid", "Endocrine & metabolic", None),
+    (r"nonsteroidal|analgesic|antipyretic", "Musculoskeletal & rheumatology", None),
     (r"poison|environmental", "Toxicology & environment", None),
     (r"dermatolog|skin", "Skin", None),
     (r"cell injury|inflammation and repair", "General pathology", None),
@@ -244,6 +252,10 @@ def _book_system(book: str, chapter: str) -> str | None:
     return None
 
 
+def _book_default(book: str) -> str | None:
+    return "Infectious" if book == "micro" else None     # the microbiology book is all infection
+
+
 def group_of(chapter: str, book: str = "") -> tuple[str, str]:
     """(organ system, category) for a source chapter. Named disease categories first (Diabetes mellitus, ...),
     then the book's own structure (Harrison parts, Robbins chapters), then system keywords; the category is
@@ -257,6 +269,8 @@ def group_of(chapter: str, book: str = "") -> tuple[str, str]:
     for pattern, system, category in CHAPTER_GROUPS:
         if not category and re.search(pattern, chapter, re.I):
             return system, title or system
+    if system := _book_default(book):
+        return system, title or system
     return "Other", title or "Other"
 
 

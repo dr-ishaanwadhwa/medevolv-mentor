@@ -13,13 +13,37 @@ from collections import Counter, defaultdict
 
 _KEEP_S = ("ss", "us", "is", "as", "os", "ys")
 
+# British/INN vs US names and spellings (general lists, not tuned to any test set)
+DRUG_SYNONYMS = {
+    "salbutamol": "albuterol", "paracetamol": "acetaminophen", "rifampicin": "rifampin", "frusemide": "furosemide",
+    "adrenaline": "epinephrine", "noradrenaline": "norepinephrine", "lignocaine": "lidocaine",
+    "glibenclamide": "glyburide", "phenobarbitone": "phenobarbital", "thyroxine": "levothyroxine",
+    "pethidine": "meperidine", "isoprenaline": "isoproterenol", "cyclosporin": "cyclosporine",
+    "amoxycillin": "amoxicillin", "cefalexin": "cephalexin", "sulphasalazine": "sulfasalazine",
+    "valproic acid": "valproate", "sodium valproate": "valproate", "co trimoxazole": "trimethoprim sulfamethoxazole",
+    "cotrimoxazole": "trimethoprim sulfamethoxazole", "bendrofluazide": "bendroflumethiazide",
+    "chlorpheniramine": "chlorphenamine", "dothiepin": "dosulepin", "methotrimeprazine": "levomepromazine",
+}
+_SPELLING = [(r"haem", "hem"), (r"oedema", "edema"), (r"anaem", "anem"), (r"oesophag", "esophag"),
+             (r"diarrhoea", "diarrhea"), (r"ischaem", "ischem"), (r"foet", "fet"), (r"tumour", "tumor"),
+             (r"leukaem", "leukem"), (r"oestrogen", "estrogen"), (r"sulph", "sulf"), (r"aetiolog", "etiolog"),
+             (r"paediatr", "pediatr"), (r"glycaem", "glycem"), (r"lipaem", "lipem"), (r"uraem", "urem"),
+             (r"septicaem", "septicem"), (r"colour", "color"), (r"fibre", "fiber")]
+
 
 def merge_key(label: str) -> str:
     """'Graves’ disease' == 'graves disease'; 'Deep-venous thrombosis' == 'deep venous thrombosis';
-    'Glucocorticoids' == 'glucocorticoid'."""
+    'Glucocorticoids' == 'glucocorticoid'; 'Salbutamol' == 'albuterol'; 'Haemorrhage' == 'hemorrhage'."""
     s = unicodedata.normalize("NFKD", label or "").encode("ascii", "ignore").decode().lower()
     s = re.sub(r"['’`]s\b", "", s)                     # possessive 's
-    s = re.sub(r"[^a-z0-9]+", " ", s).split()
+    for a, b in _SPELLING:
+        s = s.replace(a, b)
+    s = " ".join(re.sub(r"[^a-z0-9]+", " ", s).split())
+    s = re.sub(r"^iv ", "intravenous ", s)                  # common clinical abbreviations / variants
+    s = re.sub(r"\b(x ray|xray)\b", "radiograph", s).replace("radiography", "radiograph")
+    s = re.sub(r" (replacement|administration)$", "", s)
+    s = re.sub(r"\bdiabetes mellitus\b", "diabetes", s)    # 'diabetes' means mellitus unless 'insipidus' is said
+    s = DRUG_SYNONYMS.get(s, s).split()
     if s:
         w = s[-1]
         if len(w) > 5 and w.endswith("ies"):
@@ -68,8 +92,8 @@ def plan_merges(facts) -> tuple[dict[str, tuple[str, str, str]], list[dict]]:
         external = [i for i in ids if not _is_minted(i)]
         if len(set(external)) > 1:                       # two different BODHI concepts: leave them alone
             continue
-        if len(ids) == 1 and ids[0] not in retype:
-            continue
+        if len(ids) == 1 and ids[0] not in retype and len(label_of[ids[0]]) == 1:
+            continue                                     # (one id with several spellings still gets one label)
         canon = external[0] if external else max(ids, key=lambda i: (uses[i], label_of[i].most_common(1)[0][0]))
         canon_label = label_of[canon].most_common(1)[0][0]
         if _is_minted(canon) and typ != type_of[canon]:  # retyped drug: its id carries the type

@@ -144,6 +144,11 @@ def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool 
                 new_count += 1
             facts_dict[f.id] = f
 
+    # targeted gap-fill extractions (ontology/gapfill.py) are kept on rebuild, from their cache
+    from ontology.gapfill import reconcile_cached
+    for f in reconcile_cached(stats):
+        facts_dict.setdefault(f.id, f)
+
     save_compiled_facts(list(facts_dict.values()), merge_report=Path("reports/ontology_merges.tsv"))
     logger.info("Reconciliation: %s", ", ".join(f"{k}={v}" for k, v in sorted(stats.items())))
     logger.info("Done! Added/updated %d facts. Total compiled facts: %d", new_count, len(facts_dict))

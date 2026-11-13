@@ -15,6 +15,7 @@ Names are compared with ontology.merge.merge_key, so 'Rifampicin' must be spelle
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -27,10 +28,41 @@ def load_gold(path: Path = GOLD) -> list[dict]:
     return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
-def score(facts: list[dict], gold: list[dict]) -> dict:
-    """facts: CERTIFIED fact dicts (as in clinical_ontology.jsonl)."""
+def split_of(g: dict) -> str:
+    """Fixed half split: tune on "dev", report "heldout" as the headline."""
+    h = hashlib.md5(f"{g['condition']}|{g['predicate']}|{g['object']}".lower().encode()).hexdigest()
+    return "dev" if int(h, 16) % 2 == 0 else "heldout"
+
+
+def score_split(facts: list[dict], gold: list[dict], match=None, lenient: bool = False) -> dict:
+    out = {name: score(facts, [g for g in gold if split_of(g) == name], match, lenient) for name in ("dev", "heldout")}
+    out["all"] = score(facts, gold, match, lenient)
+    return out
+
+
+def _contains(a: str, b: str) -> bool:
+    """Lenient object match: one name's words contain the other's ('genexpert' ~ 'genexpert mtb rif',
+    'potassium' ~ 'potassium chloride'). Reported separately from strict, never instead of it."""
+    x, y = set(a.split()), set(b.split())
+    return bool(x and y) and (x <= y or y <= x)
+
+
+def score(facts: list[dict], gold: list[dict], match=None, lenient: bool = False) -> dict:
+    """facts: CERTIFIED fact dicts (as in clinical_ontology.jsonl). Strict by default: the condition label must match.
+    match=rag.ontology_facts.match_conditions scores what the app shows instead (the condition's label group,
+    e.g. 'Type 2 diabetes mellitus' also reads facts filed under 'Diabetes mellitus')."""
     have = {(merge_key(f["subject_label"]), f["predicate"], merge_key(f["object_label"])) for f in facts}
-    hit = [g for g in gold if (merge_key(g["condition"]), g["predicate"], merge_key(g["object"])) in have]
+    objs: dict = {}
+    for s, p, o in have:
+        objs.setdefault((s, p), set()).add(o)
+
+    def found(g):
+        conds = {merge_key(g["condition"])} | {merge_key(c) for c in (match(g["condition"]) if match else [])}
+        o = merge_key(g["object"])
+        if lenient:
+            return any(_contains(o, x) for c in conds for x in objs.get((c, g["predicate"]), ()))
+        return any((c, g["predicate"], o) in have for c in conds)
+    hit = [g for g in gold if found(g)]
     pos = [g for g in gold if g["expected"]]
     tp = sum(1 for g in hit if g["expected"])
     return {
@@ -47,7 +79,10 @@ def score(facts: list[dict], gold: list[dict]) -> dict:
 
 def main() -> None:
     from rag import ontology_facts
-    print(json.dumps(score(list(ontology_facts.facts()), load_gold()), indent=1))
+    facts, gold = list(ontology_facts.facts()), load_gold()
+    print(json.dumps({"strict": score_split(facts, gold),
+                      "app_view": score_split(facts, gold, ontology_facts.match_conditions),
+                      "lenient": score_split(facts, gold, ontology_facts.match_conditions, lenient=True)}, indent=1))
 
 
 if __name__ == "__main__":

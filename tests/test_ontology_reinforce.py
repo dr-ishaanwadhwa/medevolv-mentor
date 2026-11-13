@@ -83,3 +83,29 @@ def test_gold_score():
             {"condition": "TB", "predicate": "TREATED_BY", "object": "Aspirin", "expected": False}]
     s = score(facts, gold)
     assert s["precision"] == 0.5 and s["recall"] == 0.5 and len(s["wrong_still_present"]) == 1
+
+
+def test_british_and_inn_names_merge():
+    assert merge_key("Salbutamol") == merge_key("albuterol")
+    assert merge_key("Rifampicin") == merge_key("Rifampin")
+    assert merge_key("Haemorrhagic fever") == merge_key("Hemorrhagic fever")
+    assert merge_key("Oesophageal varices") == merge_key("Esophageal varix") or merge_key("Oesophageal varices") == merge_key("Esophageal varices")
+
+
+def test_gold_split_is_fixed_and_balanced():
+    from ontology.gold import load_gold, split_of
+    gold = load_gold()
+    halves = [split_of(g) for g in gold]
+    assert set(halves) == {"dev", "heldout"} and abs(halves.count("dev") - halves.count("heldout")) < len(gold) * 0.2
+    assert split_of(gold[0]) == split_of(dict(gold[0]))
+
+
+def test_gapfill_passages_come_from_the_named_condition():
+    import pytest
+    from pathlib import Path
+    if not Path("data/okf/harrison/sections").exists():
+        pytest.skip("corpus not present")
+    from ontology.gapfill import find_passages
+    found = find_passages(["myasthenia gravis", "myasthenia"])
+    assert found and all(len(p.split()) <= 1500 for _, p in found)
+    assert any("myasthenia" in path.name for path, _ in found)
