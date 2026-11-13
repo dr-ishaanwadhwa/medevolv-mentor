@@ -631,6 +631,355 @@ def fact_list(facts_, uid: str, arrow: bool = False) -> None:
         fact_row(f, f"{uid}{i}", arrow)
 
 
+# ---- concept pages (Stage 7 of docs/graph_networking_plan.md): search, backlinks, related, mentions, local graph.
+# Everything here is navigation. Certified facts are stated from the concept's own side; the "Linked from" list is the
+# same facts read backwards (tagged "derived"); the book sections are mentions and are never shown as clinical edges.
+try:
+    from rag import concepts as _concepts
+except Exception:                       # pragma: no cover - optional layer
+    _concepts = None
+try:
+    from rag import mentions as _mentions
+except Exception:                       # pragma: no cover - optional layer
+    _mentions = None
+
+TYPE_NAME = {"PathologicalCondition": "Condition", "ClinicalPhenotype": "Symptom / finding",
+             "TherapeuticAgent": "Drug / therapy", "DiagnosticModality": "Test", "PhysiologicalProcess": "Process",
+             "EtiologicalAgent": "Cause / organism", "ClinicalStage": "Stage", "MolecularTarget": "Target",
+             "OrganSystem": "Organ system"}
+TYPE_FILL = {"PathologicalCondition": "#f6c9c4", "ClinicalPhenotype": "#fbe3a6", "TherapeuticAgent": "#bfe3c8",
+             "DiagnosticModality": "#c4daf3", "PhysiologicalProcess": "#e0d0f0", "EtiologicalAgent": "#f5d2b3",
+             "ClinicalStage": "#d9dde0", "MolecularTarget": "#bfe6e3", "OrganSystem": "#d9dde0"}
+PRED_TEXT = {"TREATED_BY": "treated by", "CONTRAINDICATES": "contraindicates", "MANIFESTS_AS": "manifests as",
+             "CONFIRMED_BY": "confirmed by", "CAUSED_BY": "caused by", "DISRUPTS_PATHWAY": "disrupts",
+             "CAUSES_ADVERSE_EFFECT": "causes adverse effect", "HAS_CLINICAL_STAGE": "has stage",
+             "TARGETS_MECHANISM": "targets", "DIFFERENTIAL_OF": "differential of", "is_a": "is a"}
+GRAPH_CAP = {1: 24, 2: 40}
+
+st.html("""<style>
+.mm-mention { border:1px dashed var(--line); border-radius:10px; padding:.6rem .85rem; margin:.3rem 0 .6rem; color:var(--muted); }
+.mm-mention .mm-mn { font-size:.86rem; line-height:1.4; padding:.1rem 0; overflow-wrap:anywhere; }
+.mm-mention .mm-mn small { display:block; font-size:.76rem; opacity:.85; }
+.mm-grp { font-weight:600; color:var(--ink); margin:.5rem 0 .15rem; }
+.mm-grp .mm-pill { font-weight:500; margin-left:.4rem; opacity:.85; }
+.mm-trail { font-size:.86rem; color:var(--muted); overflow-wrap:anywhere; margin:.2rem 0 .4rem; }
+.mm-trail b { color:var(--ink); }
+</style>""")
+
+
+def _safe(fn, default=None):
+    """Run an optional panel call; any failure (missing data, bad index) just hides the panel."""
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def _c_page(cid: str) -> dict:
+    return _concepts.concept(cid) if _concepts else {}
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def _c_related(cid: str, k: int = 12) -> list:
+    return _concepts.related(cid, k=k) if _concepts else []
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def _c_search(q: str) -> list:
+    return _concepts.search_concepts(q, limit=10) if _concepts else []
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def _c_sections(label: str) -> list:
+    return _mentions.sections_for(label, k=8) if _mentions else []
+
+
+def _dot_text(s: str, n: int = 30) -> str:
+    s = s if len(s) <= n else s[:n - 1].rstrip() + "…"
+    return s.replace("\\", " ").replace('"', "'")
+
+
+@st.cache_data(show_spinner=False, max_entries=128)
+def _local_dot(cid: str, hops: int) -> tuple[str, int]:
+    """DOT for the neighbourhood of a concept (capped). Edges read from the concept outwards: solid = a certified fact
+    stated from that end, dashed = the same fact read backwards (derived). Mention links are never drawn here."""
+    cap = GRAPH_CAP.get(hops, 24)
+    nodes: dict[str, tuple[str, str]] = {}
+    edges: list[tuple[str, str, str, bool]] = []
+    seen_facts: set[str] = set()
+
+    def links_of(nid: str):
+        c = _concepts.concept(nid)
+        for pred, ls in c.get("outgoing", {}).items():
+            for lk in ls:
+                yield lk, PRED_TEXT.get(pred, pred), False
+        for name, ls in c.get("backlinks", {}).items():
+            for lk in ls:
+                yield lk, name, True
+
+    c0 = _concepts.concept(cid)
+    if not c0:
+        return "", 0
+    nodes[cid] = (c0["label"], c0["type"])
+    ranked = [r["id"] for r in _concepts.related(cid, k=cap - 1)]
+    keep = set(ranked)
+    for lk, text, derived in links_of(cid):
+        o = lk["other_id"]
+        if o in keep and lk["fact_id"] not in seen_facts and o != cid:
+            seen_facts.add(lk["fact_id"])
+            nodes.setdefault(o, (lk["other_label"], lk["other_type"]))
+            edges.append((cid, o, text, derived))
+    if hops >= 2:
+        for first in ranked[:10]:
+            if len(nodes) >= cap:
+                break
+            added = 0
+            for lk, text, derived in links_of(first):
+                o = lk["other_id"]
+                if lk["fact_id"] in seen_facts or o == cid or first not in nodes:
+                    continue
+                if o not in nodes and (len(nodes) >= cap or added >= 4):
+                    continue
+                seen_facts.add(lk["fact_id"])
+                if o not in nodes:
+                    nodes[o] = (lk["other_label"], lk["other_type"])
+                    added += 1
+                edges.append((first, o, text, derived))
+    ids = {n: f"n{i}" for i, n in enumerate(nodes)}
+    out = ['digraph G { bgcolor="transparent"; rankdir=LR; nodesep=0.18; ranksep=1.1; pad=0.1;',
+           'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, fontcolor="#15232a", color="#7d8f95", margin="0.12,0.06"];',
+           'edge [color="#7d8f95", fontcolor="#7d8f95", fontname="Helvetica", fontsize=9, arrowsize=0.7];']
+    for n, (label, typ) in nodes.items():
+        extra = ', penwidth=3, fontsize=13' if n == cid else ""
+        out.append(f'{ids[n]} [label="{_dot_text(label)}", fillcolor="{TYPE_FILL.get(typ, "#d9dde0")}"{extra}];')
+    for a, b, text, derived in edges:
+        out.append(f'{ids[a]} -> {ids[b]} [label="{_dot_text(text, 26)}"{", style=dashed" if derived else ""}];')
+    out.append("}")
+    return "\n".join(out), len(nodes)
+
+
+def _go(cid: str) -> None:
+    """Open a concept page; the page we leave is pushed on the breadcrumb trail."""
+    cur = st.session_state.get("ex_cur")
+    if cur and cur != cid:
+        trail = st.session_state.setdefault("ex_trail", [])
+        trail.append(cur)
+        del trail[:-8]
+    st.session_state["ex_cur"] = cid
+
+
+def _pick(key: str) -> None:
+    """Callback of a chip group: open the chosen concept, then clear the chip so it can be chosen again later."""
+    cid = st.session_state.get(key)
+    st.session_state[key] = None
+    if cid:
+        if key == "ex_hit":
+            st.session_state["ex_q"] = ""
+        _go(cid)
+
+
+def _back() -> None:
+    trail = st.session_state.get("ex_trail") or []
+    st.session_state["ex_cur"] = trail.pop() if trail else None
+
+
+def _home() -> None:
+    st.session_state["ex_cur"], st.session_state["ex_trail"] = None, []
+
+
+def concept_chips(items: list[dict], key: str, fmt) -> None:
+    """Clickable chips (navigation). items need an 'id'; fmt(item) gives the chip text."""
+    by_id = {i["id"]: i for i in items}
+    st.pills("Open concept", list(by_id), selection_mode="single", default=None, key=key, wrap=True,
+             format_func=lambda i: fmt(by_id[i]), on_change=_pick, args=(key,), label_visibility="collapsed")
+
+
+def _type_name(t: str) -> str:
+    return TYPE_NAME.get(t, "Concept")
+
+
+def render_concept_search() -> None:
+    if _concepts is None:
+        return
+    st.markdown('<div class="mm-label">Search any concept</div>', unsafe_allow_html=True)
+    q = st.text_input("Search concepts", key="ex_q", label_visibility="collapsed",
+                      placeholder="A drug, test, symptom, organism or condition, e.g. Rifampin")
+    if len(q.strip()) >= 2:
+        hits = _safe(lambda: _c_search(q.strip()), [])
+        if hits:
+            concept_chips(hits, "ex_hit", lambda h: f"{h['label']} · {_type_name(h['type'])}")
+        else:
+            st.caption("No concept starts with that. Try the first letters of a name.")
+
+
+def panel_links(c: dict, uid: str) -> None:
+    """'Linked from': incoming facts grouped by their inverse predicate, plus 'Links to' for facts stated from here."""
+    groups = c.get("backlinks") or {}
+    if groups:
+        st.markdown('<div class="mm-label">Linked from</div>', unsafe_allow_html=True)
+        st.caption("Facts from other concepts that point here, read backwards. Each is the same certified fact as "
+                   "in the textbooks (same source), so the \"derived\" tag adds no new claim.")
+    for name, links in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        uniq = {}
+        for lk in links:
+            old = uniq.get(lk["other_id"])
+            if old is None or len(lk["books"]) > len(old["books"]):
+                uniq[lk["other_id"]] = {**lk, "id": lk["other_id"], "label": lk["other_label"]}
+        items = sorted(uniq.values(), key=lambda x: (-len(x["books"]), x["label"]))
+        st.markdown(f'<div class="mm-grp">{esc(name.capitalize())} · {len(links)}'
+                    f'<span class="mm-pill info" title="The same certified fact read from the other side">derived</span></div>',
+                    unsafe_allow_html=True)
+        fmt = lambda x: x["label"] + (f" · {len(x['books'])} books" if len(x["books"]) > 1 else "")
+        slug = re.sub(r"\W+", "_", name)
+        concept_chips(items[:20], f"{uid}_bl_{slug}", fmt)
+        if len(items) > 20:
+            with st.expander(f"Show {min(len(items), 140) - 20} more"):
+                concept_chips(items[20:140], f"{uid}_blx_{slug}", fmt)
+    out = c.get("outgoing") or {}
+    if out:
+        st.markdown('<div class="mm-label" style="margin-top:.8rem">Links to</div>', unsafe_allow_html=True)
+        st.caption("Certified facts stated from this concept's side.")
+        for pred, links in sorted(out.items(), key=lambda kv: -len(kv[1])):
+            uniq = {}
+            for lk in links:
+                old = uniq.get(lk["other_id"])
+                if old is None or len(lk["books"]) > len(old["books"]):
+                    uniq[lk["other_id"]] = {**lk, "id": lk["other_id"], "label": lk["other_label"]}
+            items = sorted(uniq.values(), key=lambda x: (-len(x["books"]), x["label"]))
+            st.markdown(f'<div class="mm-grp">{esc(PRED_TEXT.get(pred, pred).capitalize())} · {len(links)}</div>',
+                        unsafe_allow_html=True)
+            fmt = lambda x: x["label"] + (f" · {len(x['books'])} books" if len(x["books"]) > 1 else "")
+            slug = re.sub(r"\W+", "_", pred)
+            concept_chips(items[:20], f"{uid}_ol_{slug}", fmt)
+            if len(items) > 20:
+                with st.expander(f"Show {min(len(items), 140) - 20} more"):
+                    concept_chips(items[20:140], f"{uid}_olx_{slug}", fmt)
+
+
+def panel_related(c: dict, uid: str) -> None:
+    rel = _c_related(c["id"], 12)
+    if not rel:
+        return
+    st.markdown('<div class="mm-label">Related concepts</div>', unsafe_allow_html=True)
+    st.caption("Direct neighbours, ranked by how many certified facts join them. A way to explore, not a statement.")
+    concept_chips(rel, f"{uid}_rel", lambda r: f"{r['label']} · {_type_name(r['type'])}")
+
+
+def panel_mentions(c: dict) -> None:
+    secs = _c_sections(c["label"])
+    if not secs:
+        return
+    by_book: dict[str, list] = {}
+    for s in secs:
+        by_book.setdefault(s["book_id"], []).append(s)
+    body = ""
+    for b, rows in by_book.items():
+        body += f'<div class="mm-label" style="margin-top:.35rem">{esc(BOOKS.get(b, b))}</div>'
+        for s in rows:
+            parent = tidy_path(" › ".join(s["path"][:-1])) if len(s.get("path") or []) > 1 else ""
+            body += f'<div class="mm-mn">{esc(s["title"])}' + (f"<small>{esc(parent)}</small>" if parent else "") + "</div>"
+    st.markdown('<div class="mm-label">Where the books discuss this</div>'
+                '<div class="mm-mention"><div class="mm-mn"><i>Mentions · navigation only, not a clinical claim. '
+                "These sections name the concept; they do not say what it treats, causes or confirms.</i></div>"
+                f"{body}</div>", unsafe_allow_html=True)
+
+
+def panel_graph(c: dict, uid: str) -> None:
+    deep = st.toggle("Include neighbours of neighbours (2 hops, up to 40 concepts)", key=f"{uid}_hops")
+    dot, n = _local_dot(c["id"], 2 if deep else 1)
+    if n < 2:
+        return
+    st.markdown('<div class="mm-label">Local graph</div>', unsafe_allow_html=True)
+    st.graphviz_chart(dot, width="stretch")
+    legend = "".join(f'<span class="mm-pill" style="background:{TYPE_FILL[t]};color:#15232a">{TYPE_NAME[t]}</span>'
+                     for t in TYPE_FILL if t != "OrganSystem")
+    st.markdown(f'<div class="mm-pills">{legend}</div>', unsafe_allow_html=True)
+    st.caption(f"{n} concepts shown (most connected first, capped). Solid line: a certified fact stated from the "
+               "arrow's start. Dashed line: the same fact read backwards (derived). Book mentions are not drawn here.")
+
+
+def render_concept_panels(c: dict, uid: str) -> None:
+    """The four navigation panels; each one is hidden when its data is missing or its call fails."""
+    for fn in (lambda: panel_links(c, uid), lambda: panel_related(c, uid), lambda: panel_mentions(c),
+               lambda: panel_graph(c, uid)):
+        try:
+            fn()
+        except Exception:
+            pass
+
+
+def render_facets(prof: dict) -> None:
+    """Clinical facet tabs of one condition (certified facts, each with its source)."""
+    panels = []   # (tab title, render function)
+    if prof["presentation"]:
+        panels.append(("Presentation", lambda: fact_list(prof["presentation"], "ex_pr")))
+    if prof["etiology"] or prof["mechanism"]:
+        def _em():
+            for title, key in (("Etiology", "etiology"), ("Mechanism", "mechanism")):
+                if prof[key]:
+                    st.markdown(f"**{title}**")
+                    fact_list(prof[key], f"ex_{key[:2]}")
+        panels.append(("Etiology & mechanism", _em))
+    if prof["diagnostics"]:
+        panels.append(("Diagnostics", lambda: fact_list(prof["diagnostics"], "ex_dx")))
+    if prof["therapy"]:
+        def _th():
+            for line, items in prof["therapy"].items():
+                st.markdown(f"**{line}** · {', '.join(f['object_label'] for f in items)}")
+                fact_list(items, f"ex_th_{line}")
+        panels.append(("Stepwise therapy", _th))
+    if prof["warnings"]:
+        panels.append(("Warnings", lambda: fact_list(prof["warnings"], "ex_wa")))
+    if any(prof[k] for k in ("differentials", "is_a", "drug_effects", "drug_mechanisms")):
+        def _rel():
+            for title, key, arrow in (("Differentials", "differentials", False), ("Is a", "is_a", False),
+                                      ("Drug → adverse effect", "drug_effects", True),
+                                      ("Drug → target", "drug_mechanisms", True)):
+                if prof[key]:
+                    st.markdown(f"**{title}**")
+                    fact_list(prof[key], f"ex_{key[:3]}", arrow)
+        panels.append(("Related", _rel))
+
+    if not panels:
+        st.info("No certified facts yet for this condition.")
+    else:
+        for tab, (_, render) in zip(st.tabs([t for t, _ in panels]), panels):
+            with tab:
+                render()
+
+
+def render_concept_page(cid: str) -> bool:
+    """A concept page for any entity type. Returns False (nothing drawn) when the concept cannot be loaded."""
+    c = _safe(lambda: _c_page(cid), {})
+    if not c:
+        return False
+    trail = [t for t in (st.session_state.get("ex_trail") or [])]
+    names = [(_safe(lambda t=t: _c_page(t), {}) or {}).get("label", "?") for t in trail[-3:]]
+    st.markdown('<div class="mm-trail">' + " › ".join(["Explore"] + [esc(n) for n in names] + [f"<b>{esc(c['label'])}</b>"])
+                + "</div>", unsafe_allow_html=True)
+    b1, b2, _ = st.columns([1, 1.4, 3])
+    b1.button("← Back", key="ex_back", on_click=_back, use_container_width=True, disabled=not trail)
+    b2.button("Browse by organ system", key="ex_home", on_click=_home, use_container_width=True)
+    pills = f'<span class="mm-pill info">{esc(_type_name(c["type"]))}</span>'
+    pills += "".join(f'<span class="mm-pill info">{esc(BOOKS.get(b, b))}</span>' for b in c.get("books", []))
+    st.markdown(f"### {esc(c['label'])}", unsafe_allow_html=True)
+    st.markdown(f'<div class="mm-pills">{pills}</div>', unsafe_allow_html=True)
+    if c.get("aliases"):
+        st.caption("Also written as: " + "; ".join(c["aliases"][:6]))
+    same = c.get("same_label") or []
+    if same:
+        st.caption("The same name also appears as: " + ", ".join(sorted({_type_name(s["type"]) for s in same}))
+                   + ". Shown separately, not merged.")
+    if c["type"] == "PathologicalCondition":
+        prof = _safe(lambda: onto.profile(c["label"]))
+        if prof and prof.get("n_facts"):
+            with st.expander("Certified facts for this condition, with sources", expanded=False):
+                render_facets(prof)
+    render_concept_panels(c, "cp_" + re.sub(r"\W+", "_", cid)[-40:])
+    return True
+
+
 with tab_explore:
     if not onto.available():
         st.info("The certified clinical ontology file (data/ontology/clinical_ontology.jsonl) is missing, so there "
@@ -641,75 +990,54 @@ with tab_explore:
         st.markdown("### Explore certified clinical facts")
         st.markdown(f"Facts extracted by a language model from {onto_sections():,} textbook sections. Each fact's quote "
                     "was found word-for-word in its source, which proves the source says it, not that the fact was "
-                    "read correctly. Open *Source* under any fact to check. Drill down from organ system to a single "
-                    "condition.")
+                    "read correctly. Open *Source* under any fact to check. Search any concept, or drill down from "
+                    "organ system to a single condition.")
         st.markdown(f'<div class="mm-chips"><span class="mm-chip">{n_cond} conditions</span>'
                     f'<span class="mm-chip">{len(onto.facts()):,} certified facts</span></div>', unsafe_allow_html=True)
         st.write("")
+        render_concept_search()
+        st.write("")
 
-        st.markdown('<div class="mm-label">1 · Organ system</div>', unsafe_allow_html=True)
-        systems = list(cat)
-        system = st.pills("Organ system", systems, selection_mode="single", default=systems[0],
-                          key="ex_system", label_visibility="collapsed") or systems[0]
-
-        cats = list(cat[system])
-        st.markdown('<div class="mm-label">2 · Disease category</div>', unsafe_allow_html=True)
-        category = st.pills("Disease category", cats, selection_mode="single", default=cats[0],
-                            key=f"ex_cat_{system}", label_visibility="collapsed") or cats[0]
-
-        conds = sorted(cat[system][category].items(), key=lambda kv: (-kv[1], kv[0]))
-        counts = dict(conds)
-        st.markdown('<div class="mm-label">3 · Condition</div>', unsafe_allow_html=True)
-        cond = st.selectbox("Condition", [c for c, _ in conds], key=f"ex_cond_{system}_{category}",
-                            format_func=lambda c: f"{c} · {counts[c]} facts", label_visibility="collapsed")
-        prof = onto.profile(cond)
-        with st.expander("🕸️  Clinical graph for this condition", expanded=False):
-            render_clinical_graph([], [cond], key="cg_ex_" + re.sub(r"\W+", "_", cond.lower())[:48])
-        try:
-            differ = onto.contradictions_for(cond)
-        except Exception:
-            differ = []
-        if differ:
-            books_differ(differ)
-        if prof["stages"]:
-            st.markdown('<div class="mm-label">Stages</div>' + "".join(
-                f'<span class="mm-pill info">{esc(f["object_label"])}</span>' for f in prof["stages"]),
-                unsafe_allow_html=True)
-
-        st.markdown('<div class="mm-label" style="margin-top:.6rem">4 · Clinical facets</div>', unsafe_allow_html=True)
-        panels = []   # (tab title, render function)
-        if prof["presentation"]:
-            panels.append(("Presentation", lambda: fact_list(prof["presentation"], "ex_pr")))
-        if prof["etiology"] or prof["mechanism"]:
-            def _em():
-                for title, key in (("Etiology", "etiology"), ("Mechanism", "mechanism")):
-                    if prof[key]:
-                        st.markdown(f"**{title}**")
-                        fact_list(prof[key], f"ex_{key[:2]}")
-            panels.append(("Etiology & mechanism", _em))
-        if prof["diagnostics"]:
-            panels.append(("Diagnostics", lambda: fact_list(prof["diagnostics"], "ex_dx")))
-        if prof["therapy"]:
-            def _th():
-                for line, items in prof["therapy"].items():
-                    st.markdown(f"**{line}** · {', '.join(f['object_label'] for f in items)}")
-                    fact_list(items, f"ex_th_{line}")
-            panels.append(("Stepwise therapy", _th))
-        if prof["warnings"]:
-            panels.append(("Warnings", lambda: fact_list(prof["warnings"], "ex_wa")))
-        if any(prof[k] for k in ("differentials", "is_a", "drug_effects", "drug_mechanisms")):
-            def _rel():
-                for title, key, arrow in (("Differentials", "differentials", False), ("Is a", "is_a", False),
-                                          ("Drug → adverse effect", "drug_effects", True),
-                                          ("Drug → target", "drug_mechanisms", True)):
-                    if prof[key]:
-                        st.markdown(f"**{title}**")
-                        fact_list(prof[key], f"ex_{key[:3]}", arrow)
-            panels.append(("Related", _rel))
-
-        if not panels:
-            st.info("No certified facts yet for this condition.")
+        cur = st.session_state.get("ex_cur")
+        if cur and render_concept_page(cur):
+            pass
         else:
-            for tab, (_, render) in zip(st.tabs([t for t, _ in panels]), panels):
-                with tab:
-                    render()
+            if cur:                                      # stale or unreadable concept: fall back to browsing
+                _home()
+            st.markdown('<div class="mm-label">1 · Organ system</div>', unsafe_allow_html=True)
+            systems = list(cat)
+            system = st.pills("Organ system", systems, selection_mode="single", default=systems[0],
+                              key="ex_system", label_visibility="collapsed") or systems[0]
+
+            cats = list(cat[system])
+            st.markdown('<div class="mm-label">2 · Disease category</div>', unsafe_allow_html=True)
+            category = st.pills("Disease category", cats, selection_mode="single", default=cats[0],
+                                key=f"ex_cat_{system}", label_visibility="collapsed") or cats[0]
+
+            conds = sorted(cat[system][category].items(), key=lambda kv: (-kv[1], kv[0]))
+            counts = dict(conds)
+            st.markdown('<div class="mm-label">3 · Condition</div>', unsafe_allow_html=True)
+            cond = st.selectbox("Condition", [c for c, _ in conds], key=f"ex_cond_{system}_{category}",
+                                format_func=lambda c: f"{c} · {counts[c]} facts", label_visibility="collapsed")
+            prof = onto.profile(cond)
+            with st.expander("🕸️  Clinical graph for this condition", expanded=False):
+                render_clinical_graph([], [cond], key="cg_ex_" + re.sub(r"\W+", "_", cond.lower())[:48])
+            try:
+                differ = onto.contradictions_for(cond)
+            except Exception:
+                differ = []
+            if differ:
+                books_differ(differ)
+            if prof["stages"]:
+                st.markdown('<div class="mm-label">Stages</div>' + "".join(
+                    f'<span class="mm-pill info">{esc(f["object_label"])}</span>' for f in prof["stages"]),
+                    unsafe_allow_html=True)
+
+            st.markdown('<div class="mm-label" style="margin-top:.6rem">4 · Clinical facets</div>', unsafe_allow_html=True)
+            render_facets(prof)
+
+            cc = _safe(lambda: _c_page(cond), {}) if _concepts else {}
+            if cc:
+                st.markdown("---")
+                st.markdown("#### Explore connections")
+                render_concept_panels(cc, "dd_" + re.sub(r"\W+", "_", cond.lower())[:40])

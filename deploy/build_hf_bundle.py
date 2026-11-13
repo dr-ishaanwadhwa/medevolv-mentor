@@ -37,6 +37,11 @@ def main(out: Path) -> None:
         (out / "data/ontology").mkdir(parents=True, exist_ok=True)
         shutil.copy(onto, out / "data/ontology/clinical_ontology.jsonl")
 
+    # Entity <-> section mention index (git-ignored, labels and section ids only). Optional, like the ontology.
+    graph = ROOT / "data/graph"
+    if graph.exists():
+        shutil.copytree(graph, out / "data/graph")
+
     # Copy the one live collection into a fresh store (drops segments left behind by deleted collections)
     name = collection_name()
     src = chromadb.PersistentClient(str(ROOT / "data/chroma")).get_collection(name)
