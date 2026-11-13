@@ -1,0 +1,13 @@
+# Append this block to deploy/oci/Caddyfile (keep the existing mentor and sme-cashflow blocks untouched).
+# Needs DNS: A record atlas.medevolv.in -> 130.210.60.153. Files come from ~/atlas-site via the compose volume.
+atlas.medevolv.in {
+	root * /srv/atlas
+	encode gzip
+	file_server {
+		precompressed gzip
+	}
+	@models path /models/*
+	header @models Cache-Control "public, max-age=604800"
+	header X-Content-Type-Options nosniff
+	# framing is allowed on purpose: the mentor app embeds the atlas in an iframe
+}

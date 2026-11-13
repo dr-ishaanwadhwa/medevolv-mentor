@@ -14,7 +14,7 @@ from collections import Counter
 
 import streamlit as st
 
-from rag import clinical_graph, config, diagrams, trace
+from rag import atlas, clinical_graph, config, diagrams, trace
 from rag import ontology_facts as onto
 from rag.answer import answer, answer_multihop
 from rag.graph_component import clinical_graph as clinical_graph_view
@@ -1151,6 +1151,33 @@ def render_facets(prof: dict) -> None:
                 render()
 
 
+def render_atlas_links(label: str, ctype: str, key: str) -> None:
+    """'View in 3D' for an anatomical structure, or for the structures a condition involves (certified
+    INVOLVES_STRUCTURE facts). Navigation only. Hidden when ATLAS_URL is unset or nothing links. The atlas loads
+    (33 MB of models) only after a click on the link, or after the inline toggle is switched on."""
+    if not config.ATLAS_URL:
+        return
+    if ctype == "AnatomicalStructure":
+        u = _safe(lambda: atlas.atlas_link(label))
+        found = [{"label": label, "url": u}] if u else []
+        btn = "View in 3D"
+    elif ctype == "PathologicalCondition":
+        found = _safe(lambda: atlas.structures_for(label), []) or []
+        btn = "View involved structures in 3D"
+    else:
+        return
+    if not found:
+        return
+    st.link_button(f"🧍 {btn}", found[0]["url"], help="Opens the 3D anatomy atlas in a new tab.")
+    if len(found) > 1:
+        st.caption("Also in 3D: " + " · ".join(f"[{esc(f['label'])}]({f['url']})" for f in found[1:]))
+    with st.expander("Show the 3D view here", expanded=False):
+        if st.toggle("Load the 3D view (about 33 MB)", key=f"atl_{key}"):
+            st.components.v1.iframe(found[0]["url"], height=560)
+        st.caption("Anatomy: BodyParts3D © DBCLS, CC BY 4.0, shown with the open-source Human Atlas viewer (MIT). "
+                   "A navigation aid: it shows where a structure is, not a clinical finding.")
+
+
 def render_concept_page(cid: str) -> bool:
     """A concept page for any entity type. Returns False (nothing drawn) when the concept cannot be loaded."""
     c = _safe(lambda: _c_page(cid), {})
@@ -1178,6 +1205,7 @@ def render_concept_page(cid: str) -> bool:
         if prof and prof.get("n_facts"):
             with st.expander("Certified facts for this condition, with sources", expanded=False):
                 render_facets(prof)
+    render_atlas_links(c["label"], c["type"], "cp_" + re.sub(r"\W+", "_", cid)[-40:])
     render_concept_panels(c, "cp_" + re.sub(r"\W+", "_", cid)[-40:])
     return True
 
@@ -1225,6 +1253,7 @@ with tab_explore:
             cond = st.selectbox("Condition", [c for c, _ in conds], key=f"ex_cond_{system}_{category}",
                                 format_func=lambda c: f"{c} · {counts[c]} facts", label_visibility="collapsed")
             prof = onto.profile(cond)
+            render_atlas_links(cond, "PathologicalCondition", "dd_" + re.sub(r"\W+", "_", cond.lower())[:40])
             with st.expander("🕸️  Clinical graph for this condition", expanded=False):
                 render_clinical_graph([], [cond], key="cg_ex_" + re.sub(r"\W+", "_", cond.lower())[:48])
             try:

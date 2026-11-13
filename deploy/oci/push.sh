@@ -12,7 +12,7 @@ grep -q "^APP_PASSWORD=." .env || echo "Note: no APP_PASSWORD in .env, so the si
 
 .venv/bin/python -m deploy.build_hf_bundle "$OUT"
 cp deploy/oci/docker-compose.yml deploy/oci/Caddyfile deploy/oci/setup.sh "$OUT/"
-{ grep -E '^(DEEPSEEK_API_KEY|APP_PASSWORD)=' .env; echo "LLM_BACKEND=deepseek"; echo "EMBED_BACKEND=local"; } > "$OUT/.env"
+{ grep -E '^(DEEPSEEK_API_KEY|APP_PASSWORD|ATLAS_URL)=' .env; echo "LLM_BACKEND=deepseek"; echo "EMBED_BACKEND=local"; } > "$OUT/.env"
 chmod 600 "$OUT/.env"
 
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new"
