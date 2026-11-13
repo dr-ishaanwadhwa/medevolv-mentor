@@ -9,6 +9,7 @@ Everything here returns [] / {} when the file is missing, so the app still works
     catalog()                                      -> {organ system: {category: {condition: n_facts}}}
     books(fact) / corroboration(fact)              -> ["davidson", "harrison"] / 2  (books that state it)
     contradictions_for("Tuberculosis")             -> [{"kind", "condition", "drug"/"by_book", "note", ...}]
+    warning_text(fact)                             -> "X is contraindicated in Y when the patient is pregnant ..."
 """
 from __future__ import annotations
 
@@ -60,7 +61,12 @@ CHAPTER_GROUPS = [
     (r"antiarrhythmic|arrhythm", "Cardiovascular", None),
     (r"calcium balance|bone|parathyroid", "Endocrine & metabolic", None),
     (r"nonsteroidal|analgesic|antipyretic", "Musculoskeletal & rheumatology", None),
-    (r"poison|environmental", "Toxicology & environment", None),
+    (r"oncolog|anticancer|cancer|tumou?r", "Oncology", None),
+    (r"stroke|psychiatr|cns stimulant|cognition|muscle relaxant|adrenergic", "Nervous system & psychiatry", None),
+    (r"haematinic|hematinic|erythropoietin|histamine", "Blood & immunology", None),
+    (r"lactam|sulfonamide|quinolone|antibiotic", "Infectious", None),
+    (r"poison|environmental|envenom", "Toxicology & environment", None),
+    (r"clinical genetics|decision-making|general medicine", "General medicine", None),
     (r"dermatolog|skin", "Skin", None),
     (r"cell injury|inflammation and repair", "General pathology", None),
 ]
@@ -312,11 +318,28 @@ def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_
         out.append(f"Textbook ontology: {labels[0]} is confirmed by: "
                    + "; ".join(f"{f['object_label']}{_for(f, labels[0])} ({cite(f)})" for f in dx) + ".")
     for f in contraindications_for(condition)[:max_warnings]:
-        sev = (f["clinical_facets"].get("contraindication_severity") or "").lower()
-        why = f["clinical_facets"].get("rationale") or ""
-        out.append(f"WARNING (textbook ontology): {f['object_label']} is {'strictly ' if sev == 'strict' else ''}"
-                   f"contraindicated in {f['subject_label']}" + (f": {why}" if why else "") + f" ({cite(f)}).")
+        out.append(f"WARNING (textbook ontology): {warning_text(f)} ({cite(f)}).")
     return out
+
+
+@functools.cache
+def _treats() -> frozenset:
+    return frozenset((f["subject_id"], f["object_id"]) for f in facts() if f["predicate"] == "TREATED_BY")
+
+
+def warning_text(f: dict) -> str:
+    """Neutral one-line wording of a CONTRAINDICATES fact, for answers and the Explore profile:
+    'Streptomycin is contraindicated in Tuberculosis when the patient is pregnant or breastfeeding: <rationale>'.
+    'strictly' only for STRICT facts, which by construction carry no subtype or population qualifier."""
+    fc = f["clinical_facets"]
+    strict = (fc.get("contraindication_severity") or "") == "STRICT" and not fc.get("population")
+    if not fc.get("population") and (f["subject_id"], f["object_id"]) in _treats():
+        return (f"{f['object_label']} is contraindicated in some patients with {f['subject_label']} and used to treat "
+                f"others. {DIFFER_NOTE}" + (f" {fc['rationale']}" if fc.get("rationale") else ""))
+    pop = fc.get("population") or ""
+    text = (f"{f['object_label']} is {'strictly ' if strict else ''}contraindicated in {f['subject_label']}"
+            + (f" ({pop})" if pop.startswith("limited to") else f" when {pop}" if pop else ""))
+    return text + (f": {fc['rationale']}" if fc.get("rationale") else "")
 
 
 # ---------- Where the books differ (shown to students as "books differ, see both", never as an error) ----------

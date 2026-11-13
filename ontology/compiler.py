@@ -49,16 +49,31 @@ def merge_duplicates(facts: list[ProvenancedOntologyFact]) -> list[ProvenancedOn
     return out
 
 
+def soften_treated_contraindications(facts: list[ProvenancedOntologyFact]) -> list[ProvenancedOntologyFact]:
+    """A drug that is also a certified treatment of the same condition cannot be a blanket (STRICT) contraindication
+    (beta blockers in heart failure): it becomes CAUTIONARY, and the app shows both sides ('books differ')."""
+    treats = {(f.subject_id, f.object_id) for f in facts
+              if f.status == "CERTIFIED" and f.predicate == ClinicalRelation.TREATED_BY}
+    out = []
+    for f in facts:
+        if (f.predicate == ClinicalRelation.CONTRAINDICATES and (f.subject_id, f.object_id) in treats
+                and f.clinical_facets.contraindication_severity == ContraindicationSeverity.STRICT):
+            f = f.model_copy(update={"clinical_facets": f.clinical_facets.model_copy(
+                update={"contraindication_severity": ContraindicationSeverity.CAUTIONARY})})
+        out.append(f)
+    return out
+
+
 def save_compiled_facts(facts: list[ProvenancedOntologyFact], path: Path = ONTOLOGY_FILE,
                         merge_report: Path | None = None) -> None:
     """Save reconciled facts to JSONL: merge entity spellings (ontology/merge.py), merge duplicate triples with
     all their sources, and apply cached verifier verdicts (ontology/verifier.py; no LLM calls here)."""
     from ontology.merge import apply_merges, plan_merges
-    from ontology.verifier import apply_verdicts
+    from ontology.verifier import apply_ci_triage, apply_verdicts
 
     path.parent.mkdir(parents=True, exist_ok=True)
     mapping, report = plan_merges(facts)
-    facts = apply_verdicts(merge_duplicates(apply_merges(facts, mapping)))
+    facts = soften_treated_contraindications(apply_ci_triage(apply_verdicts(merge_duplicates(apply_merges(facts, mapping)))))
     if merge_report:
         merge_report.parent.mkdir(parents=True, exist_ok=True)
         merge_report.write_text("".join(f"{r['canonical_label']}\t{r['type']}\t{' | '.join(r['merged'])}\n"

@@ -64,6 +64,8 @@ class ClinicalFacet(BaseModel):
     organ_system: str | None = Field(default=None, description="e.g. 'Central Nervous System', 'Cardiovascular'")
     diagnostic_yield: str | None = Field(default=None, description="e.g. 'Gold standard', 'Initial screening', 'High specificity'")
     rationale: str | None = Field(default=None, description="Clinical mechanism or pharmacological rationale")
+    population: str | None = Field(default=None, description="Who a contraindication applies to, read after 'when', "
+                                   "e.g. 'the patient is pregnant' (ontology/reconciler.py qualify_contraindication)")
 
 
 class ClinicalProvenance(BaseModel):

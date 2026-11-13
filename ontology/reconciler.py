@@ -115,6 +115,88 @@ def negated_in_quote(pred, obj_name: str, quote: str) -> bool:
     return False
 
 
+# A contraindication is often limited to a subtype ("in intestinal tuberculosis") or a group of patients ("in
+# pregnancy", "in HIV"). Filed on the plain condition as STRICT it would read as a blanket rule, so:
+# subtype -> re-subject the fact; population -> keep the subject, CAUTIONARY, and record who it applies to.
+POPULATIONS = [   # (cue in quote/rationale, phrase read after "when")
+    (r"pregnan|foet|fetus|fetal|lactat|breast[- ]?feed|nursing mothers|conceive|conception|childbearing|maternal|"
+     r"obstetric", "the patient is pregnant, planning pregnancy or breastfeeding"),
+    (r"seronegative|not (been )?previously infected|no (evidence of )?(prior|previous) infection",
+     "the person has not been infected before"),
+    (r"prophyla", "it is used for prophylaxis"),
+    (r"\bhiv\b|\baids\b", "the patient has HIV"),
+    (r"\bchild|neonat|newborn|infant|p(a)?ediatric", "the patient is a child or neonate"),
+    (r"elderly|older (adults|patients|people)|\baged\b", "the patient is elderly"),
+    (r"renal (impairment|insufficiency|failure|dysfunction)|kidney (disease|impairment|failure)|\bckd\b",
+     "renal function is impaired"),
+    (r"hepatic (impairment|insufficiency|failure|dysfunction|disease)|liver (disease|impairment|failure|dysfunction)",
+     "hepatic function is impaired"),
+    (r"cavitary", "the disease is cavitary"),
+    (r"disseminated", "the disease is disseminated"),
+    (r"hypersensitiv|allerg", "there is a hypersensitivity to it"),
+]
+PATIENTS_WITH = re.compile(r"\b(?:in|for) (?:patients|persons|those|people|individuals) with ([a-z][a-z -]{2,40}?)(?:[,.;)]| and| or|$)",
+                           re.I)
+SUBTYPE_SKIP = {"with", "have", "from", "that", "this", "these", "those", "patients", "treat", "treating", "treated",
+                "suspected", "against", "during", "after", "before", "about", "other", "known", "into", "than", "most",
+                "some", "such", "their", "which", "when", "where", "while", "without", "active", "acute", "chronic",
+                "severe", "mild", "untreated", "existing", "underlying", "associated", "including", "also", "even"}
+REGIMEN_OBJECT = re.compile(r"\bregimens?\b|\bschedules?\b|\b(twice|thrice|once)[- ]weekly\b|\bintermittent\b|"
+                            r"\bshort[- ]course\b|\bdosing\b", re.I)
+
+
+# 'Not recommended ... uncertain efficacy' says a drug does not work, not that it harms: not a contraindication.
+INEFFECTIVE = re.compile(r"uncertain efficacy|ineffective|not (be )?(effective|active|useful|beneficial|indicated)|"
+                         r"no (role|benefit|value)|of no value|does not (work|produce)|lack of efficacy|resistan", re.I)
+HARM = re.compile(r"risk|toxic|harm|danger|worsen|exacerbat|aggravat|precipitat|fatal|death|mortality|adverse|"
+                  r"hypotension|bleed|haemorrh|hemorrh|teratogen|malform|perforat|arrhythm|seizure|injur|damage|"
+                  r"deteriorat|fail", re.I)
+
+
+def ineffective_only(quote: str, rationale: str = "") -> bool:
+    text = f"{quote or ''} {rationale or ''}"
+    return bool(INEFFECTIVE.search(text)) and not HARM.search(text)
+
+
+def _co_listed(subject: str, cue: str, quote: str) -> bool:
+    """'contraindicated in epilepsy, depression, renal insufficiency': the subject and the population term are
+    separate items of one list (separate contraindications), not a qualifier of each other."""
+    q = quote or ""
+    for a in re.finditer(re.escape(subject), q, re.I):
+        for b in re.finditer(cue, q, re.I):
+            lo, hi = sorted((a.end(), b.start())) if a.end() <= b.start() else sorted((b.end(), a.start()))
+            gap = q[lo:hi]
+            if len(gap) < 80 and re.search(r",|\band\b|\bor\b", gap) and \
+                    not re.search(r"\b(in|with|during|when|who|whose|of|for|is|are|should|being)\b", gap, re.I):
+                return True
+    return False
+
+
+def qualify_contraindication(subject: str, quote: str, rationale: str = "", context: str = "") -> tuple[str, str | None]:
+    """(subject, population). 'X is contraindicated in intestinal tuberculosis' with subject 'Tuberculosis' ->
+    ('Intestinal tuberculosis', None). '... not recommended in pregnancy' -> (subject, 'the patient is pregnant ...').
+    context: the object's name and the source chapter/section title (a 'Maternal medicine' chapter is about
+    pregnancy even when the sentence does not say so)."""
+    text = f"{quote or ''} {rationale or ''} {context or ''}"
+    # subtype: every mention of the subject in the quote carries the same one-word modifier
+    mods = [m.group(1) for m in re.finditer(r"(?:\b([A-Za-z][a-z-]{3,})\s+)?\b" + re.escape(subject) + r"\b",
+                                            quote or "", re.I)]
+    if mods and all(mods) and len({m.lower() for m in mods}) == 1 and mods[0].lower() not in SUBTYPE_SKIP:
+        return f"{mods[0].capitalize()} {subject[0].lower() + subject[1:]}", None
+    pops = [phrase for cue, phrase in POPULATIONS if re.search(cue, text, re.I) and not re.search(cue, subject, re.I)
+            and not _co_listed(subject, cue, quote)]          # (a population the subject itself names is no qualifier)
+    if not pops:
+        own = {w for w in re.findall(r"[a-z]{4,}", subject.lower())}
+        for m in PATIENTS_WITH.finditer(text):           # 'in patients with <the subject itself>' is no qualifier
+            cap = m.group(1).strip()
+            if re.fullmatch(r"[A-Z0-9-]{2,8}", cap):      # an acronym ('STEMI') is most likely the subject itself
+                continue
+            if not own & set(re.findall(r"[a-z]{4,}", cap.lower())):
+                pops = [f"the patient has {m.group(1).strip()}"]
+                break
+    return subject, ("; or ".join(dict.fromkeys(pops)) or None)
+
+
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.lower())).strip()
 
@@ -174,6 +256,23 @@ def reconcile_section_facts(
         if gate != "keep":
             stats[f"line_{gate}d" if gate == "clear" else "first_line_downgraded"] = \
                 stats.get(f"line_{gate}d" if gate == "clear" else "first_line_downgraded", 0) + 1
+        population = None
+        severity = item.contraindication_severity
+        if item.predicate == R.CONTRAINDICATES:
+            if REGIMEN_OBJECT.search(item.object_name or ""):     # a regimen policy, not a drug or procedure
+                stats["regimen_dropped"] = stats.get("regimen_dropped", 0) + 1
+                continue
+            ctx = f"{item.object_name} {chapter} {meta.get('title', '')}"
+            if ineffective_only(item.verbatim_quote, item.rationale or ""):
+                stats["ci_ineffective_dropped"] = stats.get("ci_ineffective_dropped", 0) + 1
+                continue
+            subj, population = qualify_contraindication(item.subject_name, item.verbatim_quote, item.rationale or "", ctx)
+            if subj != item.subject_name:
+                stats["ci_resubjected"] = stats.get("ci_resubjected", 0) + 1
+                item = item.model_copy(update={"subject_name": subj})
+            if population:
+                stats["ci_population"] = stats.get("ci_population", 0) + 1
+                severity = "CAUTIONARY"
         verified = quote_in_source(item.verbatim_quote, source_norm) if source_norm is not None else False
         stats["verified" if verified else "unverified"] = stats.get("verified" if verified else "unverified", 0) + 1
         sub_id, sub_label, sub_type = registry.resolve(item.subject_name, item.subject_type, book_id)
@@ -185,9 +284,10 @@ def reconcile_section_facts(
 
         facets = ClinicalFacet(
             line_of_therapy=line,
-            contraindication_severity=item.contraindication_severity,
+            contraindication_severity=severity,
             timing_phase=item.timing_phase,
             rationale=item.rationale,
+            population=population,
         )
 
         provenance = ClinicalProvenance(

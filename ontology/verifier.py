@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 CACHE = Path("data/ontology/verify_cache.jsonl")
+CI_TRIAGE = Path("data/ontology/ci_triage.jsonl")   # haiku triage of STRICT contraindications: {"k", "v", "q"}
 BATCH = 25
 PRICE_IN, PRICE_OUT = 0.28, 0.42          # assumed DeepSeek $/M tokens (cache miss); check the price page
 logger = logging.getLogger("ontology.verifier")
@@ -79,6 +80,29 @@ def apply_verdicts(facts, cache: dict[str, str] | None = None):
         check = "yes" if "yes" in seen else "partial" if "partial" in seen else None
         primary = f.provenance if f.provenance in keep else keep[0]
         out.append(f.model_copy(update={"sources": keep, "provenance": primary, "llm_check": check}))
+    return out
+
+
+def apply_ci_triage(facts, path: Path = CI_TRIAGE):
+    """Re-apply the triage of STRICT contraindications (labelled once by a haiku subagent, cached here; keyed like
+    the verifier): "qualifier" -> CAUTIONARY limited to its context, "caution" -> CAUTIONARY, "not_ci" (an
+    ineffective drug, a policy, ...) -> CANDIDATE. "ok" and untriaged facts are unchanged. Demote-only."""
+    if not path.exists():
+        return facts
+    tri = {r["k"]: r for r in map(json.loads, path.read_text(encoding="utf-8").splitlines()) if r}
+    out = []
+    for f in facts:
+        r = tri.get(verdict_key(f.subject_label, f.predicate.value, f.object_label, f.provenance.verbatim_quote))
+        if f.predicate.value != "CONTRAINDICATES" or f.status != "CERTIFIED" or not r or r["v"] == "ok":
+            out.append(f)
+        elif r["v"] == "not_ci":
+            out.append(f.model_copy(update={"status": "CANDIDATE"}))
+        else:
+            from ontology.schema import ContraindicationSeverity
+            upd = {"contraindication_severity": ContraindicationSeverity.CAUTIONARY}
+            if r["v"] == "qualifier" and r.get("q") and not f.clinical_facets.population:
+                upd["population"] = f"limited to: {r['q']}"
+            out.append(f.model_copy(update={"clinical_facets": f.clinical_facets.model_copy(update=upd)}))
     return out
 
 

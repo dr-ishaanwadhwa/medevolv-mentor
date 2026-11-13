@@ -109,3 +109,57 @@ def test_gapfill_passages_come_from_the_named_condition():
     found = find_passages(["myasthenia gravis", "myasthenia"])
     assert found and all(len(p.split()) <= 1500 for _, p in found)
     assert any("myasthenia" in path.name for path, _ in found)
+
+
+def test_contraindication_qualifiers():
+    from ontology.reconciler import REGIMEN_OBJECT, qualify_contraindication as q
+    # a named subtype becomes the subject
+    assert q("Tuberculosis", "Corticosteroids are contraindicated in intestinal tuberculosis because perforation")[0] \
+        == "Intestinal tuberculosis"
+    # a population keeps the subject and is recorded
+    s, pop = q("Tuberculosis", "S is contraindicated because it is ototoxic to the foetus.")
+    assert s == "Tuberculosis" and "pregnan" in pop
+    assert "HIV" in q("Tuberculosis", "not recommended in patients infected with HIV")[1]
+    # no qualifier: unchanged; 'patients with <the subject>' and its acronym are not qualifiers
+    assert q("Asthma", "Beta blockers are contraindicated in asthma") == ("Asthma", None)
+    assert q("Myocardial infarction", "avoided in patients with acute myocardial infarction")[1] is None
+    assert q("ST-Segment Elevation Myocardial Infarction", "should be avoided in patients with STEMI.")[1] is None
+    # items of one list are separate contraindications, not qualifiers
+    assert q("Epilepsy", "contraindicated in epilepsy, depression, renal insufficiency.")[1] is None
+    # a chapter about pregnancy qualifies its warnings
+    assert q("Heart disease", "Drug X should be avoided.", context="30 Maternal medicine")[1]
+    assert q("Renal insufficiency", "Metformin should not be used in renal insufficiency.")[1] is None
+    assert REGIMEN_OBJECT.search("Twice-weekly treatment regimens") and not REGIMEN_OBJECT.search("Streptomycin")
+    from ontology.reconciler import ineffective_only
+    assert ineffective_only("Group V drugs with uncertain efficacy; not recommended for MDR-TB")
+    assert not ineffective_only("Ineffective and may precipitate seizures")
+
+
+def test_warning_wording_is_neutral(monkeypatch):
+    f = {"subject_id": "s", "object_id": "o", "subject_label": "Tuberculosis", "object_label": "Streptomycin",
+         "clinical_facets": {"contraindication_severity": "CAUTIONARY", "population": "the patient is pregnant",
+                             "rationale": None}}
+    monkeypatch.setattr(ontology_facts, "_treats", lambda: frozenset())
+    assert ontology_facts.warning_text(f) == "Streptomycin is contraindicated in Tuberculosis when the patient is pregnant"
+    monkeypatch.setattr(ontology_facts, "_treats", lambda: frozenset({("s", "o")}))
+    g = dict(f, clinical_facets=dict(f["clinical_facets"], population=None, contraindication_severity="STRICT"))
+    assert "strictly" not in ontology_facts.warning_text(g) and ontology_facts.DIFFER_NOTE in ontology_facts.warning_text(g)
+
+
+def test_ci_triage_only_softens_or_hides(tmp_path):
+    import json
+    from ontology.verifier import apply_ci_triage
+    a = fact("Renal impairment", R.CONTRAINDICATES, "Metformin", quote="qa")
+    b = fact("Gonorrhea", R.CONTRAINDICATES, "Fluoroquinolones", quote="qb")
+    c = fact("Asthma", R.CONTRAINDICATES, "Timolol", quote="qc")
+    for f in (a, b, c):
+        from ontology.schema import ContraindicationSeverity
+        f.clinical_facets.contraindication_severity = ContraindicationSeverity.STRICT
+    k = lambda f: verdict_key(f.subject_label, f.predicate.value, f.object_label, f.provenance.verbatim_quote)
+    path = tmp_path / "tri.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in [{"k": k(a), "v": "qualifier", "q": "eGFR below 30"},
+                                                           {"k": k(b), "v": "not_ci", "q": None},
+                                                           {"k": k(c), "v": "ok", "q": None}]))
+    x, y, z = apply_ci_triage([a, b, c], path)
+    assert x.clinical_facets.contraindication_severity.value == "CAUTIONARY" and "eGFR" in x.clinical_facets.population
+    assert y.status == "CANDIDATE" and z.clinical_facets.contraindication_severity.value == "STRICT"
