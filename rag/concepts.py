@@ -1,7 +1,8 @@
 """Canonical concept pages over the certified ontology (wiki-style: every node answers "who points at me").
 
-    concept("Tuberculosis")        -> {"id", "label", "type", "aliases", "outgoing": {predicate: [link]},
-                                       "backlinks": {inverse name: [link]}, "books", "sections", "degree"}
+    concept("Tuberculosis")        -> {"id", "label", "type", "aliases", "heading_aliases", "outgoing": {predicate: [link]},
+                                       "backlinks": {inverse name: [link]}, "books", "sections", "degree",
+                                       "topic_sections", "headings"}
     concept("rifampicin")["backlinks"]["treats"]   -> the conditions rifampicin treats
     related("Tuberculosis", k=10)  -> one-hop neighbours, ranked by shared links and corroboration
     search_concepts("tubercu")     -> label-prefix search for a search box
@@ -9,12 +10,16 @@
 Every link carries a tier:
     "certified"  a direct fact: its verbatim quote was checked against the book (ontology_facts only loads those)
     "derived"    the same fact read backwards (an inverse edge). Same fact id, same quote, no new claim.
+`topic_sections`, `headings` and `heading_aliases` come from the textbook headings (rag/headings.py, tier "T2"):
+"this book section is about the concept", "the book also titles it so". Navigation data only, never a fact:
+a heading proves a topic is discussed, not what the book says about it.
 Nothing here creates a clinical claim, and nothing here may be passed to the answer prompt as evidence.
 Everything is cached and returns empty when the ontology file is missing.
 """
 from __future__ import annotations
 
 import functools
+import re
 from collections import Counter, defaultdict
 
 from rag import ontology_facts
@@ -87,6 +92,37 @@ def _index() -> dict:
     return {"nodes": nodes, "by_label": dict(by_label)}
 
 
+# parentheticals that are not names: "(Table 7.7, pp. 729-730)", "(anterior view)"
+_NOT_AN_ALIAS = re.compile(r"^(table|fig\.?|figure|pp?\.|chapter|ch\.|\d)|\b(view|aspect)$", re.I)
+
+
+@functools.cache
+def _heading_nav() -> tuple[dict, dict, dict]:
+    """(topic sections, other heading records, heading aliases), each keyed by ontology concept id.
+    Empty when data/graph/headings.jsonl is missing. Titles and paths only, never section text."""
+    try:
+        from rag import headings
+    except Exception:                                    # pragma: no cover - optional layer
+        return {}, {}, {}
+    topics: dict[str, list] = defaultdict(list)
+    recs: dict[str, list] = defaultdict(list)
+    by_hid: dict[str, dict] = {}
+    for r in headings.all_headings(cls="matched"):
+        by_hid[r["heading_id"]] = r
+        slim = {"heading_id": r["heading_id"], "book_id": r["book"], "section_id": r.get("section_id"),
+                "heading": r["clean"], "path": r["path"][1:], "method": r["method"], "tier": r["tier"]}
+        for cid in r.get("concept_ids", []):
+            recs[cid].append(slim)
+            if r.get("is_section") and r.get("section_id") and r["method"] != "rule1:heading-bridge":
+                topics[cid].append(slim)
+    aliases: dict[str, set] = defaultdict(set)
+    for a in headings.parenthetical_aliases():
+        r = by_hid.get(a["heading_id"])
+        for cid in (r or {}).get("concept_ids", []):
+            aliases[cid] |= {x for x in a["aliases"] if not _NOT_AN_ALIAS.search(x)}
+    return dict(topics), dict(recs), {k: sorted(v) for k, v in aliases.items()}
+
+
 def _resolve(label_or_id: str) -> dict | None:
     idx = _index()
     if label_or_id in idx["nodes"]:
@@ -103,8 +139,14 @@ def concept(label_or_id: str) -> dict:
     if n is None:
         return {}
     same = [i for i in _index()["by_label"].get(n["label"].lower(), []) if i != n["id"]]
+    topics, recs, h_aliases = _heading_nav()
+    own = {a.lower() for a in [n["label"], *n["aliases"]]}
+    heading_aliases = [a for a in h_aliases.get(n["id"], []) if a.lower() not in own]
     return {
-        "id": n["id"], "label": n["label"], "type": n["type"], "aliases": n["aliases"],
+        "id": n["id"], "label": n["label"], "type": n["type"], "aliases": sorted({*n["aliases"], *heading_aliases}),
+        "heading_aliases": heading_aliases,
+        "topic_sections": [dict(t) for t in topics.get(n["id"], [])],
+        "headings": [dict(t) for t in recs.get(n["id"], [])],
         "outgoing": {p: list(v) for p, v in n["outgoing"].items()},
         "backlinks": {p: list(v) for p, v in n["backlinks"].items()},
         "books": sorted(n["books"]), "sections": sorted(n["sections"]), "degree": n["degree"],
