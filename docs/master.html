@@ -77,8 +77,8 @@ td code { white-space: nowrap; }
 <header>
   <div class="eyebrow">Team handbook · group RAG assignment</div>
   <h1>MedEvolv Mentor Handbook</h1>
-  <p class="lede">Everything the team needs to understand, run, change, deploy and present MedEvolv Mentor: a study companion for medical students that answers from five standard textbooks and Eka Care's open BODHI clinical graph, cites every claim, declines when its sources don't cover a question, and shows exactly how each answer was made.</p>
-  <div class="meta"><span>Updated 13 Nov 2026</span><span>Demo 17 Nov 2026</span><span>Repo HEAD 64afda7</span><span>Owner: Ishaan</span></div>
+  <p class="lede">Everything the team needs to understand, run, change, deploy and present MedEvolv Mentor: a study companion for medical students that answers from seven standard textbooks, a certified textbook ontology and Eka Care's open BODHI clinical graph, cites every claim, declines when its sources don't cover a question, and shows exactly how each answer was made.</p>
+  <div class="meta"><span>Updated 13 Nov 2026</span><span>Demo 17 Nov 2026</span><span>Repo HEAD 487bc73</span><span>Owner: Ishaan</span></div>
 </header>
 
 <div class="links">
@@ -116,14 +116,18 @@ td code { white-space: nowrap; }
   <div class="tbl"><table>
     <thead><tr><th>Area</th><th>Status</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td>Pipeline (ingest → index → retrieve → answer)</td><td><span class="pill good">Done</span></td><td>6 books, 2,062 sections, 33,830 passages</td></tr>
+      <tr><td>Pipeline (ingest → index → retrieve → answer)</td><td><span class="pill good">Done</span></td><td>7 books, 2,611 sections, 35,902 passages</td></tr>
       <tr><td>Multi-hop: graph route + question splitting</td><td><span class="pill good">Done</span></td><td>The assignment's optional enhancement (query decomposition)</td></tr>
-      <tr><td>Refusals (personal advice, off-topic, weak evidence)</td><td><span class="pill good">Done</span></td><td>9/9 in the 36-question evaluation</td></tr>
+      <tr><td>Case route (long vignettes, three clinical axes)</td><td><span class="pill good">Done</span></td><td>Axis-aware prompt; hard-case rubric recall 0.782 → 0.851 in its A/B (<a href="#pipeline">section 4</a>)</td></tr>
+      <tr><td>Clinical ontology (certified facts)</td><td><span class="pill good">Done</span></td><td>About 25.9k certified facts from the books, verifier pass, held-out gold precision 0.95 (<a href="#data">section 3</a>)</td></tr>
+      <tr><td>Graph layers + Explore tab</td><td><span class="pill good">Done</span></td><td>Concept pages, backlinks, hubs, BODHI crosswalk, "see also". Navigation only. Graph-walk retrieval built but off</td></tr>
+      <tr><td>3D atlas</td><td><span class="pill warn">On a branch</span></td><td>Built on branch <code>atlas-integration</code>; pending merge and DNS</td></tr>
+      <tr><td>Refusals (personal advice, off-topic, weak evidence)</td><td><span class="pill good">Done</span></td><td>9/9 in the 39-question evaluation (13 Nov)</td></tr>
       <tr><td>UI with live answer trace + How it works tab</td><td><span class="pill good">Done</span></td><td>Streamlit</td></tr>
       <tr><td>Hosting on mentor.medevolv.in</td><td><span class="pill good">Live</span></td><td>Public, no password, noindex</td></tr>
-      <tr><td>Vignette differentials (TB, measles)</td><td><span class="pill warn">Weak</span></td><td>Graph data gaps; see <a href="#limits">section 11</a></td></tr>
+      <tr><td>Vignette differentials (TB, measles)</td><td><span class="pill warn">Partly weak</span></td><td>TB now ranks first; measles still ranks below "viral exanthem". Graph data gaps; see <a href="#limits">section 11</a></td></tr>
       <tr><td>STAIR (fine-tuned ToC retriever)</td><td><span class="pill warn">Negative result</span></td><td>Trained and evaluated; did not beat vector search or untrained DeepSeek (section 10); hidden behind a flag</td></tr>
-      <tr><td>Hand-written gold evaluation set</td><td><span class="pill warn">Open</span></td><td>Template in <code>eval/questions.template.jsonl</code></td></tr>
+      <tr><td>Hand-written gold evaluation set</td><td><span class="pill warn">Provisional</span></td><td>15 questions in <code>eval/questions.jsonl</code>; 9 of 15 are flagged FIX or CHECK in <code>docs/vignette_review.md</code></td></tr>
     </tbody>
   </table></div>
 </section>
@@ -134,19 +138,24 @@ td code { white-space: nowrap; }
   <div class="diagram"><pre class="mermaid">
 flowchart LR
   subgraph Build["Built once, offline"]
-    A[6 textbook PDFs] --> B[Recover table of contents<br/>2,062 sections]
-    B --> C[Heading-aware passages<br/>33,830]
+    A[7 textbook PDFs] --> B[Recover table of contents<br/>2,611 sections]
+    B --> C[Heading-aware passages<br/>35,902]
     C --> D[Embed with bge-small]
     D --> E[(Chroma vector DB)]
   end
   G[(BODHI graph<br/>6,560 nodes)]
+  ON[(Certified ontology<br/>about 25.9k facts)]
   Q([Question]) --> S{Safety check}
   S -- personal advice --> R[Decline]
   S --> RT{Route}
-  RT -- clinical case --> GR[Graph hops:<br/>symptoms → conditions<br/>→ specialist, drugs]
+  RT -- clinical case --> GR[Graph hops:<br/>symptoms → conditions<br/>→ specialist]
+  RT -- long case --> AX[Three axes:<br/>cause, stabilise, drugs]
   RT -- compound --> DC[Split into<br/>sub-questions]
   RT -- single --> SR[Search]
   G -.-> GR
+  ON -.-> GR
+  ON -.-> AX
+  AX --> SR
   GR --> SR
   DC --> SR
   E -.-> SR
@@ -160,10 +169,11 @@ flowchart LR
     <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
     <tbody>
       <tr><td>UI</td><td>Streamlit 1.67</td><td>Fast to build; chat, status boxes and expanders built in</td></tr>
-      <tr><td>Embeddings</td><td><code>BAAI/bge-small-en-v1.5</code> (local, CPU)</td><td>Free, fast, good retrieval; 77% chapter@1</td></tr>
+      <tr><td>Embeddings</td><td><code>BAAI/bge-small-en-v1.5</code> (local, CPU)</td><td>Free, fast, good retrieval; 76.5% chapter@1</td></tr>
       <tr><td>Vector store</td><td>Chroma 1.5.9 (cosine)</td><td>File-based, no server; metadata filters</td></tr>
       <tr><td>LLM</td><td>DeepSeek <code>deepseek-chat</code></td><td>Large quality jump over the local 3B model; cheap</td></tr>
-      <tr><td>Knowledge graph</td><td>Eka Care BODHI-S + BODHI-M in networkx</td><td>Open, India-focused symptom → condition → drug links</td></tr>
+      <tr><td>Knowledge graph</td><td>Eka Care BODHI-S + BODHI-M in networkx</td><td>Open, India-focused symptom → condition links; proposes candidate conditions</td></tr>
+      <tr><td>Clinical ontology</td><td>Certified facts in <code>data/ontology/clinical_ontology.jsonl</code></td><td>Textbook facts, each with a verbatim quote; the only graph content allowed into answers</td></tr>
       <tr><td>Hosting</td><td>Oracle Cloud VM + Docker + Caddy</td><td>Automatic HTTPS; custom domain</td></tr>
     </tbody>
   </table></div>
@@ -179,6 +189,9 @@ flowchart LR
       <tr><td>Davidson's Principles and Practice of Medicine 24e (<code>davidson</code>)</td><td>Medicine</td><td>Bookmark level 3, chapters at level 2</td><td class="num">338</td></tr>
       <tr><td>Robbins, Cotran &amp; Kumar, Pathologic Basis of Disease (<code>robbins</code>)</td><td>Pathology</td><td>Bookmark level 2, chapters at level 1</td><td class="num">212</td></tr>
       <tr><td>Essentials of Medical Microbiology (<code>micro</code>)</td><td>Microbiology</td><td>Bookmark level 3, chapters at level 3</td><td class="num">82</td></tr>
+      <tr><td>Harrison's Principles of Internal Medicine 22e (<code>harrison</code>)</td><td>Internal medicine</td><td>Cut from the PDF's bookmarks (<code>ingest/pdf_to_okf.py</code>)</td><td class="num">505</td></tr>
+      <tr><td>Gray's Anatomy for Students 5e (<code>grays</code>)</td><td>Anatomy</td><td>Added 13 Nov. Typography-based ToC splitter (<code>ingest/grays_toc.py</code>)</td><td class="num">549</td></tr>
+      <tr><td><b>Total, 7 books</b></td><td></td><td></td><td class="num">2,611 sections · 35,902 passages</td></tr>
       <tr><td>Eka Care BODHI-S + BODHI-M, CC BY-NC 4.0</td><td>Clinical graph</td><td>Merged on shared SNOMED IDs</td><td class="num">6,560 nodes · 16,770 edges</td></tr>
     </tbody>
   </table></div>
@@ -190,6 +203,38 @@ flowchart LR
     <li><span class="i">4</span><span><b>Chunk</b> (<code>rag/chunk.py</code>): heading-aware passages of up to ~300 words. Tiny fragments are merged, and every passage carries its book, chapter, section path and pages.</span></li>
     <li><span class="i">5</span><span><b>Embed and index</b> (<code>rag/index.py</code>): bge-small vectors in Chroma under <code>data/chroma/</code>. This takes about 6 minutes on a Mac.</span></li>
   </ol>
+  <h3 id="ontology">Clinical ontology (certified facts)</h3>
+  <p>A language model reads selected textbook sections and writes facts such as "drug X treats condition Y", each with a verbatim quote. About <b>25.9k facts are certified</b>. Only certified facts reach answers.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Part</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Quote gate</td><td>A fact is certified only if its quote is found word-for-word in the source section. Reversed, mistyped, negated or self-contradictory facts are corrected or dropped; a first-line tag is removed when the source hedges.</td></tr>
+      <tr><td>Verifier pass</td><td>A second model pass asks whether the quote actually states the fact (yes, no, partial). It only demotes facts; it never adds any (<code>ontology/verifier.py</code>).</td></tr>
+      <tr><td>Gold set</td><td>Dev and held-out gold triples (<code>tests/ontology_gold.jsonl</code>, triples only). On the held-out gold: <b>precision 0.95</b>, <b>key-fact recall 0.76</b> (strict matching).</td></tr>
+      <tr><td>Entity merges and gap-fill</td><td>Deterministic merges (plurals, word order, synonyms) and targeted extraction for 100 exam conditions to fill thin ones, mainly contraindications (<code>ontology/merge.py</code>, <code>ontology/gapfill.py</code>).</td></tr>
+      <tr><td>Contraindication scoping</td><td>Population and subtype qualifiers are kept (for example pregnancy). A contraindication is shown as STRICT only when it is unqualified; scoped ones show their qualifier in the warning wording.</td></tr>
+      <tr><td>Corroboration</td><td>Provenance is kept per fact, so the UI shows "N books" when several textbooks state the same fact, and ranks better-supported facts first.</td></tr>
+      <tr><td>"Books differ"</td><td>A neutral panel in Explore where one drug is listed as a treatment in one book and a contraindication in another, or first-line sets differ. Neither side is marked wrong; both sources are shown. Rheumatoid arthritis and methotrexate is the cleanest example.</td></tr>
+      <tr><td>Gray's content</td><td>"In the clinic" boxes and clinical cases from Gray's were extracted too. They add a new relation, <code>INVOLVES_STRUCTURE</code> (condition to anatomical structure). It is <b>navigation-only</b>: structure pages read it backwards and it is not given to the model as a clinical statement.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Honest limit: the quote is verified, not the medical judgement. The reinforcement audit before the verifier pass found about 87% of sampled facts supported, which is why the verifier and the gold set exist. Counts only here; no textbook text.</p>
+
+  <h3 id="graph-layers">Graph layers and the Explore tab</h3>
+  <p>The ontology is a set of separate facts. The graph layers turn it into a "second brain" over the books. They are built offline, rebuilt from the certified file, and written under <code>data/graph/</code> (git-ignored).</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Layer</th><th>What it gives</th><th>Code</th></tr></thead>
+    <tbody>
+      <tr><td>Concept pages + backlinks</td><td>One page per concept. Each certified fact is also read backwards ("Linked from", tagged "derived"), so a drug page lists everything it treats. No new claim is added.</td><td><code>rag/concepts.py</code></td></tr>
+      <tr><td>Section mention index</td><td>Concept to the sections that mention it, across all seven books ("Appears in"). Stores ids and counts, no text.</td><td><code>rag/mentions.py</code></td></tr>
+      <tr><td>Hubs</td><td>"Part of" groups by organ system, mechanism, organism and drug class. Model-suggested groupings are tagged "suggested". Line-of-therapy groupings (for example "second-line anti-TB") are excluded because they are not drug classes.</td><td><code>rag/hubs.py</code></td></tr>
+      <tr><td>BODHI crosswalk</td><td>Links ontology concepts to BODHI nodes ("Also in BODHI"). Used for navigation only.</td><td><code>rag/crosswalk.py</code></td></tr>
+      <tr><td>Co-mention "see also"</td><td>Concepts that books discuss together, shown grey and collapsed. Not a clinical link.</td><td><code>rag/comention.py</code></td></tr>
+      <tr><td>Explore UI</td><td>Concept search, backlinks, related concepts, book mentions, hub pages, and a local graph (the concept plus its neighbours, optional hubs and 2 hops).</td><td><code>app.py</code></td></tr>
+      <tr><td>Graph-walk retrieval</td><td>Pulls extra sections for the concepts in a question. Built behind <code>GRAPH_WALK=1</code> but <b>off</b> after A/B testing.</td><td><code>rag/hops.py</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><b>Tier rule:</b> only certified facts reach answers. Backlinks, mentions, hubs, the crosswalk and "see also" are navigation: they help a student find and order things, and are never sent to the model as clinical statements. BODHI drug links were also taken out of the answer evidence (13 Nov); they remain only in the trace as a cross-check.</div>
 </section>
 
 <section id="pipeline">
@@ -200,20 +245,24 @@ flowchart LR
     <li><span class="i">3</span><span><b>Routing</b> (<code>rag/hops.py: plan</code>):
       <ul>
         <li><b>Clinical case:</b> 2 or more symptoms, or 1 symptom plus a case cue ("patient", "year old", "presents", "diagnosis") → graph route.</li>
+        <li><b>Long case:</b> a vignette of 35+ words → case route (below).</li>
         <li><b>Compound:</b> "compare", "difference", "vs", several "?", or "and why/how" → split into up to 3 sub-questions by the LLM.</li>
         <li><b>Otherwise:</b> one direct search.</li>
       </ul></span></li>
-    <li><span class="i">4</span><span><b>Graph hops</b> (clinical case only): conditions are ranked by matched symptoms, weighted by BODHI's likelihood labels (top 3). Then specialists and drugs come from the graph, with drugs found via CHILD_OF ancestors. For the top 2 conditions, the textbooks are searched for "treatment and drug of choice for X".</span></li>
-    <li><span class="i">5</span><span><b>Search</b> (<code>rag/retrieve.py</code>): cosine similarity over all 33,830 passages, returning the top 6, or 3 per sub-question.</span></li>
+    <li><span class="i">4</span><span><b>Graph hops</b> (clinical case only): conditions are ranked by matched symptoms, weighted by BODHI's likelihood labels (top 3). Then specialists come from the graph. Drugs, tests and contraindication warnings come from the certified ontology, with the book and page. BODHI drug links are no longer given to the model as evidence. For the top 2 conditions, the textbooks are searched for "treatment and drug of choice for X".</span></li>
+    <li><span class="i">5</span><span><b>Search</b> (<code>rag/retrieve.py</code>): cosine similarity over all 35,902 passages, returning the top 6, or 3 per sub-question.</span></li>
     <li><span class="i">6</span><span><b>Relevance filters</b>:
       <ul>
         <li>The best passage must score ≥ <b>0.60</b>, or the bot declines without calling the model.</li>
         <li>On the graph route, a passage counts as being about a condition only if it actually names it.</li>
         <li>At most 9 passages go to the model.</li>
       </ul></span></li>
-    <li><span class="i">7</span><span><b>Grounded answer</b>: DeepSeek gets numbered passages <code>[1]…</code>, graph facts <code>[G1]…</code>, and rules: answer only from the evidence, cite every claim, say which parts aren't covered, and reply <code>INSUFFICIENT_CONTEXT</code> if nothing answers it. That reply makes the bot decline.</span></li>
+    <li><span class="i">7</span><span><b>Grounded answer</b>: DeepSeek gets numbered passages <code>[1]…</code>, certified graph facts <code>[G1]…</code>, and rules: answer only from the evidence, cite every claim, say which parts aren't covered, and reply <code>INSUFFICIENT_CONTEXT</code> if nothing answers it. That reply makes the bot decline.</span></li>
     <li><span class="i">8</span><span><b>Checks</b>: every <code>[n]</code> is validated against the evidence list. Drugs named in the answer are cross-checked against the graph's drug links. Echoed headers are stripped from the answer.</span></li>
   </ol>
+  <h3 id="case-route">The case route (long vignettes)</h3>
+  <p>A long vignette is too blurry for one search. The model splits it along up to <b>three clinical axes</b>: etiology and diagnosis, emergency stabilisation, and definitive pharmacology with contraindications. It writes short textbook-style queries for each axis (one point per query, up to 2 per axis), searches them alongside the whole case, adds certified ontology warnings, and answers axis by axis with an axis-aware prompt. Axis selection on the 18-case hard set: precision 1.00, recall 0.98.</p>
+  <div class="callout"><b>A/B on the hard cases:</b> rubric recall rose from <b>0.782 to 0.851</b> with the axis-aware prompt. Stabilisation is wrongly added to control cases 0 times.</div>
   <div class="callout"><b>Three ways it says no:</b> personal advice (before search), weak retrieval (best match below 0.60, model never called), and the model's own check (INSUFFICIENT_CONTEXT).</div>
 </section>
 
@@ -222,15 +271,21 @@ flowchart LR
   <p><code>rag/trace.py</code> records each step of a question: stage, title, plain-language detail, status (ok, warn or stop) and duration. Every vector search and every LLM call is captured automatically at <code>retrieve.search</code> and <code>backends.chat</code>. Routing, graph, filter and citation decisions record themselves where they happen. Outside the app nothing is recorded, so the CLI and the evaluation harness are unaffected.</p>
   <div class="two">
     <div><h3>Ask tab</h3><ul>
-      <li>Six demo questions, labelled by type</li>
+      <li>Demo tiles (three one-click questions) and a route pill on each answer (single, compound, graph, long case)</li>
       <li>A live status box that ticks off steps as they run</li>
       <li>Under each answer: <b>How this answer was made</b> (timeline with timings, search results with score bars, model and token counts) and <b>Sources</b> (cited or retrieved, book, match score, path, pages, 300-character excerpt)</li>
       <li>Sidebar: multi-hop on/off for a before-and-after comparison</li>
+      <li>Certified warnings appear as "WARNING (textbook ontology)" rows with book and pages; corroboration badges ("N books"); dark mode and a phone layout</li>
     </ul></div>
     <div><h3>How it works tab</h3><ul>
       <li>Two flow diagrams: question time and the offline build</li>
       <li>The six stages in plain language</li>
-      <li>The three refusal rules, the sources table, evaluation results and known limits</li>
+      <li>The three refusal rules, the sources table (7 books), evaluation results and known limits</li>
+    </ul></div>
+    <div><h3>Explore tab</h3><ul>
+      <li>Concept search, concept pages with backlinks, "Part of" hubs, "Also in BODHI", "See also" and a local graph</li>
+      <li>Browse by organ system, then condition, with facet tabs (warnings, treatments, tests) and the "Books differ" panel</li>
+      <li>No model call, so it is fast and does not depend on DeepSeek</li>
     </ul></div>
   </div>
 </section>
@@ -242,19 +297,23 @@ flowchart LR
     <tbody>
       <tr><td><code>app.py</code></td><td>Streamlit UI: both tabs, trace and source rendering, optional password gate</td></tr>
       <tr><td><code>rag/config.py</code></td><td>All settings from env or <code>.env</code></td></tr>
-      <tr><td><code>rag/backends.py</code></td><td><code>embed()</code> (local or OCI) and <code>chat()</code> (DeepSeek, Ollama or OCI), with retries and trace records</td></tr>
+      <tr><td><code>rag/backends.py</code></td><td><code>embed()</code> (local or OCI) and <code>chat()</code> (DeepSeek, Ollama, OCI, Gemini, OpenRouter or Mistral), with retries and trace records</td></tr>
       <tr><td><code>rag/retrieve.py</code></td><td>Vector search, <code>Hit.citation()</code></td></tr>
       <tr><td><code>rag/answer.py</code></td><td>Safety check, prompts, <code>answer()</code> (single search) and <code>answer_multihop()</code></td></tr>
       <tr><td><code>rag/hops.py</code></td><td>Routing, graph route, question splitting, relevance filter, drug cross-check</td></tr>
+      <tr><td><code>rag/ontology_facts.py</code>, <code>rag/concepts.py</code></td><td>Certified facts for answers and Explore; concept pages and backlinks</td></tr>
+      <tr><td><code>rag/mentions.py</code>, <code>rag/hubs.py</code>, <code>rag/crosswalk.py</code>, <code>rag/comention.py</code></td><td>Navigation layers: section mentions, hubs, BODHI crosswalk, co-mention "see also"</td></tr>
+      <tr><td><code>rag/clinical_graph.py</code>, <code>rag/diagrams.py</code></td><td>Five-level clinical graph and case diagrams from certified facts</td></tr>
+      <tr><td><code>ontology/</code></td><td>Fact builder, quote gate, verifier, reconciler and merges, gap-fill, Gray's extraction, gold scoring</td></tr>
       <tr><td><code>rag/graph.py</code></td><td>BODHI graph loading, entity linking, condition ranking, specialists, drugs</td></tr>
       <tr><td><code>rag/trace.py</code></td><td>Step recorder behind the answer trace</td></tr>
       <tr><td><code>rag/chunk.py</code>, <code>rag/index.py</code></td><td>Passages and the Chroma index (build time)</td></tr>
       <tr><td><code>ingest/</code></td><td>PDF checks, bookmark-based section cutting, font-based ToC rebuild, BODHI download</td></tr>
-      <tr><td><code>eval/</code></td><td><code>run_eval.py</code> (retrieval@k), <code>product_eval.py</code> (36 questions, both modes)</td></tr>
+      <tr><td><code>eval/</code></td><td><code>run_eval.py</code> (retrieval@k), <code>product_eval.py</code> (39 questions, both modes), <code>hard_eval.py</code> (hard cases), <code>anatomy_smoke.jsonl</code></td></tr>
       <tr><td><code>rag/router.py</code>, <code>stair/</code></td><td>Experimental ToC router and STAIR (hidden unless <code>EXPERIMENTAL=1</code>)</td></tr>
-      <tr><td><code>deploy/</code></td><td>Server bundle builder, Dockerfile, Oracle deploy scripts, Caddy config</td></tr>
+      <tr><td><code>deploy/</code></td><td>Server bundle builder, Dockerfile, Oracle deploy scripts, Caddy config. <code>tests/test_deploy_imports.py</code> checks the served code imports only shipped modules</td></tr>
       <tr><td><code>docs/</code></td><td>Pipeline, failure cases, STAIR, deployment, product report, this handbook</td></tr>
-      <tr><td><code>tests/</code></td><td>23 tests on synthetic inputs</td></tr>
+      <tr><td><code>tests/</code></td><td>133 tests on synthetic inputs</td></tr>
     </tbody>
   </table></div>
 </section>
@@ -266,12 +325,12 @@ flowchart LR
 python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m ingest.fetch_bodhi             # graph data -> data/bodhi/
 # put PDFs in data/books/, then run the per-book ingest commands in README.md
-.venv/bin/python -m rag.index                      # ~6 min: embed 33,830 passages
+.venv/bin/python -m rag.index                      # ~6 min: embed 35,902 passages
 echo "DEEPSEEK_API_KEY=...your key..." &gt;&gt; .env    # never commit .env
 echo "LLM_BACKEND=deepseek" &gt;&gt; .env
 .venv/bin/streamlit run app.py                     # http://localhost:8501
-.venv/bin/python -m pytest -q                      # 23 tests
-.venv/bin/python -m eval.product_eval              # 36-question evaluation</code></pre>
+.venv/bin/python -m pytest -q                      # 133 tests
+.venv/bin/python -m eval.product_eval              # 39-question evaluation</code></pre>
   <p class="note">Offline fallback: <code>LLM_BACKEND=ollama</code> with <code>OLLAMA_MODEL=qwen2.5:7b</code>, which is better than the default 3B model. Run <code>ollama pull qwen2.5:7b</code> first.</p>
 </section>
 
@@ -280,7 +339,7 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
   <div class="tbl"><table>
     <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
     <tbody>
-      <tr><td><code>LLM_BACKEND</code></td><td><code>ollama</code></td><td><code>deepseek</code> (demo), <code>ollama</code> (offline) or <code>oci</code></td></tr>
+      <tr><td><code>LLM_BACKEND</code></td><td><code>ollama</code></td><td><code>deepseek</code> (demo), <code>ollama</code> (offline), <code>oci</code>, <code>gemini</code>, <code>openrouter</code> or <code>mistral</code></td></tr>
       <tr><td><code>DEEPSEEK_API_KEY</code></td><td>none</td><td>Secret. Kept only in <code>.env</code> and on the server</td></tr>
       <tr><td><code>DEEPSEEK_MODEL</code></td><td><code>deepseek-chat</code></td><td>Model name</td></tr>
       <tr><td><code>EMBED_BACKEND</code></td><td><code>local</code></td><td><code>local</code> (bge-small) or <code>oci</code>; changing it needs a re-index</td></tr>
@@ -289,6 +348,7 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
       <tr><td><code>MIN_SIMILARITY</code></td><td><code>0.60</code></td><td>Below this the bot declines. On-topic queries score 0.71–0.81, off-topic about 0.50</td></tr>
       <tr><td><code>CHUNK_WORDS</code></td><td><code>300</code></td><td>Maximum passage length (build time)</td></tr>
       <tr><td><code>APP_PASSWORD</code></td><td>unset</td><td>If set, the app shows a login screen. Currently off (commented out in <code>.env</code>)</td></tr>
+      <tr><td><code>GRAPH_WALK</code></td><td><code>0</code> (off)</td><td><code>1</code> turns on graph-walk retrieval (extra sections for concepts in the question). Off after A/B testing</td></tr>
       <tr><td><code>EXPERIMENTAL</code></td><td><code>0</code></td><td><code>1</code> shows the ToC router and STAIR retrievers</td></tr>
     </tbody>
   </table></div>
@@ -322,34 +382,62 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
 
 <section id="eval">
   <h2><span class="n">10</span>Evaluation</h2>
+  <p>Re-run on 13 Nov 2026 with DeepSeek <code>deepseek-chat</code>, bge-small embeddings, all 7 books indexed, graph-walk off, everything through <code>answer_multihop</code>. Total cost about $0.35. Raw outputs are in <code>reports/</code> (git-ignored).</p>
   <div class="two">
     <div>
-      <h3>Product evaluation (36 questions, DeepSeek)</h3>
+      <h3>Product evaluation (39 questions, multi-hop on)</h3>
       <div class="tbl"><table>
-        <thead><tr><th>Measure</th><th class="num">Baseline</th><th class="num">Multi-hop</th></tr></thead>
+        <thead><tr><th>Measure</th><th class="num">12 Nov (36 q)</th><th class="num">13 Nov (39 q)</th></tr></thead>
         <tbody>
-          <tr><td>Expected status</td><td class="num">35/36</td><td class="num">36/36</td></tr>
-          <tr><td>Clinical vignettes</td><td class="num">4/5</td><td class="num">5/5</td></tr>
-          <tr><td>Right textbook cited</td><td class="num">22/22</td><td class="num">22/22</td></tr>
-          <tr><td>Claims supported (LLM judge)</td><td class="num">99.2%</td><td class="num">100%</td></tr>
-          <tr><td>Median / p95 latency</td><td class="num">3.2 / 6.9 s</td><td class="num">3.9 / 8.3 s</td></tr>
+          <tr><td>Expected status</td><td class="num">36/36</td><td class="num">39/39</td></tr>
+          <tr><td>Right textbook cited</td><td class="num">22/22</td><td class="num">23/25 (92%)</td></tr>
+          <tr><td>Answers with a citation</td><td class="num">27/27</td><td class="num">30/30</td></tr>
+          <tr><td>Claims supported (LLM judge)</td><td class="num">100%</td><td class="num">100% (30/30 answers)</td></tr>
+          <tr><td>Median / p95 latency</td><td class="num">3.9 / 8.3 s</td><td class="num">2.75 / 4.6 s</td></tr>
         </tbody>
       </table></div>
-      <p class="note">The judge is DeepSeek grading itself, so treat its scores as an upper bound.</p>
+      <p class="note">22 factual, 3 comparison, 5 clinical, 5 off-topic, 4 personal; q37 to q39 are new Harrison questions. The two citation misses (q18, q37) were answered and grounded but cited another indexed book. The non-multi-hop baseline was not re-run. The judge is DeepSeek grading itself, so treat its scores as an upper bound.</p>
     </div>
     <div>
-      <h3>Retrieval (446 held-out questions, Tripathi)</h3>
+      <h3>Retrieval (held-out generated questions)</h3>
       <div class="tbl"><table>
-        <thead><tr><th>Retriever</th><th class="num">Ch@1</th><th class="num">Ch@3</th><th class="num">Sec@1</th></tr></thead>
+        <thead><tr><th>Book / retriever</th><th class="num">Ch@1</th><th class="num">Ch@3</th><th class="num">Sec@1</th></tr></thead>
         <tbody>
-          <tr><td>Vector (in use)</td><td class="num">76.7%</td><td class="num">91.0%</td><td class="num">65.5%</td></tr>
-          <tr><td>ToC router, 3B</td><td class="num">32%</td><td class="num">68%</td><td class="num">15%</td></tr>
+          <tr><td>Tripathi, vector (446 q)</td><td class="num">76.5%</td><td class="num">90.8%</td><td class="num">65.2%</td></tr>
+          <tr><td>Davidson, vector (338 q)</td><td class="num">78.4%</td><td class="num">94.7%</td><td class="num">57.1%</td></tr>
+          <tr><td>Tripathi, ToC router 3B</td><td class="num">32%</td><td class="num">68%</td><td class="num">15%</td></tr>
         </tbody>
       </table></div>
-      <p class="note">Generated questions share wording with the passages, which favours vector search.</p>
+      <p class="note">Generated questions share wording with the passages, which favours vector search. Gray's, Guyton, Robbins, Harrison and microbiology have no generated question set, so they were skipped.</p>
     </div>
   </div>
-  <h3 id="stair-result">STAIR: result (negative)</h3>
+  <h3>Gold multi-hop (15 questions) <span class="pill warn">Provisional</span></h3>
+  <div class="callout warn"><b>Provisional:</b> 9 of the 15 gold items (q01, q02, q07, q10 to q15) are flagged FIX or CHECK in <code>docs/vignette_review.md</code>. Treat these numbers as provisional until the gold is corrected.</div>
+  <div class="tbl"><table>
+    <thead><tr><th></th><th class="num">Status correct</th><th class="num">Gold section in evidence</th><th class="num">Gold section cited</th><th class="num">Gold chapter cited</th></tr></thead>
+    <tbody>
+      <tr><td>All 15 (provisional)</td><td class="num">15/15</td><td class="num">14/15</td><td class="num">14/15</td><td class="num">15/15</td></tr>
+      <tr><td>6 unflagged ("OK") questions</td><td class="num">6/6</td><td class="num">6/6</td><td class="num">6/6</td><td class="num">6/6</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The one strict miss is q02 (metformin): its gold section does not hold the text, and the right chapter is cited.</p>
+  <h3>Hard cases (18 cases, 3 runs, case route)</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Metric</th><th class="num">Mean of 3 runs</th></tr></thead>
+    <tbody>
+      <tr><td>Answered / refused</td><td class="num">18 / 0 each run</td></tr>
+      <tr><td>Rubric recall</td><td class="num">82.7% (83.5, 83.5, 81.0)</td></tr>
+      <tr><td>Recall by axis: etiology / stabilisation / pharmacology</td><td class="num">89 / 91 / 72%</td></tr>
+      <tr><td>Trap hits</td><td class="num">1 case in 3 runs (h05)</td></tr>
+      <tr><td>Groundedness</td><td class="num">97.7%</td></tr>
+      <tr><td>Gold book cited</td><td class="num">18/18 each run</td></tr>
+      <tr><td>Latency p50</td><td class="num">about 7.4 s</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">New baseline; pharmacology is the weakest axis. The weakest cases are h08, h05, h07 and h13. The 0.782 → 0.851 figure in section 4 is the prompt A/B, a different run.</p>
+  <h3>Anatomy smoke test (10 questions)</h3>
+  <p>Questions and key points were written by Claude in first-year viva style, not by an expert, so the key-point check is a judgement call. 9 of 10 answered, Gray's cited in 8, clear pass 6, partial 3, fail 1. Two gaps: a05 (Erb's palsy, nothing retrieved) and a10 (bronchopulmonary segments: Davidson outranks Gray's). No hallucinated content seen; the answers said so when sources lacked something.</p>
+<h3 id="stair-result">STAIR: result (negative)</h3>
   <p>STAIR is a two-stage generative table-of-contents retriever. A fine-tuned Mistral-7B-Instruct v0.2 (QLoRA via Unsloth, rank 16) picks a chapter from the chapter list, then a section from that chapter's section list, with output constrained to real titles. It was trained on a free Kaggle T4: Davidson, 1 epoch, 5,460 examples, 683 steps, 1.62 h, peak 5.0 GB VRAM, final eval loss 0.130. The Tripathi run was cancelled after the Davidson result. Ollama 0.40 no longer loads LoRA adapters, so the adapter was converted with llama.cpp <code>convert_lora_to_gguf.py</code> and served by <code>llama-server --lora</code> on the stock Mistral Q4_K_M base. <code>stair/serve.py</code> uses it when <code>STAIR_URL</code> is set; prompts match training exactly and a grammar restricts output to real titles.</p>
   <div class="tbl"><table>
     <thead><tr><th>Retriever (338 held-out Davidson questions)</th><th class="num">Ch@1</th><th class="num">Ch@3</th><th class="num">Sec@1</th><th class="num">Sec@3</th><th class="num">s / question</th></tr></thead>
@@ -361,7 +449,8 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
   </table></div>
   <p>Fine-tuning gave no edge over an untrained DeepSeek reading the same ToC. Both ToC methods are capped by section titles, many of which are generic (for example "Overview" and "Presenting problems"), while vector search reads the passage text. The test set came from the same generator as STAIR's training data, which favours STAIR, and it still lost. <b>Decision:</b> STAIR is a documented negative result and is not used in the product. Retrieval stays vector + graph + ontology, and DeepSeek is used for reasoning, not section-finding.</p>
 <pre><code>.venv/bin/python -m eval.product_eval               # writes reports/product_eval.json (git-ignored)
-.venv/bin/python -m eval.run_eval retrieval --retrievers vector</code></pre>
+.venv/bin/python -m eval.run_eval retrieval --retrievers vector
+.venv/bin/python -m eval.hard_eval run --arm after  # hard cases</code></pre>
 </section>
 
 <section id="limits">
@@ -369,9 +458,15 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
   <div class="tbl"><table>
     <thead><tr><th>Issue</th><th>Cause</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>TB vignette lists lung abscess, COVID and endocarditis, not TB</td><td>BODHI's TB node lacks night sweats and weight loss</td><td><span class="pill warn">Open</span></td></tr>
-      <tr><td>Measles-like child gets only "viral exanthem"</td><td>Coryza and rash spread aren't linked to the graph</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>TB vignette used to list lung abscess, COVID and endocarditis, not TB</td><td>BODHI's TB node lacked night sweats and weight loss</td><td><span class="pill good">Fixed</span> TB now ranks first</td></tr>
+      <tr><td>Tuberculosis "see also" gap</td><td>The co-mention list for TB is incomplete</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>Drug-class hub listed "second-line anti-TB" for rifampin</td><td>A line of therapy is not a drug class</td><td><span class="pill good">Fixed</span> excluded from hubs</td></tr>
+      <tr><td>Anatomy gaps: Erb's palsy not found; bronchopulmonary segments cite Davidson, not Gray's</td><td>Retrieval gaps on a newly added book</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>Pharmacology is the weakest axis on hard cases (72% recall)</td><td>Drug detail spread across books</td><td><span class="pill warn">Known</span></td></tr>
+      <tr><td>Ontology facts are quote-verified, not medically verified</td><td>Facts are extracted by a model; precision 0.95 on held-out gold</td><td><span class="pill info">Shown to students</span></td></tr>
+      <tr><td>Measles-like child ranks "viral exanthem" above measles</td><td>Coryza and rash spread aren't linked to the graph</td><td><span class="pill warn">Open</span></td></tr>
       <tr><td>Polyuria/polydipsia ranks gestational DM first</td><td>Ties in symptom count; weight loss not linked</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>Gold evaluation questions partly wrong</td><td>9 of 15 flagged for review</td><td><span class="pill warn">Open</span></td></tr>
       <tr><td>Drug cross-check can match a "not supported" mention</td><td>String matching; graph lists some non-drugs</td><td><span class="pill info">Shown only in the trace</span></td></tr>
       <tr><td>Comparison retrieved one side only</td><td>One embedding for two topics</td><td><span class="pill good">Fixed</span> by splitting</td></tr>
       <tr><td>3B local model wrote unsupported claims</td><td>Model capacity</td><td><span class="pill good">Fixed</span> by DeepSeek</td></tr>
@@ -388,6 +483,11 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
     <tbody>
       <tr><td>7 Nov</td><td>Medical study companion ("Hard" option) over the visa assistant</td><td>Stronger multi-hop story; domain expert on the team</td></tr>
       <tr><td>7 Nov</td><td>Books named by ISBN, OKF markdown bundle per book</td><td>Reproducible ingest; section-level citations</td></tr>
+      <tr><td>13 Nov</td><td>Added Gray's Anatomy for Students 5e (549 sections)</td><td>Closes the anatomy gap; total now 7 books, 2,611 sections, 35,902 passages. Needed a typography-based ToC splitter</td></tr>
+      <tr><td>13 Nov</td><td>Ontology reinforcement and gap-fill: entity merges, multi-source facts, verifier pass, dev and held-out gold, scoped contraindications, targeted extraction for 100 exam conditions, Gray's clinical content</td><td>Raise precision and coverage of certified facts (now about 25.9k); held-out gold precision 0.95, key-fact recall 0.76</td></tr>
+      <tr><td>13 Nov</td><td>Graph stages built: concept pages with backlinks, mention index, hubs, BODHI crosswalk, co-mention "see also", Explore UI. Graph-walk retrieval kept off</td><td>Navigation helps students; in A/B testing graph-walk did not help answers, so <code>GRAPH_WALK</code> stays unset</td></tr>
+      <tr><td>13 Nov</td><td>BODHI drug links removed from answer evidence</td><td>They are not textbook-certified; only certified facts reach answers (tier rule)</td></tr>
+      <tr><td>13 Nov</td><td>Outage after a deploy; added a deploy-import test</td><td>The server bundle lacked <code>ontology.merge</code>, which the crosswalk imports. Now shipped, and <code>tests/test_deploy_imports.py</code> checks that served code imports only shipped modules</td></tr>
       <tr><td>13 Nov</td><td>STAIR closed as a negative result; Tripathi training cancelled</td><td>Davidson STAIR 36% section@1 vs vector 57% (DeepSeek ToC router 39%); see section 10</td></tr>
       <tr><td>12 Nov</td><td>STAIR and the ToC router dropped from the demo, kept as future work</td><td>Router 32% vs vector 77%; Kaggle training not run</td></tr>
       <tr><td>12 Nov</td><td>DeepSeek as the LLM</td><td>The 3B local model made faithfulness errors</td></tr>
@@ -400,17 +500,20 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
 </section>
 
 <section id="demo">
-  <h2><span class="n">13</span>Demo script (about 5 minutes)</h2>
+  <h2><span class="n">13</span>Demo script (about 11 minutes plus questions)</h2>
+  <p>The full script, with exact questions, fallbacks and a pre-demo checklist, is <code>docs/demo_script.md</code>. Every step was run on 13 Nov. Summary:</p>
   <ol class="steps">
-    <li><span class="i">0</span><span><b>Before the professor arrives:</b> open the site and ask any question once, to warm up the model.</span></li>
-    <li><span class="i">1</span><span><b>How it works tab</b> (1 min): the question-time diagram and the three refusal rules.</span></li>
-    <li><span class="i">2</span><span><b>Mosquito case</b> (1.5 min): open "How this answer was made". Show the symptoms linked, the graph's conditions, the textbook search, the relevance filter and the cited answer.</span></li>
-    <li><span class="i">3</span><span><b>Penicillins vs aminoglycosides</b> (45 s): the question splits into two searches, so both drug classes get evidence.</span></li>
-    <li><span class="i">4</span><span><b>Cricket question, then "My mother has TB…"</b> (45 s): one is declined below the 0.60 threshold without calling the model, the other before any search.</span></li>
-    <li><span class="i">5</span><span><b>Multi-hop off</b> (30 s, optional): the same question as plain RAG, for contrast.</span></li>
-    <li><span class="i">6</span><span><b>Close</b> (1 min): the evaluation table, the honest limits (TB vignette) and next steps.</span></li>
+    <li><span class="i">0</span><span><b>Opening</b> (30 s): seven books, citations, refusals, trace. Warm up the site first and click "Clear chat".</span></li>
+    <li><span class="i">1</span><span><b>Clinical vignette, case route</b> (2 min): a 64-word right ventricular infarction case. Show the three axes, the "Avoid:" line, the trace and the certified warnings.</span></li>
+    <li><span class="i">2</span><span><b>Pharmacology with an ontology warning</b> (1:15): a short wheeze-and-breathlessness question that takes the graph route.</span></li>
+    <li><span class="i">3</span><span><b>Anatomy from Gray's</b> (45 s): femoral triangle; all citations are Gray's.</span></li>
+    <li><span class="i">4</span><span><b>Compare penicillins and aminoglycosides</b> (1 min): the question is split into two searches.</span></li>
+    <li><span class="i">5</span><span><b>Two refusals</b> (1 min): personal advice (before any search) and an off-topic question (below the 0.60 threshold, no model call).</span></li>
+    <li><span class="i">6</span><span><b>Explore</b> (2 min): Rifampin, backlinks, Tuberculosis, a drug-class hub and the local graph.</span></li>
+    <li><span class="i">7</span><span><b>Books differ</b> (45 s): rheumatoid arthritis and methotrexate.</span></li>
+    <li><span class="i">8</span><span><b>STAIR, a negative result</b> (1:30) and <b>honest limits</b> (45 s).</span></li>
   </ol>
-  <p class="note">Backup: if the network fails, run the app on a laptop with <code>LLM_BACKEND=ollama</code>, <code>OLLAMA_MODEL=qwen2.5:7b</code>.</p>
+  <p class="note">If running long, drop the anatomy step and the third refusal. Do not deploy, re-index or edit <code>.env</code> on demo day (freeze from 16 Nov). Backup: run the app on a laptop with <code>LLM_BACKEND=ollama</code>, <code>OLLAMA_MODEL=qwen2.5:7b</code>; its vignette answers are weaker.</p>
 </section>
 
 <section id="rules">
@@ -427,21 +530,19 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
 <section id="books">
   <h2><span class="n">15</span>Adding a book</h2>
   <p>Adding a book takes no code changes to the pipeline. Each book is one ingest command with its own section levels. Capacity isn't a concern: the VM has 12 GB RAM and 42 GB free disk, and Chroma searches 50k+ passages in milliseconds.</p>
-  <div class="callout"><b>Added book: Harrison's Principles of Internal Medicine (22nd ed.)</b>, from the team's own list.
+  <div class="callout"><b>Books added so far:</b> Harrison's Principles of Internal Medicine 22e (505 sections; fills gaps such as acute dengue management) and, on 13 Nov, Gray's Anatomy for Students 5e (549 sections; anatomy). Both went through the same steps below, plus a typography-based splitter for Gray's.
     <ul>
-      <li><b>It fixes gaps we've already seen.</b> In the mosquito demo the answer had to say the indexed books don't cover acute dengue management. TB and measles are the weak vignettes too. Harrison's covers all of these in depth.</li>
-      <li><b>It strengthens the clinical-case route,</b> the most impressive part of the demo, where the textbook confirms what the graph proposes.</li>
-      <li><b>Cost:</b> it's about 4,000 pages, so expect the index to roughly double or triple (about 15–20 minutes to rebuild, and a bigger deploy bundle).</li>
+      <li><b>Cost of a book:</b> the whole index is rebuilt (about 6 minutes for 35,902 passages) and the deploy bundle grows.</li>
+      <li><b>Optional next book:</b> Harper's Illustrated Biochemistry (32nd ed.) would add a subject the app cannot answer today, and it is a small book.</li>
     </ul>
-    <b>Cheaper alternative: Harper's Illustrated Biochemistry (32nd ed.).</b> It adds a sixth core subject the app can't answer at all today, and it's a small book.
   </div>
-  <div class="callout warn"><b>Not before the 17 Nov demo.</b> Neither PDF is on disk yet, and a re-index plus redeploy is avoidable risk on demo day. Add it the week after, and check the PDF first with <code>check_books</code> (step 1).</div>
+  <div class="callout warn"><b>Not before the 17 Nov demo.</b> A re-index plus redeploy is avoidable risk on demo day. Add any new book the week after, and check the PDF first with <code>check_books</code> (step 1).</div>
   <ol class="steps">
     <li><span class="i">1</span><span>Put the PDF in <code>data/books/</code>, named by ISBN, and run <code>python -m ingest.check_books data/books</code>. You need verdict <b>OK</b>. NO_TOC means rebuilding headings from fonts (<code>ingest.font_toc</code>, like Tripathi). SCANNED means the PDF has no text layer and needs OCR first.</span></li>
     <li><span class="i">2</span><span>Run <code>ingest.pdf_to_okf</code> with the right <code>--level</code> and <code>--chapter-level</code>, and <code>--also-skip</code> for front matter. Copy the pattern from README.md.</span></li>
     <li><span class="i">3</span><span>Open <code>data/okf/&lt;book&gt;/index.md</code> and check the sections and coverage. A domain expert skim takes 10 minutes.</span></li>
     <li><span class="i">4</span><span>Re-index with <code>python -m rag.index</code>, which rebuilds the whole index (about 6+ minutes).</span></li>
-    <li><span class="i">5</span><span>Add the book to <code>BOOKS</code> in <code>app.py</code>, the subject list in <code>rag/answer.py: SYSTEM</code>, and the counts on the How it works tab and in this handbook.</span></li>
+    <li><span class="i">5</span><span>Add the book to <code>BOOKS</code> in <code>app.py</code>, the subject list in <code>rag/answer.py: SYSTEM</code>, and the counts on the How it works tab and in this handbook. If you want ontology facts, mention-index entries and hubs for the new book, run the ontology builder and rebuild the graph layers.</span></li>
     <li><span class="i">6</span><span>Add 3–5 questions to <code>eval/product_questions.jsonl</code>, run the tests and the product evaluation, then redeploy.</span></li>
   </ol>
 </section>
@@ -452,11 +553,14 @@ echo "LLM_BACKEND=deepseek" &gt;&gt; .env
     <thead><tr><th>Task</th><th>Owner</th><th>Priority</th></tr></thead>
     <tbody>
       <tr><td>Rehearse the demo script; warm up the site before presenting</td><td>Team</td><td><span class="pill bad">Before demo</span></td></tr>
-      <tr><td>Write 10–15 gold questions with sections in <code>eval/questions.jsonl</code></td><td>Ishaan</td><td><span class="pill good">Done</span></td></tr>
+      <tr><td>Write 10–15 gold questions with sections in <code>eval/questions.jsonl</code></td><td>Ishaan</td><td><span class="pill good">Done</span> (provisional, 9 of 15 flagged)</td></tr>
+      <tr><td>Vignette review: fix or check the 9 flagged gold items (<code>docs/vignette_review.md</code>) and re-run the gold evaluation</td><td>To assign</td><td><span class="pill warn">Open</span></td></tr>
+      <tr><td>3D atlas: built on branch <code>atlas-integration</code>; merge and set up DNS</td><td>Ishaan</td><td><span class="pill warn">Pending merge and DNS</span></td></tr>
+      <tr><td>Tuberculosis "see also" gap</td><td>Claude</td><td><span class="pill warn">Open</span></td></tr>
       <tr><td>Fix vignette ranking: synonym table (coryza, polyuria, radiating pain), tie-break by symptom specificity, textbook boost for TB and measles</td><td>Claude + Ishaan</td><td><span class="pill good">Done</span></td></tr>
       <tr><td>Clean the drug cross-check (filter non-drugs, skip negated mentions)</td><td>Claude</td><td><span class="pill good">Done</span></td></tr>
       <tr><td>Add Harrison's Principles of Internal Medicine (22nd ed.)</td><td>Ishaan</td><td><span class="pill good">Done</span></td></tr>
-      <tr><td>Give repo access for the MEDPATH-AI comparison review</td><td>Hardik</td><td><span class="pill info">Medium</span></td></tr>
+      <tr><td>MEDPATH-AI comparison review</td><td>Hardik</td><td><span class="pill info">Dropped</span></td></tr>
       <tr><td>STAIR training on Kaggle</td><td>Hardik</td><td><span class="pill good">Done</span> (negative result, section 10)</td></tr>
       <tr><td>Decide the VM's future before the Oracle trial ends (upgrade, or move to A1 when capacity frees)</td><td>Ishaan</td><td><span class="pill info">After demo</span></td></tr>
     </tbody>
