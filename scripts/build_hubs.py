@@ -188,6 +188,9 @@ def organism_hubs(nodes, llm: Llm) -> list[dict]:
 
 
 # (d) drug classes ---------------------------------------------------------
+LINE_OF_THERAPY = re.compile(r"\b(first|second|third|1st|2nd|3rd)[- ]line\b|\breserve\b", re.I)
+
+
 def drug_class_hubs(nodes, llm: Llm) -> list[dict]:
     agents = [n for n in nodes.values() if n["type"] == "TherapeuticAgent"]
     cands = sorted((n for n in agents if CLASS_WORDS.search(n["label"]) and not NOT_A_DRUG.search(n["label"])),
@@ -230,6 +233,9 @@ def drug_class_hubs(nodes, llm: Llm) -> list[dict]:
 
     out, seen = [], set()
     for m, c in proposed:
+        # line of therapy (first-/second-line, reserve) depends on the guideline and context: not a drug class
+        if LINE_OF_THERAPY.search(c["label"]):
+            continue
         if m["id"] == c["id"] or mentions.phrase_key(m["label"]) == mentions.phrase_key(c["label"]) or (m["id"], c["id"]) in seen:
             continue
         a, b = sections(m["label"]), sections(c["label"])
