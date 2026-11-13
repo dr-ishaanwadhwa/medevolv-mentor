@@ -4,7 +4,7 @@ Live app: https://mentor.medevolv.in (backup: https://130-210-60-153.sslip.io)
 
 Every question below was run through `answer_multihop` against the local code and index on 13 Nov, twice each.
 The Explore click paths were also clicked through on the live site. Routes, statuses, cited books and latencies
-are in the table at the end. Headline numbers are `{{EVAL_*}}` placeholders; the eval refresh fills them in.
+are in the table at the end. Headline numbers come from the 13 Nov eval refresh (docs/eval_2026-11-13.md).
 
 ## Timing plan
 
@@ -340,8 +340,8 @@ that the training set shares a generator with the test set. Both are in the hand
 **How do you control hallucination?** Four layers. The model sees only numbered passages and is told to use nothing
 else. Every claim must carry a citation and each citation is checked against the evidence list. If the best passage scores
 under 0.60 the model is never called. If the model reads the passages and finds no answer it must reply
-INSUFFICIENT_CONTEXT, and we decline. In the 36-question test, behaviour was right on {{EVAL_STATUS}} and
-{{EVAL_JUDGE}} of claims were judged supported, with the caveat that DeepSeek is the judge.
+INSUFFICIENT_CONTEXT, and we decline. In the 39-question test, behaviour was right on 39/39 and
+100% (30/30 answers) of claims were judged supported, with the caveat that DeepSeek is the judge.
 
 **Copyright: are you republishing the books?** The PDFs and everything derived from them stay out of git and are not
 published. The live site shows up to nine excerpts of about 300 characters per answer so the student can check each
@@ -350,8 +350,8 @@ line. For a real release we would move to institutional access or licensed conte
 under CC BY-NC 4.0 and used non-commercially.
 
 **How did you evaluate it?** Three parts. (1) A 36-question set covering factual, comparison, clinical case, off-topic
-and personal-advice questions: expected behaviour {{EVAL_STATUS}}, right textbook cited {{EVAL_CITED}}, median latency
-{{EVAL_P50}}, p95 {{EVAL_P95}}. (2) Retrieval on 446 held-out questions: correct chapter first {{EVAL_RETRIEVAL_CH1}}.
+and personal-advice questions: expected behaviour 39/39, right textbook cited 23/25, median latency
+2.75 s, p95 4.6 s. (2) Retrieval on 446 held-out questions: correct chapter first 76.5%.
 (3) 15 hard clinical cases scored against rubrics, including traps such as nitrates in right ventricular infarction. Known
 weakness: generated questions share wording with the passages, which favours vector search, and the judge is DeepSeek.
 
@@ -443,8 +443,8 @@ Cost of this verification: about 80 answers at roughly $0.001 to $0.002, so abou
   Section 11 still lists the TB and measles vignettes as open; TB now ranks first. This script follows the app.
 - **Answers are not deterministic.** The wording and which books are cited vary slightly between runs. The route, status
   and the points to look at were stable across all runs above.
-- **Placeholders to fill after the eval refresh:** `{{EVAL_STATUS}}`, `{{EVAL_CITED}}`, `{{EVAL_JUDGE}}`, `{{EVAL_P50}}`,
-  `{{EVAL_P95}}`, `{{EVAL_RETRIEVAL_CH1}}`.
+- **Placeholders to fill after the eval refresh:** `39/39`, `23/25`, `100% (30/30 answers)`, `2.75 s`,
+  `4.6 s`, `76.5%`.
 - **Possible live-versus-local difference:** the live Explore tab shows 5,001 conditions and 25,902 certified facts. The local
   ontology file is still being edited, so numbers on the Explore tab can differ from local runs. Quote the numbers shown
   on the live site.
