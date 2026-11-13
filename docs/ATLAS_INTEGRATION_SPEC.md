@@ -82,6 +82,11 @@ Merge `med-rag` and `med-rag-atlas` into a single, production-grade, AI-native w
 - Bridge FMA ontology concepts with the clinical ontology (BODHI and certified textbook facts):
   - Ingest FMA mereology relationships (`PART_OF`, `BRANCH_OF`, `SUPPLIED_BY`, `DRAINED_BY`, `INNERVATED_BY`).
   - Implement a recursive mereological traversal engine: when a condition or clinical entity references an anatomical structure not directly modeled as an independent mesh, traverse upwards to the nearest enclosing parent structure present in the 3D geometry catalogue.
+  - **Anatomical correctness rules (apply to ingest, traversal and the coverage metric):**
+    - Relations are typed and never interchangeable. The coronary arteries are `BRANCH_OF` the aorta (arising from the aortic root at the sinuses of Valsalva); they are NOT `PART_OF` the ascending aorta. `PART_OF` is strictly mereological containment (cusp PART_OF aortic valve, valve PART_OF heart); branching vessels use `BRANCH_OF`; supply and drainage use `SUPPLIED_BY` / `DRAINED_BY`.
+    - Upward traversal may climb only along a relation that is true for that pair. A structure with no true visible ancestor stays unmapped. Never attach a wrong or merely nearby parent mesh to raise the number: the >80% coverage target must be reached with correct parents only, and is reported with the share left unmapped.
+    - Systemic conditions (for example systemic lupus erythematosus, sepsis, diabetes mellitus, hypertension as a disease) have no anatomical locus and get no mesh. They are excluded from the coverage denominator or reported as "systemic, no mesh", never forced onto an organ.
+    - Spatial actions are navigation hints (tier `navigation`), never clinical claims.
 - Replace the static offline `atlas_crosswalk.jsonl` with a relational database schema (PostgreSQL with pgvector for production; SQLite for local evaluation) storing:
   - `concepts` (ID, canonical name, semantic type, ontology source, FMA mapping)
   - `spatial_relations` (source_id, relation_type, target_id)

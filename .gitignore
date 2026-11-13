@@ -23,3 +23,6 @@ data/ontology/
 # Mention index and graph layers: derived from the corpus, never published
 data/graph/
 node_modules
+
+# Local dev: worktrees symlink data/ to the main checkout (the real folders above stay ignored too)
+/data

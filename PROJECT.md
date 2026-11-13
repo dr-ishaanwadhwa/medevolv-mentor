@@ -3,7 +3,7 @@
 ## Architecture
 The platform integrates `med-rag` (MedEvolv Mentor clinical knowledge engine) and `med-rag-atlas` (3D anatomy atlas) into a unified, AI-native production architecture:
 1. **Asynchronous Gateway (`api/`)**: High-performance FastAPI backend delivering SSE streaming (`/api/chat/stream`) and spatial mereology resolution (`/api/spatial/resolve`). Replaces the monolithic Streamlit execution model.
-2. **Knowledge Graph & Mereology (`rag/mereology.py`, `data/graph/`)**: Relational database (SQLite/PostgreSQL) with recursive upward traversal (`PART_OF`, `BRANCH_OF`, `SUPPLIED_BY`) mapping 4,978 clinical conditions to BodyParts3D meshes, lifting grounding from 2.31% to >80%.
+2. **Knowledge Graph & Mereology (`rag/mereology.py`, `data/graph/`)**: Relational database (SQLite/PostgreSQL) with recursive upward traversal (`PART_OF`, `BRANCH_OF`, `SUPPLIED_BY`) mapping clinical conditions to BodyParts3D meshes, lifting grounding from 2.31% toward >80% with correct parents only. Coronary arteries are `BRANCH_OF` the aorta, not `PART_OF` the ascending aorta; coverage is never padded with wrong parent meshes; systemic conditions (SLE, sepsis, diabetes) get no mesh and are reported as such.
 3. **Active Recall & Verification Guardrails (`rag/fsrs.py`, `rag/guardrails.py`)**: FSRS-5 spaced-repetition scheduler with 3D mesh occlusion pin calculations, pointer-only citation enforcement `(Book, Ed, Ch, Page)` eliminating copyrighted prose, Indian national protocol badges (ICMR/NTEP), and DPDP 2025 compliance (18+ age gate, zero tracking).
 4. **Unified Frontend Workspace (`apps/web`)**: Next.js 15 / React 19 PWA directly embedding the Three.js canvas in the React component tree (no iframes), maintaining 15 draw call GPU DataTexture rendering, Zustand bidirectional state synchronization, and IndexedDB offline geometry caching.
 5. **E2E Testing Track**: Autonomous opaque-box verification suite validating all 20 inventoried features across Tiers 1–4, culminating in `TEST_READY.md`.
@@ -121,6 +121,8 @@ Every feature identified during Step 0 Survey is mapped to a concrete implementa
   - `climb_to_visible_mesh(fma_id: str, max_depth: int = 5) -> Tuple[str, int]` (returns `(visible_parent_fma_id, depth)`)
   - `resolve_condition(condition_label_or_id: str) -> List[ResolvedStructure]`
   - `get_mereology_tree(fma_id: str) -> Dict[str, List[Dict[str, str]]]`
+
+- Anatomical correctness: relation types are not interchangeable. `PART_OF` is containment only; vessel branching is `BRANCH_OF` (coronary arteries are `BRANCH_OF` the aorta, not `PART_OF` the ascending aorta). `climb_to_visible_mesh` climbs only along relations true for the pair and returns "unmapped" rather than a wrong or distant parent. Coverage must not be padded with wrong parent meshes, and systemic conditions get no mesh (excluded from the denominator or reported as "systemic, no mesh").
 
 ### 4. FSRS Engine ↔ 3D Occlusion Generator (`rag/fsrs.py`)
 - Python API:
