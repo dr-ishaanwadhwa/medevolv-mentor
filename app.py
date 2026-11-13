@@ -547,18 +547,21 @@ digraph B { rankdir=LR; bgcolor="transparent"; nodesep=0.3; ranksep=0.45; """ + 
                     "| Eka Care BODHI-S + BODHI-M (CC BY-NC 4.0) | Clinical graph | 6,560 nodes |")
     with right:
         st.markdown("#### How well it works")
-        st.markdown("Tested on 36 questions covering every type (19 factual, 3 comparison, 5 clinical cases, "
-                    "5 off-topic, 4 personal-advice), with multi-hop on:")
+        st.markdown("Tested on 39 questions covering every type (22 factual, 3 comparison, 5 clinical cases, "
+                    "5 off-topic, 4 personal-advice), with multi-hop on (13 Nov):")
         st.markdown("| Measure | Result |\n|---|---|\n"
-                    "| Right behaviour (answer / decline / refuse) | **36 / 36** |\n"
-                    "| Cited passage from the right textbook | **22 / 22** |\n"
-                    "| Answers with at least one citation | **27 / 27** |\n"
-                    "| Correct chapter as top search result (446 questions) | **76.7%** |\n"
-                    "| Correct chapter in top 3 | **91.0%** |\n"
-                    "| Typical answer time | **~4 s** |")
+                    "| Right behaviour (answer / decline / refuse) | **39 / 39** |\n"
+                    "| Cited passage from the right textbook | **23 / 25** |\n"
+                    "| Answers with at least one citation | **30 / 30** |\n"
+                    "| Answers fully grounded in their cited passages | **30 / 30** |\n"
+                    "| Correct chapter as top search result (446 questions) | **76.5%** |\n"
+                    "| Correct chapter in top 3 | **90.8%** |\n"
+                    "| Typical answer time | **~3 s** |")
         st.markdown("#### Known limits")
-        st.markdown("- The graph is missing some classic symptom links (e.g. night sweats for TB), so a few "
-                    "clinical cases get a weak differential; the trace shows this openly.\n"
+        st.markdown("- Hard multi-part clinical cases cover about 83% of an examiner's key points on average "
+                    "(pharmacology parts are weakest); the trace shows which parts were found.\n"
+                    "- Anatomy is new: in a 10-question check, 9 were answered and 8 cited Gray's; some topics "
+                    "(e.g. Erb's palsy) are not yet found.\n"
                     "- Answers are only as complete as the seven indexed books.\n"
                     "- A study aid for students, not clinical decision support.")
     st.markdown("#### Built with")
