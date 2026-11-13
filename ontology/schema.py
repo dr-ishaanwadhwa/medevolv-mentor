@@ -21,6 +21,7 @@ class EntityType(str, Enum):
     TherapeuticAgent = "TherapeuticAgent"
     MolecularTarget = "MolecularTarget"
     ClinicalStage = "ClinicalStage"
+    AnatomicalStructure = "AnatomicalStructure"   # an organ, vessel, nerve, bone... (Gray's Anatomy)
 
 
 class ClinicalRelation(str, Enum):
@@ -38,6 +39,7 @@ class ClinicalRelation(str, Enum):
     TARGETS_MECHANISM = "TARGETS_MECHANISM"
     CAUSES_ADVERSE_EFFECT = "CAUSES_ADVERSE_EFFECT"
     DIFFERENTIAL_OF = "DIFFERENTIAL_OF"
+    INVOLVES_STRUCTURE = "INVOLVES_STRUCTURE"     # condition/finding -> the anatomical structure it affects
 
 
 class LineOfTherapy(str, Enum):
@@ -72,7 +74,7 @@ class ClinicalProvenance(BaseModel):
     """Complete academic provenance anchoring a fact to an OKF textbook section."""
     model_config = ConfigDict(extra="ignore")
 
-    book_id: str = Field(..., description="e.g. 'tripathi', 'harrison', 'guyton', 'robbins', 'davidson', 'micro'")
+    book_id: str = Field(..., description="e.g. 'tripathi', 'harrison', 'guyton', 'robbins', 'davidson', 'micro', 'grays'")
     book_title: str
     chapter: str
     section_id: str

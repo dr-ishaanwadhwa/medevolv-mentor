@@ -7,7 +7,8 @@ Score (higher = extract sooner), each part visible as its own CSV column:
   condition   +3  the title names a BODHI Condition (all its distinctive words appear in title or chapter)
   drug        +2  the title names a BODHI Drug, or is a drug-class/therapy section (drugs, agents, therapy...)
   eval        +2  the title's distinctive words appear in an evaluation question (eval/*.jsonl)
-  book        +0..2  clinical axis of the book: harrison/davidson/tripathi 2, micro 1.5, robbins 1, guyton 0
+  book        +0..2  clinical axis of the book: harrison/davidson/tripathi 2, micro 1.5, robbins 1, guyton 0,
+                 grays 0 (+2 for a Clinical cases section or one with "In the clinic" boxes)
   kind        -3  front matter, intros, history, appendices, glossaries, lab-value tables, methods
   length      -2 if under 300 words (too little to extract), +1 if over 800 (long ones are capped at 4 chunks
                  by the extractor, so more length adds nothing)
@@ -30,9 +31,9 @@ import math
 import re
 from pathlib import Path
 
-BOOK_WEIGHT = {"harrison": 2.0, "davidson": 2.0, "tripathi": 2.0, "micro": 1.5, "robbins": 1.0, "guyton": 0.0}
+BOOK_WEIGHT = {"harrison": 2.0, "davidson": 2.0, "tripathi": 2.0, "micro": 1.5, "robbins": 1.0, "guyton": 0.0, "grays": 0.0}
 CHAPTER_CAP = 2
-BOOK_ORDER = ["harrison", "davidson", "tripathi", "micro", "robbins", "guyton"]
+BOOK_ORDER = ["harrison", "davidson", "tripathi", "micro", "robbins", "guyton", "grays"]
 GENERIC = {"acute", "chronic", "severe", "mild", "primary", "secondary", "disease", "diseases", "disorder",
            "disorders", "syndrome", "syndromes", "infection", "infections", "general", "other", "overview",
            "chapter", "part", "section", "clinical", "introduction", "principles", "approach", "patient",
@@ -71,7 +72,13 @@ def front_matter(path: str) -> tuple[dict, int]:
     return meta, len(text.split())
 
 
-def vocab() -> tuple[list[frozenset], list[frozenset]]:
+def grays_clinical(path: str) -> bool:
+    """Gray's is anatomy (low clinical weight), but its Clinical cases sections and "In the clinic" boxes are clinical."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return "Clinical cases" in text.split("\n---", 2)[0] or "#### In the clinic" in text
+
+
+def vocab() ->tuple[list[frozenset], list[frozenset]]:
     from rag.graph import load_graph
     g = load_graph()
     cond, drug = [], []
@@ -121,7 +128,7 @@ def rank(top: int = 100) -> list[dict]:
             "condition": 3.0 if any(c <= both for c in cond) else 0.0,
             "drug": 2.0 if (any(d <= tk for d in drug) or THERAPY.search(title + " " + chapter)) else 0.0,
             "eval": 2.0 if tk and len(tk & ev) >= max(1, math.ceil(len(tk) / 2)) else 0.0,
-            "book_w": BOOK_WEIGHT.get(book, 0.0),
+            "book_w": BOOK_WEIGHT.get(book, 0.0) + (2.0 if book == "grays" and grays_clinical(path) else 0.0),
             "kind": -3.0 if NOT_CLINICAL.search(title + " " + chapter) else 0.0,
             "length": -2.0 if n < 300 else (1.0 if n > 800 else 0.0),
         }

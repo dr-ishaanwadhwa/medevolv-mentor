@@ -246,6 +246,14 @@ ROBBINS_SYSTEMS = {
 }
 
 
+# Gray's Anatomy is organised by body region; each region goes under the system most of its clinic boxes are about.
+GRAYS_SYSTEMS = {
+    1: "General medicine", 2: "Musculoskeletal & rheumatology", 3: "Cardiovascular",     # The Body, Back, Thorax
+    4: "Gastrointestinal & liver", 5: "Reproductive & breast", 6: "Musculoskeletal & rheumatology",
+    7: "Musculoskeletal & rheumatology", 8: "Eye, ENT & oral", 9: "Nervous system & psychiatry",
+}
+
+
 def _book_system(book: str, chapter: str) -> str | None:
     m = re.match(r"(\d+)", chapter)
     if not m:
@@ -255,6 +263,8 @@ def _book_system(book: str, chapter: str) -> str | None:
         return next((s for lo, hi, s in HARRISON_SYSTEMS if lo <= n <= hi), None)
     if book == "robbins":
         return ROBBINS_SYSTEMS.get(n)
+    if book == "grays":
+        return GRAYS_SYSTEMS.get(n)
     return None
 
 

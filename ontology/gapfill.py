@@ -148,9 +148,10 @@ def _extract(job, spend) -> None:
                      encoding="utf-8")
 
 
-def cached_results():
-    """(SectionExtractionResult, meta, passage) for every cached gap-fill call (no LLM)."""
-    for f in sorted(CACHE.glob("*.json")) if CACHE.exists() else []:
+def cached_results(cache: Path = CACHE):
+    """(SectionExtractionResult, meta, passage) for every cached gap-fill call (no LLM). ontology/grays.py uses the
+    same cache format in its own folder."""
+    for f in sorted(cache.glob("*.json")) if cache.exists() else []:
         d = json.loads(f.read_text(encoding="utf-8"))
         path = Path(d["section"])
         if not path.exists():
@@ -161,10 +162,10 @@ def cached_results():
         yield res, meta, d["passage"]
 
 
-def reconcile_cached(stats: dict | None = None):
+def reconcile_cached(stats: dict | None = None, cache: Path = CACHE):
     from ontology.reconciler import reconcile_section_facts
     out = []
-    for res, meta, passage in cached_results():
+    for res, meta, passage in cached_results(cache):
         out += reconcile_section_facts(res, meta, source_text=passage, stats=stats)
     return out
 

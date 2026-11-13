@@ -163,3 +163,31 @@ def test_ci_triage_only_softens_or_hides(tmp_path):
     x, y, z = apply_ci_triage([a, b, c], path)
     assert x.clinical_facets.contraindication_severity.value == "CAUTIONARY" and "eGFR" in x.clinical_facets.population
     assert y.status == "CANDIDATE" and z.clinical_facets.contraindication_severity.value == "STRICT"
+
+
+def test_grays_clinic_boxes_and_anatomy_relation():
+    from ontology.grays import _chunks, boxes
+    from ontology.reconciler import check_direction
+    body = ("Normal anatomy text.\n\n#### In the clinic: Pneumothorax\n\nAir in the pleural cavity.\n\nMore box.\n\n"
+            "### Next topic\n\nAnatomy again.\n\n#### In the clinic: Rib fracture\n\nPain on breathing.")
+    got = boxes(body)
+    assert len(got) == 2 and "More box." in got[0] and "Anatomy again" not in got[0] and "Next topic" not in got[0]
+    assert len(_chunks(["a " * 1000, "b " * 1000])) == 2
+    assert check_direction(R.INVOLVES_STRUCTURE, T.PathologicalCondition, T.AnatomicalStructure) == "ok"
+    assert check_direction(R.INVOLVES_STRUCTURE, T.AnatomicalStructure, T.PathologicalCondition) == "swap"
+    assert check_direction(R.TREATED_BY, T.AnatomicalStructure, T.TherapeuticAgent) == "drop"
+    assert ontology_facts.group_of("3 Thorax", "grays")[0] == "Cardiovascular"
+    assert all(ontology_facts.group_of(f"{n} X", "grays")[0] != "Other" for n in range(1, 10))
+
+
+def test_grays_cases_are_passages():
+    import pytest
+    from pathlib import Path
+    if not Path("data/okf/grays/sections").exists():
+        pytest.skip("corpus not present")
+    from ontology.grays import passages
+    from ontology.rank import grays_clinical
+    ps = passages()
+    assert any("case-1-cauda-equina" in p.name for p, _ in ps)
+    assert all(len(x.split()) <= 1500 for _, x in ps)
+    assert not grays_clinical("data/okf/grays/sections/001-the-body-what-is-anatomy.md")

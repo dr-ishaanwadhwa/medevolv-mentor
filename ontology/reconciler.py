@@ -37,6 +37,7 @@ TYPE_RULES: dict[R, tuple[set, set]] = {
     R.TARGETS_MECHANISM: ({T.TherapeuticAgent}, {T.MolecularTarget, T.PhysiologicalProcess}),
     R.CAUSES_ADVERSE_EFFECT: ({T.TherapeuticAgent}, {T.ClinicalPhenotype, T.PathologicalCondition}),
     R.DIFFERENTIAL_OF: (_COND_P, _COND_P),
+    R.INVOLVES_STRUCTURE: (_COND_P, {T.AnatomicalStructure}),   # one way only: structure pages read it backwards
 }
 
 

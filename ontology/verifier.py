@@ -38,7 +38,8 @@ CONTRAINDICATES = OBJECT should be avoided in SUBJECT. MANIFESTS_AS = SUBJECT pr
 CAUSED_BY = SUBJECT is caused by OBJECT. CAUSES_ADVERSE_EFFECT = drug SUBJECT causes OBJECT.
 TARGETS_MECHANISM = drug SUBJECT acts on OBJECT. DISRUPTS_PATHWAY = SUBJECT disturbs process OBJECT.
 HAS_CLINICAL_STAGE = OBJECT is a stage/phase of SUBJECT. DIFFERENTIAL_OF = the two are considered in each other's
-differential. is_a = SUBJECT is a kind of OBJECT. If the item has a line of therapy (e.g. FIRST_LINE), ignore it.
+differential. INVOLVES_STRUCTURE = condition SUBJECT affects or arises in anatomical structure OBJECT.
+is_a = SUBJECT is a kind of OBJECT. If the item has a line of therapy (e.g. FIRST_LINE), ignore it.
 Reply as JSON: {"results": [{"i": <item number>, "v": "yes"|"partial"|"no"}, ...]} with one entry per item."""
 
 _lock = threading.Lock()

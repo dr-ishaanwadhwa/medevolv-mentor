@@ -33,6 +33,7 @@ INVERSE = {
     "HAS_CLINICAL_STAGE": "stage of",
     "TARGETS_MECHANISM": "targeted by",          # target -> drug
     "DIFFERENTIAL_OF": "has differential",
+    "INVOLVES_STRUCTURE": "involved in",         # anatomical structure -> condition affecting it (Gray's)
     "is_a": "has subtype",
 }
 

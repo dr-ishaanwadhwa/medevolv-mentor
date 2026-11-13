@@ -144,9 +144,11 @@ def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool 
                 new_count += 1
             facts_dict[f.id] = f
 
-    # targeted gap-fill extractions (ontology/gapfill.py) are kept on rebuild, from their cache
+    # targeted gap-fill (ontology/gapfill.py) and Gray's clinical boxes/cases (ontology/grays.py) are kept on
+    # rebuild, from their caches
+    from ontology import grays
     from ontology.gapfill import reconcile_cached
-    for f in reconcile_cached(stats):
+    for f in reconcile_cached(stats) + reconcile_cached(stats, grays.CACHE):
         facts_dict.setdefault(f.id, f)
 
     save_compiled_facts(list(facts_dict.values()), merge_report=Path("reports/ontology_merges.tsv"))
@@ -158,7 +160,7 @@ def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool 
 def main() -> None:
     parser = argparse.ArgumentParser(description="MedEvolv Clinical Ontology Builder")
     parser.add_argument("--high-yield", action="store_true", help="Process high-yield benchmark sections")
-    parser.add_argument("--book", type=str, choices=["tripathi", "harrison", "davidson", "guyton", "robbins", "micro", "all"], help="Process sections for a book")
+    parser.add_argument("--book", type=str, choices=["tripathi", "harrison", "davidson", "guyton", "robbins", "micro", "grays", "all"], help="Process sections for a book")
     parser.add_argument("--section", type=str, help="Process a single section path")
     parser.add_argument("--limit", type=int, default=10, help="Max sections to process when --book is passed")
     parser.add_argument("--force", action="store_true", help="Force re-extraction ignoring disk cache")
