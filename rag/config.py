@@ -74,3 +74,7 @@ EXPERIMENTAL = os.getenv("EXPERIMENTAL", "0") == "1"
 # Navigation-only graph walk (docs/graph_networking_plan.md Stage 5): extra textbook passages from sections the
 # mention index links to the question's entities, plus certified ontology facts reached through T2 crosswalk links.
 GRAPH_WALK = os.getenv("GRAPH_WALK", "0") == "1"
+
+# 3D anatomy atlas (human-atlas, deployed from deploy/atlas/). Unset = the "View in 3D" links are hidden.
+# Example: ATLAS_URL=https://atlas.medevolv.in
+ATLAS_URL = os.getenv("ATLAS_URL", "").rstrip("/")

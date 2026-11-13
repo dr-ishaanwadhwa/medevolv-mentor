@@ -1,0 +1,19 @@
+diff --git a/app/page.tsx b/app/page.tsx
+index 5b59ba1..8e5febe 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -24,11 +24,14 @@ export default function Home(){
+  const results=useMemo(()=>{if(!atlas)return[];const term=query.toLowerCase().trim();if(!term)return ['heart','brain','liver','stomach','spleen','pancreas','urinary bladder','trachea'].map(name=>atlas.concepts.find(c=>c.name.toLowerCase()===name)).filter((x):x is Concept=>!!x);return atlas.concepts.filter(c=>c.name.toLowerCase().includes(term)||c.id.toLowerCase().includes(term)).sort((a,b)=>a.name.length-b.name.length).slice(0,80);},[atlas,query]);
+  const choose=(c:Concept)=>{setChosen(c);setState(s=>({...s,selected:c.elements,isolate:false,rotate:false}));setDetails(true);setPanel(null);};
+  useEffect(()=>{if(!atlas)return;return registerAtlasTools(atlas,c=>flushSync(()=>choose(c)));},[atlas]);
++ // MedEvolv deep link: ?select=<structure name or source id>[&system=<system id>]. Best match wins: exact name > id > prefix > shortest substring.
++ useEffect(()=>{if(!atlas)return;const q=new URLSearchParams(window.location.search),want=(q.get('select')??'').toLowerCase().trim(),sys=q.get('system');if(sys&&SYSTEMS.some(s=>s.id===sys))setState(s=>({...s,visible:[sys as SystemId]}));if(!want)return;const rank=(c:Concept)=>{const n=c.name.toLowerCase();return n===want?0:c.id.toLowerCase()===want||c.elements.some(e=>e.toLowerCase()===want)?1:n.startsWith(want)?2:n.includes(want)?3:9;};const best=atlas.concepts.map(c=>({c,r:rank(c)})).filter(x=>x.r<9).sort((a,b)=>a.r-b.r||a.c.name.length-b.c.name.length)[0];if(best){choose(best.c);setState(s=>({...s,isolate:true,explode:0}));}},[atlas]);
+  const choosePart=(id:string)=>{const p=parts.get(id);if(!p)return;setChosen({id:p.conceptId,name:p.name,elements:[id]});setState(s=>({...s,selected:[id],isolate:false,rotate:false}));setDetails(true);setPanel(null);};
+  const toggle=(id:SystemId)=>{setDetails(false);setState(s=>({...s,selected:[],isolate:false,visible:s.visible.includes(id)?s.visible.filter(x=>x!==id):[...s.visible,id]}));};
+  const reset=()=>{setState(s=>({...initial,visible:DEFAULT_VISIBLE,reset:s.reset+1}));setChosen(null);setDetails(false);setPanel(null);};
+  const openPanel=(next:'layers'|'search')=>{setDetails(false);setPanel(p=>p===next?null:next);};
+  return <main className="studio">
++  <a className="medevolv-credit" style={{position:'fixed',left:12,bottom:8,zIndex:5,fontSize:11,opacity:.7,color:'inherit'}} href="https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html" target="_blank" rel="noreferrer">BodyParts3D © DBCLS, CC BY 4.0</a>
+   {atlas&&<AnatomyScene atlas={atlas} state={{...state,inspectorOpen:details&&selectedParts.length>0}} onSelect={choosePart} onProgress={n=>{setProgress(n);if(n===100)setError('');}} onError={setError}/>}
+   <div className="vignette"/>
+   <header className="identity"><div className="eyebrow"><span className="status-dot"/> INTERACTIVE ANATOMY</div><h1>Human Atlas<Badge variant="outline" className="edition">3D</Badge></h1><div className="identity-meta">{atlas?atlas.parts.length.toLocaleString():'2,234'} modeled pieces <span>·</span> BodyParts3D</div></header>

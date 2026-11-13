@@ -44,7 +44,10 @@ def main(out: Path) -> None:
     # Entity <-> section mention index (git-ignored, labels and section ids only). Optional, like the ontology.
     graph = ROOT / "data/graph"
     if graph.exists():
-        shutil.copytree(graph, out / "data/graph")
+        # includes atlas_crosswalk.jsonl (ontology structure -> 3D atlas concept); LLM judge caches are build-time only
+        shutil.copytree(graph, out / "data/graph", ignore=shutil.ignore_patterns("*_llm_cache.json*"))
+        if (graph / "atlas_crosswalk.jsonl").exists():
+            assert (out / "data/graph/atlas_crosswalk.jsonl").exists()
 
     # Copy the one live collection into a fresh store (drops segments left behind by deleted collections)
     name = collection_name()
