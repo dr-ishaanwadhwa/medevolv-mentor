@@ -19,3 +19,6 @@ reports/
 # Ontology facts carry verbatim textbook quotes as provenance: derived from the corpus, never published
 data/ontology/
 .DS_Store
+
+# Mention index and graph layers: derived from the corpus, never published
+data/graph/

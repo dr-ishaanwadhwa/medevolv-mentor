@@ -147,8 +147,9 @@ def answer(question: str, section_ids: list[str] | None = None, retriever: str =
 
 
 MULTIHOP_SYSTEM = SYSTEM + """
-- Two kinds of evidence: graph facts [G1], [G2] ... from Eka Care's BODHI clinical graph, and textbook passages
-  [1], [2] .... Cite each claim with the right kind.
+- Two kinds of evidence: graph facts [G1], [G2] ... and textbook passages [1], [2] .... Cite each claim with the right
+  kind. Graph facts starting "BODHI" come from Eka Care's BODHI clinical graph and only support the differential and
+  the specialist; never take a drug or treatment from them.
 - For symptom questions answer in this order: likely condition(s) from the graph, which specialist, then treatment /
   drug of choice from the textbook. Present conditions as a differential to consider, never as a diagnosis.
 - If the textbook evidence does not cover a condition's treatment, say so instead of filling it in.

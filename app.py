@@ -270,10 +270,17 @@ def render_process(steps, total_ms) -> None:
 def render_sources(res) -> None:
     p = res.plan
     if p is not None and getattr(p, "graph_facts", None):
-        st.markdown('<div class="mm-label">Graph facts · Eka Care BODHI (CC BY-NC 4.0)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mm-label">Graph facts · Eka Care BODHI (CC BY-NC 4.0) and textbook ontology</div>',
+                    unsafe_allow_html=True)
         for j, f in enumerate(p.graph_facts, 1):
             mark = " ✅" if j in res.graph_cited else ""
             st.markdown(f"**[G{j}]** {f}{mark}")
+    if p is not None and getattr(p, "nav_hints", None):
+        st.markdown('<div class="mm-label" style="margin-top:.6rem">Graph hints · not from the textbooks, not used in '
+                    'the answer</div>', unsafe_allow_html=True)
+        for h in p.nav_hints:
+            st.caption(h)
+    if p is not None and (getattr(p, "graph_facts", None) or getattr(p, "nav_hints", None)):
         st.markdown('<div class="mm-label" style="margin-top:.6rem">Textbook passages</div>', unsafe_allow_html=True)
     if res.hits and not res.cited:
         st.caption("None of the retrieved passages were cited in the answer.")

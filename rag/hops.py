@@ -48,7 +48,8 @@ class Hop:
 class Plan:
     route: str                # "graph" | "decompose" | "single"
     hops: list[Hop] = field(default_factory=list)
-    graph_facts: list[str] = field(default_factory=list)     # cited as [G1], [G2] ...
+    graph_facts: list[str] = field(default_factory=list)     # cited as [G1], [G2] ...: BODHI differential/specialist + certified ontology
+    nav_hints: list[str] = field(default_factory=list)       # BODHI drug links: navigation hints for the UI, NEVER in the prompt
     evidence: list[Hit] = field(default_factory=list)       # cited as [1], [2] ...
     bodhi_drugs: dict[str, list[str]] = field(default_factory=dict)
     symptoms: list[str] = field(default_factory=list)       # for the clinical-graph view in app.py
@@ -324,15 +325,17 @@ def plan(question: str) -> Plan:
                           "; ".join(f"{c['name']} ({c['symptoms_matched']}/{len(symptoms)} symptoms)" for c in conds)
                           or "no matching conditions"))
         for c in conds:
+            # BODHI symptom->condition and specialist links stay citable (attributed to BODHI, used for the
+            # differential only). BODHI *drug* links have no textbook support, so they go to nav_hints, never the prompt.
             p.graph_facts.append(f"BODHI links {c['symptoms_matched']} of the {len(symptoms)} symptoms "
-                                 f"({names}) to {c['name']}.")
+                               f"({names}) to {c['name']}.")
             spec = specialities_for(c["id"])
             if spec:
                 p.graph_facts.append(f"BODHI: {c['name']} is treated by: {', '.join(spec[:3])}.")
             drugs = drugs_for(c["id"])
             if drugs:
-                p.bodhi_drugs[c["name"]] = drugs
-                p.graph_facts.append(f"BODHI drug links for {c['name']}: {', '.join(drugs[:8])}.")
+                p.bodhi_drugs[c["name"]] = drugs      # kept for cross_check(), which only compares against the answer
+                p.nav_hints.append(f"BODHI drug links for {c['name']}: {', '.join(drugs[:8])}.")
         if conds:
             trace.record("graph", "Conditions → specialist and drug links",
                          "; ".join(f"{c['name']}: {', '.join(specialities_for(c['id'])[:2]) or 'no specialist listed'}, "
