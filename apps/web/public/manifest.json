@@ -1,0 +1,23 @@
+{
+  "name": "MedEvolv Mentor & Atlas",
+  "short_name": "MedEvolv",
+  "description": "AI-Native 3D Anatomy Atlas and Clinical Knowledge Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
