@@ -7,6 +7,15 @@ Chunking strategy (explain this in the presentation):
   * Short ALL-CAPS paragraphs are the book's own headings (e.g. "PENICILLINS"); the current heading is stored in
     metadata and prefixed to the passage text, so "Mechanism of action" text still knows it is about penicillins.
   * Every passage keeps its section id, so retrieval can be restricted to sections chosen by the router / STAIR.
+
+Gray's Anatomy (book_id "grays") has its own policy, because its sections are made of many very short sub-headings
+(an inguinal canal section has one 100-word sub-section per wall) and of "In the clinic" boxes and figure-label lists:
+  * sub-headings (### to ######) no longer force a new passage while the current one is under GRAYS_HEAD_FLUSH words;
+    the sub-heading stays in the passage text as its own line, so sibling parts (roof / floor / walls) share one passage;
+  * "#### In the clinic: ..." boxes and "Figure labels: ..." paragraphs always start / end a passage of their own;
+  * the embedded text carries the whole heading path (chapter > region > section > sub-heading), not just chapter > section;
+  * the target passage size is GRAYS_CHUNK_WORDS (dense reference text embeds better in smaller pieces).
+The other six books are chunked exactly as before.
 """
 from __future__ import annotations
 
@@ -44,6 +53,21 @@ def read_section(path: Path) -> Section:
     return Section(meta, body)
 
 
+GRAYS = "grays"
+GRAYS_CHUNK_WORDS = 260
+GRAYS_HEAD_FLUSH = 120                  # a sub-heading starts a new passage only once the current one has this many words
+GRAYS_PARTS = {"Conceptual overview", "Regional anatomy", "Surface anatomy", "Overview"}   # part labels carry no topic
+FIGURE_PREFIX = "Figure labels: "       # written by ingest.grays_toc
+
+
+def grays_crumbs(meta: dict) -> list[str]:
+    """Heading path for the embedded text: chapter, then the section path without the book title and part labels."""
+    path = [p for p in meta["section_path"][1:] if p not in GRAYS_PARTS]
+    chapter = meta.get("chapter", meta["title"])
+    rest = [p for p in path if p != chapter][-3:]
+    return [chapter] + rest
+
+
 NOT_A_HEADING = re.compile(r"^(section|chapter|table|fig(ure)?)\s*\d+", re.I)   # page labels, captions
 
 
@@ -54,10 +78,14 @@ def is_heading(par: str) -> bool:
     return 0 < len(par.split()) <= 12 and len(letters) >= 3 and sum(c.isupper() for c in letters) / len(letters) > 0.8
 
 
-def chunk_section(sec: Section, target_words: int = config.CHUNK_WORDS) -> list[Chunk]:
+def chunk_section(sec: Section, target_words: int | None = None) -> list[Chunk]:
+    grays = sec.meta.get("book_id") == GRAYS
+    if target_words is None:
+        target_words = GRAYS_CHUNK_WORDS if grays else config.CHUNK_WORDS
     pars = [p.strip() for p in sec.body.split("\n\n") if p.strip()]
     chunks: list[Chunk] = []
     heading, buf, buf_heading = "", [], ""
+    figure = boxed = False
 
     def flush(carry: str | None):
         nonlocal buf
@@ -68,6 +96,11 @@ def chunk_section(sec: Section, target_words: int = config.CHUNK_WORDS) -> list[
         chapter = sec.meta.get("chapter", sec.meta["title"])
         crumbs = [chapter] + ([sec.meta["title"]] if sec.meta["title"] != chapter else []) + \
                  ([buf_heading] if buf_heading else [])
+        if grays:
+            crumbs = grays_crumbs(sec.meta)
+            first = buf_heading.split(" / ")[0]
+            if first and first not in crumbs:
+                crumbs.append(first)
         chunks.append(Chunk(
             id=f"{sec.meta['id']}#p{n:03d}",
             text=" › ".join(crumbs) + "\n" + passage,   # heading context is embedded with the passage
@@ -82,12 +115,36 @@ def chunk_section(sec: Section, target_words: int = config.CHUNK_WORDS) -> list[
                 "book": sec.meta["book"],
                 "subject": sec.meta["subject"],
                 "pages": f"{sec.meta['pages'][0]}-{sec.meta['pages'][1]}",
+                **({"kind": "figure"} if figure else {}),
             },
         ))
         buf = [carry] if carry else []
 
     for par in pars:
-        md = re.match(r"^#{3,4} (.+)$", par)          # sub-headings written by ingest.font_toc
+        if grays and par.startswith(FIGURE_PREFIX):
+            # a figure's label list is a passage of its own; the text being collected carries on around it
+            saved, saved_heading = buf, buf_heading
+            buf, buf_heading, figure = [par], heading, True
+            flush(None)
+            buf, buf_heading, figure = saved, saved_heading, False
+            continue
+        md = re.match(r"^#{3,6} (.+)$" if grays else r"^#{3,4} (.+)$", par)   # sub-headings written by ingest
+        if grays and md:
+            box = md.group(1).startswith("In the clinic")
+            if box or boxed:
+                boxed = box                              # a box ends at the next heading; never merge across it
+                md_flush = True
+            else:
+                md_flush = sum(len(p.split()) for p in buf) >= GRAYS_HEAD_FLUSH
+        if grays and md and not md_flush:
+            if buf:                                      # short passage so far: keep the sibling sub-heading inside it
+                buf.append(md.group(1))
+                if md.group(1) not in buf_heading and buf_heading.count(" / ") < 2:
+                    buf_heading = f"{buf_heading} / {md.group(1)}" if buf_heading else md.group(1)
+            heading = md.group(1)
+            if not buf:
+                buf_heading = heading
+            continue
         if md or is_heading(par):
             flush(None)                    # a new heading starts a fresh passage, no overlap across topics
             heading = md.group(1) if md else smart_title(par)
@@ -109,6 +166,12 @@ def _merge_tiny(chunks: list[Chunk], min_words: int) -> list[Chunk]:
     out: list[Chunk] = []
     pending: Chunk | None = None
     for c in chunks:
+        if c.meta.get("kind") == "figure":               # figure-label passages stay as they are
+            if pending:
+                out.append(pending)
+                pending = None
+            out.append(c)
+            continue
         if pending:
             c.passage = pending.passage + "\n\n" + c.passage
             c.text = pending.text + "\n\n" + c.passage[len(pending.passage) + 2:]

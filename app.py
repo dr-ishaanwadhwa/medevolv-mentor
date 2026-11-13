@@ -297,6 +297,10 @@ def render_sources(res) -> None:
             f'<span class="mm-pill info">match {h.similarity:.2f}</span></div>'
             f'<div class="mm-src-where">{esc(tidy_path(h.citation().removeprefix(h.meta.get("book", "") + ", ")))}</div>'
             f'<div class="mm-src-ex">{esc(ex)}</div></div>', unsafe_allow_html=True)
+        if h.meta.get("book_id") == "grays":                       # a Gray's section on a drawn structure
+            t3d = _safe(lambda: atlas.for_section(h.meta))
+            if t3d:
+                st.caption(f"🧍 [View {esc(t3d['label'])} in 3D]({t3d['url']})")
 
 
 def _cg_click(key: str, conds: list[str]) -> None:
@@ -1160,7 +1164,7 @@ def render_atlas_links(label: str, ctype: str, key: str) -> None:
     (33 MB of models) only after a click on the link, or after the inline toggle is switched on."""
     if not config.ATLAS_URL:
         return
-    if ctype == "AnatomicalStructure":
+    if ctype in ("AnatomicalStructure", "OrganSystem"):
         u = _safe(lambda: atlas.atlas_link(label))
         found = [{"label": label, "url": u}] if u else []
         btn = "View in 3D"

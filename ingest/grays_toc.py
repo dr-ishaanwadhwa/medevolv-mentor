@@ -7,13 +7,15 @@ The PDF bookmarks only list the 9 regional chapters. Inside a chapter the book's
   level 2    Sense-Bold 12           e.g. Pleura
   level 3    Sense-Bold 11, grey     e.g. Parietal pleura
   level 4    MinionPro-Bold 10.5, grey   (stays inside its section as a "####" line)
+  level 5    Sense-Regular 10.5 short label with no full stop (e.g. "Cardiac veins"); stays inside its section as "#####"
   box        Sense-Bold 11 "In the clinic" + Sense-Bold 10 title; boxes stay in the section they sit in
   case       Sense-ExtraBold 12.5 "Case N" followed by the case title (Clinical cases part)
 
 A node (part / heading) that is longer than MAX_WORDS is split at its children, recursively; shorter ones stay whole
 with their sub-headings as "###" lines. Sections under MIN_WORDS are folded into their neighbour. Everything before
 the first part heading of a chapter (title page, chapter ToC, learning-resources panel) is dropped, as are running
-headers, page numbers, figure captions and figure labels (only Sense*/MinionPro* fonts are read).
+headers and page numbers. Figure artwork labels (Helvetica) are collected per figure caption into one
+"Figure labels:" paragraph each, because some answers (e.g. the bronchopulmonary segment names) exist only as labels.
 
 Usage: python -m ingest.grays_toc data/books/978-0-323-93423-7.pdf --book-id grays \
          --title "Gray's Anatomy for Students (5th ed.)" --subject Anatomy --isbn 978-0-323-93423-7
@@ -57,6 +59,9 @@ def classify(line: dict, y0: float, prev_kind: str | None) -> str:
         return "h3" if color == GREY else ("box" if text.lower().startswith("in the clinic") else "p")
     if font == "MinionPro-Bold" and 10.3 < size < 10.8 and color == GREY:
         return "h4"
+    if font == "Sense-Regular" and 10.4 < size < 10.6 and color == 0x231f20 and len(text.split()) <= 8 \
+            and not text.endswith((".", ",", ";", ":")):
+        return "h5"                                              # small run-in label heading, e.g. "Cardiac veins", "Rib II"
     if font == "Sense-Bold" and size == 10.0 and prev_kind in ("box", "boxtitle"):
         return "boxtitle"
     if font == "Sense-ExtraBold" and size >= 10 and re.match(r"case \d+", text, re.I):
@@ -72,10 +77,71 @@ def join_lines(lines: list[str]) -> str:
     return " ".join(out.replace("-\xad", "-").replace("\xad", "").split())
 
 
+FIG_PREFIX = "Figure labels: "
+MAX_LABELS = 60
+MIN_LABELS = 6          # a figure with only a few labels makes a noisy passage
+
+
+def figure_items(page: pymupdf.Page, captions: list[tuple[float, float, str]]) -> list[tuple[tuple, str]]:
+    """One ((column, y, x) sort key, 'Figure labels: Fig. N.N Title: label; label; ...') per caption, from the Helvetica
+    artwork labels. The key is the caption's own position, so the item lands in the reading order where the caption sits.
+
+    Each label block is assigned to the nearest caption below it (same page half preferred). Needs at least MIN_LABELS labels."""
+    if not captions:
+        return []
+    w = page.rect.width
+    found: dict[int, list[str]] = {i: [] for i in range(len(captions))}
+    items = []                                                   # (y0, x0, y1, labels) per Helvetica block
+    for b in page.get_text("dict")["blocks"]:
+        if b["type"] != 0:
+            continue
+        spans = [s for l in b["lines"] for s in l["spans"] if s["text"].strip()]
+        if not spans or not all(s["font"].split("+")[-1].startswith("Helvetica") for s in spans):
+            continue
+        labels = []                                              # a block holds several labels, one or more lines each
+        for l in b["lines"]:
+            t = join_lines(["".join(s["text"] for s in l["spans"])]).strip(" .")
+            if not t:
+                continue
+            if labels and (t[0].islower() or t[0] == "("):       # "Posterior" / "basal" / "segment (S X)" = one label
+                labels[-1] += " " + t
+            else:
+                labels.append(t)
+        if labels:
+            items.append([b["bbox"][1], b["bbox"][0], b["bbox"][3], labels])
+    items.sort(key=lambda it: (it[0], it[1]))
+    for n, it in enumerate(items):                               # a label wrapped over two blocks: join the tail to its stub
+        if it[3][0][0].islower() or it[3][0][0] == "(":
+            stubs = [o for o in items[:n] if o[3] and abs(o[1] - it[1]) < 60 and -2 <= it[0] - o[2] < 8]
+            if stubs:
+                best = min(stubs, key=lambda o: abs(o[1] - it[1]) + abs(it[0] - o[2]))
+                best[3][-1] += " " + it[3][0]
+                it[3] = it[3][1:]
+    for y0, x0, _, labels in items:
+        labels = [x for x in labels if len(x) >= 3 and not x.isdigit()]
+        below = [i for i, (cy, cx, _) in enumerate(captions) if cy > y0]
+        same = [i for i in below if (captions[i][1] < w / 2) == (x0 < w / 2)] or below
+        if same and labels:
+            found[min(same, key=lambda i: captions[i][0])] += labels
+    out = []
+    for i, (_, _, cap) in enumerate(captions):
+        seen, labels = set(), []
+        for lab in found[i]:
+            if lab[0].islower() or lab[0] == "(" or lab.lower() in seen:     # stray fragment or duplicate
+                continue
+            seen.add(lab.lower())
+            labels.append(lab)
+        labels = [a for a in labels if not any(a != b and a.lower() in b.lower() for b in labels)]   # "Anterior segment" < "... (S III)"
+        if len(labels) >= MIN_LABELS:
+            cy, cx, _ = captions[i]
+            out.append(((0 if cx < w / 2 - 10 else 1, cy - 0.5, cx), FIG_PREFIX + cap + ": " + "; ".join(labels[:MAX_LABELS])))
+    return out
+
+
 def page_items(page: pymupdf.Page) -> list[tuple[str, str]]:
     """(kind, text) for one page in reading order (left column, right column; tables row by row)."""
     w, h = page.rect.width, page.rect.height
-    blocks = []
+    blocks, captions = [], []
     for b in page.get_text("dict")["blocks"]:
         if b["type"] != 0:
             continue
@@ -89,16 +155,24 @@ def page_items(page: pymupdf.Page) -> list[tuple[str, str]]:
             continue
         first = lines[0]["spans"][0]
         if first["font"].endswith("ExtraBold") and re.match(r"e?fig", first["text"], re.I):
-            continue                                             # figure caption (whole block)
+            cap = join_lines(["".join(s["text"] for s in l["spans"]) for l in lines])      # figure caption (whole block)
+            captions.append((b["bbox"][1], b["bbox"][0], " ".join(cap.split()[:25])))
+            continue
         table = all(s["size"] <= 8.1 for l in lines for s in l["spans"])
         x0, y0 = b["bbox"][0], b["bbox"][1]
         key = (0, int(y0 // 6), x0) if table else (0 if x0 < w / 2 - 10 else 1, y0, x0)
         blocks.append((key, table, lines))
+    for key, text in figure_items(page, captions):
+        blocks.append((key, False, text))                        # a pseudo-block: the figure's label paragraph
     blocks.sort(key=lambda t: t[0])
 
     items: list[tuple[str, str]] = []
     prev_kind, prev_bottom, prev_row = None, 0.0, None
     for key, table, lines in blocks:
+        if isinstance(lines, str):
+            items.append(("fig", lines))
+            prev_row = None
+            continue
         if table:                                                # one paragraph per table row
             text = join_lines(["".join(s["text"] for s in l["spans"]) for l in lines])
             if prev_row == key[1] and items and items[-1][0] == "p":
@@ -132,7 +206,7 @@ def page_items(page: pymupdf.Page) -> list[tuple[str, str]]:
     return [(k, join_lines([t])) for k, t in items if join_lines([t])]
 
 
-LEVEL = {"part": 0, "h1": 1, "h2": 2, "h3": 3, "h4": 4, "case": 1}
+LEVEL = {"part": 0, "h1": 1, "h2": 2, "h3": 3, "h4": 4, "h5": 5, "case": 1}
 
 
 def sentence_case(t: str, known: dict[str, str]) -> str:

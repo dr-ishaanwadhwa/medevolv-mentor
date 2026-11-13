@@ -4,13 +4,19 @@ Upstream: https://github.com/ashemag/human-atlas (MIT), data BodyParts3D (CC BY 
 It is built outside this repo (`~/Projects/third_party/human-atlas`, never committed here) and served as static files.
 
 ## What we change: `deep-link.patch` (one file, `app/page.tsx`)
-- `?select=<name | FMA id | source mesh id>`: on load, ranks the atlas concepts (exact name > id > prefix > shortest
+- `?select=<name | FMA id | source mesh id | FMA ids joined by commas>`: several ids (`FMA7309,FMA7310`, both lungs) are
+  selected together as one isolated structure. Otherwise, on load, ranks the atlas concepts (exact name > id > prefix > shortest
   substring), then selects, isolates and opens details for the best match. No match: the normal atlas opens.
 - `?system=<system id>` (e.g. `skeletal`, `arteries`): shows only that layer.
-- A fixed footer credit "BodyParts3D © DBCLS, CC BY 4.0" linking to the licence. The existing About sheet keeps the full text.
+- The credit "BodyParts3D © DBCLS, CC BY 4.0" (licence link) sits inside the atlas's own footer row, between the controls
+  hint and "Source & credits", so nothing overlaps at 320-430 px or on desktop. The About sheet keeps the full text.
 
-The mentor links use FMA ids (`?select=FMA19667`), written into `data/graph/atlas_crosswalk.jsonl` by
-`scripts/build_atlas_crosswalk.py`.
+The mentor links use FMA ids (`?select=FMA19667`, or two for a left/right pair), written into
+`data/graph/atlas_crosswalk.jsonl` by `scripts/build_atlas_crosswalk.py`: every atlas name, a left+right record for
+structures drawn only as a pair, curated synonyms, and DeepSeek-checked matches for ontology structure labels (cached,
+<= $0.20). `rag.atlas.variants` (plural, "the", "X of Y" order, trailing muscle/bone, hyphens, left/right) is applied at
+lookup, so ontology labels and Gray's titles resolve without being listed. The atlas has no peripheral nerves other than a
+few cranial ones, no meningeal vessels, no plexuses, no uterus or thyroid: those structures get no link by design.
 
 ## Build and deploy (the orchestrator runs these, not the build session)
 1. `deploy/atlas/build_atlas.sh` (Node >= 22.13): clone, pin commit, apply patch, `npm ci && npm run build`.
