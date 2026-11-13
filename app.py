@@ -566,9 +566,17 @@ def fact_row(f, uid: str, arrow: bool = False) -> None:
     sev = cf.get("contraindication_severity")
     pill = ('<span class="mm-pill bad">strict</span>' if sev == "STRICT"
             else '<span class="mm-pill warn">caution</span>' if sev == "CAUTIONARY" else "") + corr_badge(f)
-    why = f'<div class="mm-src-ex">Why: {esc(cf["rationale"])}</div>' if f["predicate"] == "CONTRAINDICATES" and cf.get("rationale") else ""
+    if f["predicate"] == "CONTRAINDICATES":
+        # scoped wording ("... when the patient is pregnant: <why>") so subgroup cautions never read as blanket bans
+        try:
+            body, why = onto.warning_text(f), ""
+        except Exception:
+            body = f.get("nl_fact", "")
+            why = f'<div class="mm-src-ex">Why: {esc(cf["rationale"])}</div>' if cf.get("rationale") else ""
+    else:
+        body, why = f.get("nl_fact", ""), ""
     st.markdown(f'<div class="mm-src"><div class="mm-src-head">{pill}<span class="mm-src-where"><b>{esc(name)}</b></span></div>'
-                f'<div class="mm-src-ex">{esc(f.get("nl_fact", ""))}</div>{why}</div>', unsafe_allow_html=True)
+                f'<div class="mm-src-ex">{esc(body)}</div>{why}</div>', unsafe_allow_html=True)
     quote = (f.get("provenance") or {}).get("verbatim_quote") or ""
     quote = quote[:300] + ("…" if len(quote) > 300 else "")
     with st.expander("Source"):
