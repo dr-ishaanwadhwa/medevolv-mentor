@@ -19,11 +19,13 @@ Every hop is recorded in a trace that the UI shows, so the reasoning path is vis
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 from dataclasses import dataclass, field
 
-from rag import clinical_graph, config, ontology_facts, trace
+from rag import clinical_graph, config, crosswalk, ontology_facts, trace
+from rag import mentions as mention_index
 from rag.backends import chat
 from rag.graph import conditions_for_symptoms, drugs_for, link_entities, specialities_for
 from rag.retrieve import Hit, search
@@ -56,6 +58,8 @@ class Plan:
     conditions: list[str] = field(default_factory=list)
     axes: list[str] = field(default_factory=list)                # case route: clinical axes searched, in order
     evidence_axis: dict[str, str] = field(default_factory=dict)  # hit id -> axis whose query found it ("case" = whole case)
+    candidates: list[dict] = field(default_factory=list)         # graph route: BODHI candidate conditions {"id", "name"}
+    walk: dict = field(default_factory=dict)                     # GRAPH_WALK summary: entities, sections, added hit ids
 
 
 def _add_hits(plan: Plan, hits: list[Hit]) -> None:
@@ -281,6 +285,13 @@ def is_case(question: str, symptoms: list[dict]) -> bool:
 
 
 def plan(question: str) -> Plan:
+    p = _plan_routes(question)
+    if config.GRAPH_WALK and p.route != "single":
+        graph_walk(p, question)
+    return p
+
+
+def _plan_routes(question: str) -> Plan:
     with trace.timer() as t:
         ents = link_entities(question)
     symptoms = [e for e in ents if e["type"] == "Symptom"]
@@ -317,6 +328,7 @@ def plan(question: str) -> Plan:
         conds, case_hits = textbook_rerank(question, pool)
         p.symptoms = [e["name"] for e in symptoms]
         p.conditions = [c["name"] for c in conds]
+        p.candidates = [{"id": c["id"], "name": c["name"]} for c in conds]
         trace.record("graph", "Textbook check of candidates",
                      "; ".join(f"{c['name']}: {c['symptoms_matched']}/{len(symptoms)} symptoms, named in "
                                f"{c['text_support']} of {len(case_hits)} case passages" for c in conds)
@@ -478,6 +490,139 @@ def _plan_axes(question: str, p: Plan, axes: CaseAxes) -> Plan:
                      + (f"; {n} certified fact(s) added for " + ", ".join(onto) if n else "; nothing added"),
                      status="ok" if n else "warn")
     return p
+
+
+# ---- Graph walk (GRAPH_WALK=1, Stage 5 of docs/graph_networking_plan.md) --------------------------------------
+# NAVIGATION ONLY. What may enter the answer prompt:
+#   * textbook passages (normal evidence) found by searching inside sections the mention index points to, and
+#   * certified ontology facts (graph_facts_for), whose condition label may come from ontology_facts.match_conditions
+#     or from crosswalk.trusted_labels (name-rule exact, T2).
+# Mention scores, hubs, co-mentions and non-trusted crosswalk rows are never read here as clinical content: the
+# mention index only chooses WHERE to search, the crosswalk only chooses WHICH certified facts to show.
+WALK_MAX_ENTITIES = 3        # entities expanded per question
+WALK_SECTIONS = 3            # mention sections per entity
+WALK_MAX_HITS = 2            # expansion passages allowed in the evidence list
+WALK_SEARCH_K = 3
+
+
+@functools.cache
+def _label_keys() -> dict[str, str]:
+    """phrase key -> ontology condition label, for spotting condition names inside a question."""
+    out: dict[str, str] = {}
+    for label in ontology_facts.condition_labels():          # most-described first, so it wins ties
+        key = mention_index.phrase_key(label)
+        if len(key) >= 6 and key not in out:
+            out[key] = label
+    return out
+
+
+def _exact_label(name: str) -> str | None:
+    """Best ontology label for a condition name: the exact-name label if there is one, else the best-documented."""
+    labels = ontology_facts.match_conditions(name) if ontology_facts.available() else []
+    if not labels:
+        return None
+    key = mention_index.phrase_key(name)
+    return next((l for l in labels if mention_index.phrase_key(l) == key), labels[0])
+
+
+def resolve_entities(question: str, p: Plan) -> list[dict]:
+    """[{"label", "via"}]: ontology labels for the plan's candidate conditions, then for condition names that the
+    question itself spells out (longest phrase first). Crosswalk use is T2-only (trusted_labels)."""
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(label: str | None, via: str) -> None:
+        if label and mention_index.phrase_key(label) not in seen:
+            seen.add(mention_index.phrase_key(label))
+            out.append({"label": label, "via": via})
+
+    cands = p.candidates or [{"id": None, "name": n} for n in p.conditions]
+    for c in cands:
+        add(_exact_label(c["name"]), f"candidate {c['name']}")
+        for label in crosswalk.trusted_labels(c["id"] or c["name"]):
+            add(label, f"candidate {c['name']} (crosswalk T2)")
+    toks = mention_index.tokens(question)
+    keys = _label_keys()
+    i = 0
+    while i < len(toks):
+        for n in range(min(5, len(toks) - i), 0, -1):
+            gram = " ".join(toks[i:i + n])
+            if gram in keys and not (n == 1 and gram in GENERIC_TERMS):
+                add(keys[gram], f'question names "{gram}"')
+                i += n - 1
+                break
+        i += 1
+    return out
+
+
+def walk_sections(label: str, evidence: list[Hit]) -> list[dict]:
+    """Top mention sections for one entity: sections of books not yet in the evidence first, then the rest."""
+    have_books = {h.meta.get("book_id") for h in evidence}
+    have_sections = {h.meta.get("section_id") for h in evidence}
+    rows = [r for r in mention_index.sections_for(label, k=8) if r["section_id"] not in have_sections]
+    rows.sort(key=lambda r: r["book_id"] in have_books)       # stable: strength order kept inside each group
+    return rows[:WALK_SECTIONS]
+
+
+def _bridge_facts(p: Plan) -> list[str]:
+    """Certified ontology lines for BODHI candidates whose own name had no ontology match, reached through
+    T2 crosswalk links. Same lines as any other graph fact, so the answer cites them as [G#]."""
+    added = []
+    for c in p.candidates:
+        if ontology_facts.graph_facts_for(c["name"]):
+            continue                                          # already covered by the name match
+        for label in crosswalk.trusted_labels(c["id"])[:1]:
+            for line in ontology_facts.graph_facts_for(label):
+                if line not in p.graph_facts:
+                    p.graph_facts.append(line)
+                    added.append(line)
+    return added
+
+
+def graph_walk(p: Plan, question: str) -> None:
+    """Add up to WALK_MAX_HITS textbook passages from entity-linked sections (and certified bridge facts)."""
+    with trace.timer() as t:
+        ents = resolve_entities(question, p)[:WALK_MAX_ENTITIES]
+        bridged = _bridge_facts(p) if ontology_facts.available() else []
+        cands: list[tuple[Hit, str]] = []
+        used: list[dict] = []
+        for e in ents:
+            secs = walk_sections(e["label"], p.evidence)
+            if not secs:
+                continue
+            q = f"{e['label']}: {' '.join(question.split()[:40])}"
+            hits = search(q, k=WALK_SEARCH_K, section_ids=[s["section_id"] for s in secs])
+            used.append({"label": e["label"], "sections": [s["section_id"] for s in secs]})
+            cands += [(h, e["label"]) for h in hits]
+        have = {h.id for h in p.evidence}
+        books = {h.meta.get("book_id") for h in p.evidence}
+        cands = [(h, l) for h, l in cands if h.id not in have and h.similarity >= config.MIN_SIMILARITY]
+        # best first, books not yet in the evidence ahead of ones that are
+        cands.sort(key=lambda x: (x[0].meta.get("book_id") in books, -x[0].similarity))
+        picked: list[Hit] = []
+        for one_per_entity in (True, False):               # first the best hit of each entity, then fill up
+            for h, label in cands:
+                if h.id in {x.id for x in picked} or len(picked) >= WALK_MAX_HITS:
+                    continue
+                if one_per_entity and label in {l for x, l in cands if x in picked}:
+                    continue
+                picked.append(h)
+        # evidence is capped at MAX_EVIDENCE: expansion passages take the lowest-ranked slots, never more than 2
+        room = MAX_EVIDENCE - len(p.evidence)
+        if len(picked) > room:
+            del p.evidence[len(p.evidence) - (len(picked) - room):]
+        _add_hits(p, picked)
+    added = [h.id for h in picked if h in p.evidence]
+    p.walk = {"entities": [e["label"] for e in ents], "sections": used, "added": added, "bridge_facts": len(bridged)}
+    if used:
+        p.hops.append(Hop("expand", "; ".join(u["label"] for u in used),
+                          picked[0].citation() if picked else "no new passage cleared the threshold", picked))
+    trace.record("graph", "Graph walk",
+                 ("Entities: " + "; ".join(f'{e["label"]} ({e["via"]})' for e in ents) if ents else "No entity resolved")
+                 + ". Sections: " + (" | ".join(f'{u["label"]}: ' + ", ".join(u["sections"]) for u in used) or "none")
+                 + f". {len(added)} passage(s) added" + (f", {len(bridged)} certified fact(s) via T2 crosswalk" if bridged else "")
+                 + ". Navigation only: mention links choose where to search, never what is claimed.",
+                 status="ok" if added or bridged else "warn", ms=t.ms, entities=[e["label"] for e in ents], added=added)
 
 
 def cross_check(answer_text: str, plan: Plan) -> list[str]:

@@ -645,13 +645,27 @@ try:
 except Exception:                       # pragma: no cover - optional layer
     _mentions = None
 
+try:
+    from rag import hubs as _hubs
+except Exception:                       # pragma: no cover - optional layer
+    _hubs = None
+try:
+    from rag import crosswalk as _crosswalk
+except Exception:                       # pragma: no cover - optional layer
+    _crosswalk = None
+try:
+    from rag import comention as _comention
+except Exception:                       # pragma: no cover - optional layer
+    _comention = None
+
 TYPE_NAME = {"PathologicalCondition": "Condition", "ClinicalPhenotype": "Symptom / finding",
              "TherapeuticAgent": "Drug / therapy", "DiagnosticModality": "Test", "PhysiologicalProcess": "Process",
              "EtiologicalAgent": "Cause / organism", "ClinicalStage": "Stage", "MolecularTarget": "Target",
-             "OrganSystem": "Organ system"}
+             "OrganSystem": "Organ system", "AnatomicalStructure": "Anatomical structure"}
 TYPE_FILL = {"PathologicalCondition": "#f6c9c4", "ClinicalPhenotype": "#fbe3a6", "TherapeuticAgent": "#bfe3c8",
              "DiagnosticModality": "#c4daf3", "PhysiologicalProcess": "#e0d0f0", "EtiologicalAgent": "#f5d2b3",
-             "ClinicalStage": "#d9dde0", "MolecularTarget": "#bfe6e3", "OrganSystem": "#d9dde0"}
+             "ClinicalStage": "#d9dde0", "MolecularTarget": "#bfe6e3", "OrganSystem": "#d9dde0",
+             "AnatomicalStructure": "#d8cbb8"}
 PRED_TEXT = {"TREATED_BY": "treated by", "CONTRAINDICATES": "contraindicates", "MANIFESTS_AS": "manifests as",
              "CONFIRMED_BY": "confirmed by", "CAUSED_BY": "caused by", "DISRUPTS_PATHWAY": "disrupts",
              "CAUSES_ADVERSE_EFFECT": "causes adverse effect", "HAS_CLINICAL_STAGE": "has stage",
@@ -667,6 +681,15 @@ st.html("""<style>
 .mm-grp .mm-pill { font-weight:500; margin-left:.4rem; opacity:.85; }
 .mm-trail { font-size:.86rem; color:var(--muted); overflow-wrap:anywhere; margin:.2rem 0 .4rem; }
 .mm-trail b { color:var(--ink); }
+.mm-pill.sug { background:transparent; color:var(--muted); border:1px dashed var(--line); font-size:.68rem; padding:.05rem .45rem; cursor:help; }
+.mm-pill.tier { background:transparent; color:var(--muted); border:1px solid var(--line); font-size:.68rem; padding:.05rem .45rem; cursor:help; }
+.mm-xw { font-size:.9rem; color:var(--ink); line-height:1.7; overflow-wrap:anywhere; margin:.1rem 0; }
+.mm-xw.mute, .mm-xw.mute .mm-label { color:var(--muted); }
+.mm-xw .mm-label { margin-right:.4rem; }
+.mm-hubnode { display:inline-block; width:.8rem; height:.8rem; background:#e9eef0; border:1.5px solid #7d8f95; vertical-align:middle; margin-right:.3rem; }
+[class*="_seealso"] { background:var(--accent-soft); border-radius:10px; padding:.1rem .4rem; margin:.4rem 0; }
+[class*="_seealso"] summary, [class*="_seealso"] button, [class*="_seealso"] p { color:var(--muted); }
+.mm-hubpg { font-size:.84rem; color:var(--muted); margin:.1rem 0; }
 </style>""")
 
 
@@ -698,15 +721,36 @@ def _c_sections(label: str) -> list:
     return _mentions.sections_for(label, k=8) if _mentions else []
 
 
+@st.cache_data(show_spinner=False, max_entries=256)
+def _h_for(label: str) -> list:
+    return _hubs.hubs_for(label) if _hubs else []
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _h_members(hub_id: str) -> list:
+    return _hubs.members(hub_id, k=100000) if _hubs else []
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def _x_bodhi(label: str) -> list:
+    return _crosswalk.bodhi_for(label, relations=("exact", "broader", "narrower", "related")) if _crosswalk else []
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def _sa(label: str) -> list:
+    return _comention.see_also(label, 10) if _comention else []
+
+
 def _dot_text(s: str, n: int = 30) -> str:
     s = s if len(s) <= n else s[:n - 1].rstrip() + "…"
     return s.replace("\\", " ").replace('"', "'")
 
 
 @st.cache_data(show_spinner=False, max_entries=128)
-def _local_dot(cid: str, hops: int) -> tuple[str, int]:
+def _local_dot(cid: str, hops: int, hubs: bool = False) -> tuple[str, int, int]:
     """DOT for the neighbourhood of a concept (capped). Edges read from the concept outwards: solid = a certified fact
-    stated from that end, dashed = the same fact read backwards (derived). Mention links are never drawn here."""
+    stated from that end, dashed = the same fact read backwards (derived). Mention links and co-mention are never drawn.
+    With hubs=True the concept's T2 hubs are added as square boxes on dotted edges. Returns (dot, concepts, hubs)."""
     cap = GRAPH_CAP.get(hops, 24)
     nodes: dict[str, tuple[str, str]] = {}
     edges: list[tuple[str, str, str, bool]] = []
@@ -723,7 +767,7 @@ def _local_dot(cid: str, hops: int) -> tuple[str, int]:
 
     c0 = _concepts.concept(cid)
     if not c0:
-        return "", 0
+        return "", 0, 0
     nodes[cid] = (c0["label"], c0["type"])
     ranked = [r["id"] for r in _concepts.related(cid, k=cap - 1)]
     keep = set(ranked)
@@ -758,8 +802,15 @@ def _local_dot(cid: str, hops: int) -> tuple[str, int]:
         out.append(f'{ids[n]} [label="{_dot_text(label)}", fillcolor="{TYPE_FILL.get(typ, "#d9dde0")}"{extra}];')
     for a, b, text, derived in edges:
         out.append(f'{ids[a]} -> {ids[b]} [label="{_dot_text(text, 26)}"{", style=dashed" if derived else ""}];')
+    t2 = {}
+    if hubs:
+        t2 = {h["hub_id"]: h for h in _h_for(c0["label"]) if h["tier"] == "T2"}
+        for i, h in enumerate(t2.values()):
+            out.append(f'h{i} [label="{_dot_text(h["hub_label"])}", shape=box, style=filled, fillcolor="#e9eef0", '
+                       'color="#7d8f95", penwidth=1.5];')
+            out.append(f'{ids[cid]} -> h{i} [style=dotted, label="part of", arrowhead=none];')
     out.append("}")
-    return "\n".join(out), len(nodes)
+    return "\n".join(out), len(nodes), len(t2)
 
 
 def _go(cid: str) -> None:
@@ -770,6 +821,7 @@ def _go(cid: str) -> None:
         trail.append(cur)
         del trail[:-8]
     st.session_state["ex_cur"] = cid
+    st.session_state["ex_hub"] = None                    # opening a concept always leaves a hub page
 
 
 def _pick(key: str) -> None:
@@ -785,10 +837,11 @@ def _pick(key: str) -> None:
 def _back() -> None:
     trail = st.session_state.get("ex_trail") or []
     st.session_state["ex_cur"] = trail.pop() if trail else None
+    st.session_state["ex_hub"] = None
 
 
 def _home() -> None:
-    st.session_state["ex_cur"], st.session_state["ex_trail"] = None, []
+    st.session_state["ex_cur"], st.session_state["ex_trail"], st.session_state["ex_hub"] = None, [], None
 
 
 def concept_chips(items: list[dict], key: str, fmt) -> None:
@@ -888,23 +941,169 @@ def panel_mentions(c: dict) -> None:
                 f"{body}</div>", unsafe_allow_html=True)
 
 
+SUGGESTED_TIP = "Grouping suggested by a model and checked against a shared textbook section; not a textbook statement."
+HUB_GROUPS = (("Organ system", ("organ_system",)), ("Drug class", ("drug_class",)), ("Mechanism", ("mechanism",)),
+              ("Organism family / genus", ("organism_genus", "organism_family")), ("Kind of", ("condition_hierarchy",)))
+HUB_KIND = {"organ_system": "Organ system", "drug_class": "Drug class", "mechanism": "Mechanism",
+            "organism_genus": "Organism genus", "organism_family": "Organism family", "condition_hierarchy": "Kind of"}
+SUG_TAG = f'<span class="mm-pill sug" title="{html.escape(SUGGESTED_TIP)}">suggested</span>'
+HUB_PAGE = 30
+
+
+def _open_hub(key: str) -> None:
+    hid = st.session_state.get(key)
+    st.session_state[key] = None
+    if hid:
+        st.session_state["ex_hub"], st.session_state["ex_hub_page"] = hid, 0
+
+
+def panel_part_of(c: dict, uid: str) -> None:
+    """'Part of': the concept's hubs as chips grouped by kind. Navigation only; T3 groupings carry a 'suggested' tag."""
+    found = {}
+    for h in _h_for(c["label"]):
+        found.setdefault(h["hub_id"], h)
+    if not found:
+        return
+    st.markdown('<div class="mm-label">Part of</div>', unsafe_allow_html=True)
+    any_t3 = False
+    for title, kinds in HUB_GROUPS:
+        items = [{"id": h["hub_id"], **h} for h in found.values() if h["hub_type"] in kinds]
+        if not items:
+            continue
+        t3 = any(i["tier"] == "T3" for i in items)
+        any_t3 = any_t3 or t3
+        st.markdown(f'<div class="mm-grp">{esc(title)}' + (SUG_TAG if t3 else "") + "</div>", unsafe_allow_html=True)
+        by_id = {i["id"]: i for i in items}
+        mixed = len({i["tier"] for i in items}) > 1
+        st.pills("Open group", list(by_id), selection_mode="single", default=None, key=f"{uid}_hub_{kinds[0]}", wrap=True,
+                 format_func=lambda i: by_id[i]["hub_label"] + (" · suggested" if mixed and by_id[i]["tier"] == "T3" else ""),
+                 on_change=_open_hub, args=(f"{uid}_hub_{kinds[0]}",), label_visibility="collapsed")
+    st.caption("Groups for browsing. Being listed in a group does not mean facts about the group apply to this concept."
+               + (" Tagged groupings are suggested by a model and checked against a shared textbook section; "
+                  "not a textbook statement." if any_t3 else ""))
+
+
+REL_TEXT = {"exact": ("same concept", "The BODHI record names the same concept"),
+            "broader": ("broader", "The BODHI record is a more general concept"),
+            "narrower": ("narrower", "The BODHI record is a more specific concept"),
+            "related": ("related", "A nearby concept in BODHI")}
+TIER_TIP = {"T2": "Derived by a deterministic rule over curated data", "T3": "Suggested by a model; not checked"}
+
+
+def _bodhi_line(r: dict) -> str:
+    txt, tip = REL_TEXT.get(r["relation"], (r["relation"], ""))
+    mute = " mute" if r["tier"] == "T3" else ""
+    return (f'<div class="mm-xw{mute}">{esc(r["bodhi_name"])} '
+            f'<span class="mm-pill info" title="{esc(tip)}">{esc(txt)}</span>'
+            f'<span class="mm-pill tier" title="{esc(TIER_TIP.get(r["tier"], ""))}">{esc(r["tier"])}</span></div>')
+
+
+def panel_bodhi(c: dict, uid: str) -> None:
+    rows = _x_bodhi(c["label"])
+    main = [r for r in rows if r["relation"] != "related"][:4]
+    more = [r for r in rows if r["relation"] == "related"][:8]
+    if not main and not more:
+        return
+    st.markdown('<div class="mm-label">Also in BODHI</div>', unsafe_allow_html=True)
+    if main:
+        st.markdown("".join(_bodhi_line(r) for r in main), unsafe_allow_html=True)
+    else:
+        st.caption("No same, broader or narrower BODHI record.")
+    if more:
+        with st.expander(f"more · {len(more)} related"):
+            st.markdown("".join(_bodhi_line(r) for r in more), unsafe_allow_html=True)
+    st.caption("BODHI is a separate knowledge graph (CC BY-NC 4.0). A match means two records name the same or a "
+               "nearby thing; it is not a clinical claim.")
+
+
+def panel_see_also(c: dict, uid: str) -> None:
+    rows = _sa(c["label"])
+    items, seen = [], set()
+    for r in rows:
+        tgt = _safe(lambda r=r: _c_page(r["label"]), {})
+        if tgt and tgt["id"] != c["id"] and tgt["id"] not in seen:
+            seen.add(tgt["id"])
+            items.append({"id": tgt["id"], "label": r["label"]})
+    if not items:
+        return
+    with st.container(key=f"{uid}_seealso"):
+        with st.expander(f"See also · {len(items)}", expanded=False):
+            st.caption("Often discussed together in the textbooks; navigation only, not a clinical link.")
+            concept_chips(items, f"{uid}_sa", lambda x: x["label"])
+
+
+def _evidence_text(sid: str) -> str:
+    book, _, rest = sid.partition("/")
+    rest = re.sub(r"^(\d+-)+", "", rest).replace("-", " ").strip()
+    return f"{BOOKS.get(book, book)} · {rest[:1].upper() + rest[1:]}" if rest else BOOKS.get(book, book)
+
+
+def render_hub_page(hid: str) -> bool:
+    """A hub page: its members, paginated, each opening a concept page. Navigation only; no facts are shown here."""
+    rows = _safe(lambda: _h_members(hid), [])
+    if not rows:
+        return False
+    first = rows[0]
+    t3 = first["tier"] == "T3"
+    st.markdown('<div class="mm-trail">' + " › ".join(
+        ["Explore"] + [esc((_safe(lambda t=t: _c_page(t), {}) or {}).get("label", "?"))
+                       for t in ((st.session_state.get("ex_trail") or [])[-2:]
+                                 + ([st.session_state["ex_cur"]] if st.session_state.get("ex_cur") else []))]
+        + [f"<b>{esc(first['hub_label'])}</b>"]) + "</div>", unsafe_allow_html=True)
+    b1, b2, _ = st.columns([1, 1.6, 3])
+    b1.button("← Back", key="ex_hub_back", on_click=lambda: st.session_state.update(ex_hub=None), use_container_width=True)
+    if _safe(lambda: _c_page(hid), {}):                  # class hubs are concepts too: offer their own page
+        b2.button("Open concept page", key="ex_hub_open", on_click=_go, args=(hid,), use_container_width=True)
+    st.markdown(f"### {esc(first['hub_label'])}", unsafe_allow_html=True)
+    st.markdown(f'<div class="mm-pills"><span class="mm-pill info">{esc(HUB_KIND.get(first["hub_type"], "Group"))}</span>'
+                f'<span class="mm-pill info">{len(rows)} members</span>{SUG_TAG if t3 else ""}</div>', unsafe_allow_html=True)
+    st.caption("A group for browsing. Members share a heading, not their facts: treatments, cautions and other facts "
+               "belong to each concept's own page." + (" " + SUGGESTED_TIP if t3 else ""))
+    pages = max(1, -(-len(rows) // HUB_PAGE))
+    pg = min(max(int(st.session_state.get("ex_hub_page", 0)), 0), pages - 1)
+    st.session_state["ex_hub_page"] = pg
+    chunk = rows[pg * HUB_PAGE:(pg + 1) * HUB_PAGE]
+    concept_chips([{"id": r["member_id"], **r} for r in chunk], f"ex_hubm_{pg}", lambda r: r["member_label"])
+    if pages > 1:
+        p1, p2, p3 = st.columns([1, 1, 3])
+        p1.button("← Prev", key="ex_hub_prev", disabled=pg == 0, use_container_width=True,
+                  on_click=lambda: st.session_state.update(ex_hub_page=pg - 1))
+        p2.button("Next →", key="ex_hub_next", disabled=pg >= pages - 1, use_container_width=True,
+                  on_click=lambda: st.session_state.update(ex_hub_page=pg + 1))
+        p3.caption(f"Page {pg + 1} of {pages} · members {pg * HUB_PAGE + 1}-{pg * HUB_PAGE + len(chunk)}")
+    ev = [r for r in chunk if r.get("evidence")]
+    if ev:
+        with st.expander("Textbook section each grouping was checked against"):
+            for r in ev:
+                st.markdown(f'<div class="mm-hubpg"><b>{esc(r["member_label"])}</b> · {esc(_evidence_text(r["evidence"]))}</div>',
+                            unsafe_allow_html=True)
+    return True
+
+
 def panel_graph(c: dict, uid: str) -> None:
     deep = st.toggle("Include neighbours of neighbours (2 hops, up to 40 concepts)", key=f"{uid}_hops")
-    dot, n = _local_dot(c["id"], 2 if deep else 1)
-    if n < 2:
+    has_hubs = any(h["tier"] == "T2" for h in _safe(lambda: _h_for(c["label"]), []))
+    show_hubs = st.toggle("Show hubs", key=f"{uid}_hubs", help="Add the groups this concept belongs to (organ system, "
+                          "mechanism, organism genus) as square boxes on dotted lines.") if has_hubs else False
+    dot, n, nh = _local_dot(c["id"], 2 if deep else 1, show_hubs)
+    if n < 2 and not nh:
         return
     st.markdown('<div class="mm-label">Local graph</div>', unsafe_allow_html=True)
     st.graphviz_chart(dot, width="stretch")
     legend = "".join(f'<span class="mm-pill" style="background:{TYPE_FILL[t]};color:#15232a">{TYPE_NAME[t]}</span>'
                      for t in TYPE_FILL if t != "OrganSystem")
+    if nh:
+        legend += '<span class="mm-pill info"><span class="mm-hubnode"></span>Hub (group)</span>'
     st.markdown(f'<div class="mm-pills">{legend}</div>', unsafe_allow_html=True)
     st.caption(f"{n} concepts shown (most connected first, capped). Solid line: a certified fact stated from the "
-               "arrow's start. Dashed line: the same fact read backwards (derived). Book mentions are not drawn here.")
+               "arrow's start. Dashed line: the same fact read backwards (derived). Book mentions are not drawn here."
+               + (" Dotted line to a square box: the concept is listed under that group." if nh else ""))
 
 
 def render_concept_panels(c: dict, uid: str) -> None:
-    """The four navigation panels; each one is hidden when its data is missing or its call fails."""
-    for fn in (lambda: panel_links(c, uid), lambda: panel_related(c, uid), lambda: panel_mentions(c),
+    """The navigation panels; each one is hidden when its data is missing or its call fails."""
+    for fn in (lambda: panel_part_of(c, uid), lambda: panel_bodhi(c, uid), lambda: panel_links(c, uid),
+               lambda: panel_related(c, uid), lambda: panel_mentions(c), lambda: panel_see_also(c, uid),
                lambda: panel_graph(c, uid)):
         try:
             fn()
@@ -1002,8 +1201,11 @@ with tab_explore:
         st.write("")
 
         cur = st.session_state.get("ex_cur")
-        if cur and render_concept_page(cur):
+        hub = st.session_state.get("ex_hub")
+        if hub and _safe(lambda: render_hub_page(hub), False):
             pass
+        elif cur and render_concept_page(cur):
+            st.session_state["ex_hub"] = None
         else:
             if cur:                                      # stale or unreadable concept: fall back to browsing
                 _home()

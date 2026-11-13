@@ -70,3 +70,7 @@ MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0.60"))
 # The ToC router and STAIR are kept in the repo but hidden from the demo UI (router scored 32% chapter@1 vs 77% for
 # vector on the local 3B model; STAIR training is optional future work). EXPERIMENTAL=1 shows them again.
 EXPERIMENTAL = os.getenv("EXPERIMENTAL", "0") == "1"
+
+# Navigation-only graph walk (docs/graph_networking_plan.md Stage 5): extra textbook passages from sections the
+# mention index links to the question's entities, plus certified ontology facts reached through T2 crosswalk links.
+GRAPH_WALK = os.getenv("GRAPH_WALK", "0") == "1"
