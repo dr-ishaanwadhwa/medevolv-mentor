@@ -12,7 +12,8 @@ Source labels: every ontology entity label (any type), and Gray's Anatomy sectio
      'X of Y' order, trailing muscle/bone, hyphens, left/right): bge-small top-3 candidates (cosine >= MIN_COS, never
      across left/right) and one batched DeepSeek yes/no per label, cached in atlas_crosswalk_llm_cache.jsonl.
 Only 'same structure' answers are written, so a link is exact or absent. --audit N prints a random sample of the
-labels that link, with the method, for hand checking. Needs the atlas catalogue (public/models/atlas.json of the
+labels that link, with the method, for hand checking. --guard classifies every condition that has a linked
+structure (local / systemic / multi_site / misleading_site, cached) into data/graph/atlas_condition_guard.jsonl. Needs the atlas catalogue (public/models/atlas.json of the
 built human-atlas clone).
 """
 from __future__ import annotations
@@ -71,6 +72,9 @@ SYNONYMS: dict[str, str | list[str]] = {
     "triceps": ["long head of triceps brachii", "medial head of triceps brachii", "lateral head of triceps brachii"],
     "rhomboids": ["rhomboid major", "rhomboid minor"], "rhomboid muscles": ["rhomboid major", "rhomboid minor"],
     "tibial veins": ["anterior tibial vein", "posterior tibial vein"],
+    # same structure, Terminologia Anatomica / FMA wording (FMA3862, FMA51048)
+    "anterior interventricular artery": "anterior interventricular branch of left coronary artery",
+    "iliotibial band": "iliotibial tract",
 }
 
 
@@ -209,14 +213,89 @@ def judge(pending: list[tuple[str, list[dict]]], cache: dict, budget: float) -> 
     return spent
 
 
+GUARD_CACHE = PATH.parent / "atlas_condition_guard_cache.jsonl"
+LABELS = ("local", "systemic", "multi_site", "misleading_site")
+GUARD_SYSTEM = (
+    "You decide whether a 3D anatomy viewer may highlight structures for a clinical condition. For each condition you "
+    "get the structures a textbook says it involves (those are what would be highlighted). Label the condition:\n"
+    "local = one anatomical site (a bone, vessel, organ, muscle, or one continuous vessel segment), so highlighting "
+    "the structure teaches where the lesion is (scaphoid fracture -> scaphoid; popliteal artery aneurysm -> "
+    "popliteal artery; aortic dissection -> aorta and its branches; pituitary macroadenoma -> pituitary and optic chiasm).\n"
+    "systemic = a whole-body or whole-system disease (sepsis, cystic fibrosis, diabetes, vasculitis of many vessels).\n"
+    "multi_site = several separate sites or no single defining site (cancers that spread, syndromes affecting many "
+    "regions, a generic term like 'stress fracture' or 'muscle tear' that can occur anywhere).\n"
+    "misleading_site = the highlighted structure is NOT the defining site of the condition: a complication, a "
+    "neighbour, a route of spread or an example location (tuberculosis -> lumbar vertebra, pneumonia -> one bronchus, "
+    "cirrhosis -> portal vein, osteomyelitis -> calcaneus, intermittent claudication -> femoral artery, colon cancer "
+    "-> liver, bladder cancer -> ureter, a fracture whose listed structure is only a nearby vessel or organ).\n"
+    "Be strict: when the structures do not honestly show where the condition is, do not answer local. "
+    "Reply as JSON: {\"results\": [{\"i\": <number>, \"label\": <one of the four labels>, \"reason\": <max 15 words>}]}.")
+
+
+def guard_rows(conds: dict[str, list[str]], budget: float) -> tuple[list[dict], float]:
+    """Classify every condition (label -> its linked structure labels). One cached DeepSeek call per 30 conditions."""
+    cache: dict[str, dict] = {}
+    if GUARD_CACHE.exists():
+        for line in GUARD_CACHE.read_text().splitlines():
+            if line.strip():
+                r = json.loads(line)
+                cache[r["q"]] = r
+    qkey = lambda c: c + " => " + "; ".join(conds[c])                      # noqa: E731
+    todo = [c for c in conds if qkey(c) not in cache]
+    spent = 0.0
+    for i in range(0, len(todo), 30):
+        batch = todo[i:i + 30]
+        user = "\n".join(f"{n}. Condition: {c}\n   Structures: {'; '.join(conds[c])}" for n, c in enumerate(batch, 1))
+        est = (len(GUARD_SYSTEM) + len(user)) / 3.5 * PRICE_IN + 40 * len(batch) * PRICE_OUT
+        if spent + est > budget:
+            print("budget reached, stopping", file=sys.stderr)
+            break
+        got = {r["i"]: r for r in json.loads(backends.chat(GUARD_SYSTEM, user, 0.0, 3000, True, purpose="atlas guard"))["results"]}
+        spent += est
+        with GUARD_CACHE.open("a") as fh:
+            for n, c in enumerate(batch, 1):
+                g = got.get(n, {})
+                label = g.get("label") if g.get("label") in LABELS else "misleading_site"      # unsure -> hidden
+                row = {"q": qkey(c), "label": label, "reason": str(g.get("reason", "no answer"))[:160]}
+                cache[row["q"]] = row
+                fh.write(json.dumps(row) + "\n")
+    rows = []
+    for c in conds:
+        r = cache.get(qkey(c), {"label": "misleading_site", "reason": "not classified"})
+        label, reason = r["label"], r["reason"]
+        if A.cond_key(c) in {A.cond_key(x) for x in A.CURATED_NON_LOCAL}:
+            label = next(v for x, v in A.CURATED_NON_LOCAL.items() if A.cond_key(x) == A.cond_key(c))
+            reason = "curated override (coverage plan section 5)"
+        rows.append({"condition": c, "label": label, "reason": reason})
+    return rows, spent
+
+
+def build_guard(budget: float) -> None:
+    """Write data/graph/atlas_condition_guard.jsonl for every condition with at least one linked structure."""
+    conds: dict[str, list[str]] = {}
+    for f in facts():
+        if f["predicate"] == "INVOLVES_STRUCTURE" and A.atlas_record(f["object_label"]):
+            lst = conds.setdefault(f["subject_label"], [])
+            if f["object_label"] not in lst:
+                lst.append(f["object_label"])
+    rows, spent = guard_rows(dict(sorted(conds.items())), budget)
+    A.GUARD_PATH.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    from collections import Counter
+    print(f"wrote {len(rows)} conditions -> {A.GUARD_PATH}", dict(Counter(r["label"] for r in rows)))
+    print(f"deepseek est. ${spent:.3f}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--guard", action="store_true", help="classify linked conditions (local/systemic/...) and exit")
     ap.add_argument("--atlas-json", type=Path, default=DEFAULT_ATLAS)
     ap.add_argument("--budget", type=float, default=0.20)
     ap.add_argument("--dry", action="store_true", help="no LLM calls, no file written")
     ap.add_argument("--audit", type=int, default=0)
     ap.add_argument("--show-unmatched", action="store_true")
     a = ap.parse_args()
+    if a.guard:
+        return build_guard(min(a.budget, 0.05))
 
     atlas = load_atlas(a.atlas_json)
     table = alias_table(atlas)

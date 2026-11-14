@@ -117,3 +117,17 @@ stage ships.
 Method notes: the structure categories and relations come from one sonnet pass with my audit on top; the bridge and gain numbers are computed
 on main's data and the `anatomy-relations` worktree's `data/ontology` (read-only, 2,643 certified relations; 977 are BRANCH_OF or part_of between
 structures). Scratch files are in the session scratchpad, not in the repo.
+
+## 8. Stage 0 outcome (14 Nov)
+
+- Synonyms: anterior interventricular artery → FMA3862, iliotibial band → FMA51048. Structures linked 113 → 115.
+- Guard: conditions with a 3D link 120 → **65** (68 classified local, then fixes below). DeepSeek labels: 68 local,
+  49 misleading_site, 3 multi_site; cost ≈ $0.006.
+- Audit 1 (builder, 72 "local"): 94.4%, failed; 4 moved to hidden (nerve injuries shown on denervated muscle, pelvic kidney).
+- Audit 2 (independent reviewer, 68): **92.6%, failed**. Fixed by rule, not by tuning one case at a time:
+  - signs shown on a denervated target muscle are hidden (Trendelenburg's sign, diaphragmatic paralysis, complete ptosis);
+  - `LESION_ONLY` restricts three conditions to their lesion structure (pituitary macroadenoma → pituitary gland, not the
+    compressed optic chiasm; aortic dissection and dissecting thoracic aneurysm → aorta, not branch or landmark arteries).
+- After the fixes every remaining condition passed the independent reviewer; 15 borderline passes are listed in its report
+  (e.g. coarctation highlights the whole aorta, ureteric stone the whole ureter). A third audit on a fresh reviewer is the
+  next gate before Stage 1.
