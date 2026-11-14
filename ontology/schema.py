@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EntityType(str, Enum):
@@ -101,6 +101,13 @@ class ExtractionItem(BaseModel):
     subject_name: str = Field(..., description="Canonical clinical entity name")
     subject_type: EntityType = Field(..., description="T-Box class of subject")
     predicate: ClinicalRelation = Field(..., description="Clinical predicate")
+
+    @field_validator("predicate", mode="before")
+    @classmethod
+    def _predicate_case(cls, v):
+        """The anatomy prompt writes PART_OF; the enum value is the older lower-case 'part_of'."""
+        return "part_of" if isinstance(v, str) and v.upper() == "PART_OF" else v
+
     object_name: str = Field(..., description="Canonical clinical entity name")
     object_type: EntityType = Field(..., description="T-Box class of object")
     line_of_therapy: LineOfTherapy | None = Field(default=None, description="If TREATED_BY, specify priority")

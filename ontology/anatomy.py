@@ -44,7 +44,8 @@ KIND_RULES = {
     "INNERVATED_BY": ({"muscle", "organ", "region", "bone", "skin", "joint", "gland", "ligament"}, {"nerve"}),
     "SUPPLIED_BY": ({"muscle", "organ", "region", "bone", "joint", "gland", "nerve", "skin", "ligament"}, {"artery"}),
     "DRAINED_BY": ({"muscle", "organ", "region", "bone", "joint", "gland", "skin", "ligament"}, {"vein", "lymphatic"}),
-    "BOUNDED_BY": ({"space", "region", "organ"},
+    # organ subjects dropped after the audit: "the kidney is bounded by the diaphragm" was adjacency every time
+    "BOUNDED_BY": ({"space", "region"},
                    {"muscle", "bone", "ligament", "fascia", "organ", "space", "region", "artery", "nerve", "joint"}),
     "CONTAINS": ({"space", "region", "organ", "sheath"},
                  {"muscle", "nerve", "artery", "vein", "lymphatic", "organ", "ligament", "space", "bone", "gland"}),
@@ -144,7 +145,8 @@ QUOTE_CUES = {
     "INNERVATED_BY": r"innervat|nerve|supplied|supply|supplies|motor|sensory|\bsupplied",
     "SUPPLIED_BY": r"suppl|blood|arter|vascular|perfus|nourish",
     "DRAINED_BY": r"drain|vein|venous|lymph|tributar|return",
-    "BOUNDED_BY": r"bound|border|roof|floor|wall|margin|limit|\bform|edge|anterior|posterior|lateral|medial|superior|inferior",
+    # boundary vocabulary only: "lies behind / is covered by / is cradled between" is adjacency, not a boundary (audit, full run)
+    "BOUNDED_BY": r"bound|border|roof|floor|wall|margin|limit|\bform|edge|(anterior|posterior|superior|inferior|medial|lateral)ly,? (by|is|are)",
     "CONTAINS": r"contain|pass|transmit|enclos|\blie|\blies\b|content|house|hold|within|through|carr|enter|exit|leave|"
                 r"traverse|occup",
 }
@@ -166,7 +168,7 @@ def names_in_quote(label: str, quote: str) -> bool:
 
 def gate_anatomy_item(item: ExtractionItem) -> tuple[str, str]:
     """('ok' | 'candidate' | 'drop', reason) for one extracted anatomy triple. Applied by the reconciler."""
-    pred = item.predicate.value
+    pred = item.predicate.value.upper()                                       # enum value is 'part_of'
     s_kind, o_kind = (item.structure_kind or "").lower(), (item.object_structure_kind or "").lower()
     from ontology.merge import merge_key
     if merge_key(item.subject_name) == merge_key(item.object_name):          # G8
@@ -234,7 +236,13 @@ Reply as JSON only:
  "predicate": "INNERVATED_BY", "object_name": "...", "object_type": "AnatomicalStructure", "object_structure_kind": "nerve",
  "spinal_levels": null, "verbatim_quote": "...", "confidence": 0.95, "nl_fact": "The diaphragm is innervated by the phrenic nerve."}]}
 """
-PROMPT_VERSION = "v1"
+PART_ONLY = """
+
+THIS CALL: extract ONLY PART_OF relations (component or segment of a structure; organ of a body system), at most 10.
+Use the predicate value "part_of" exactly. Skip branches, supply, drainage, boundaries and contents."""
+PART_CUE = re.compile(r"\bpart\b|segment|component|portion|\bforms?\b|consist|compris|composed|divided into|"
+                      r"subdivi|\blobes?\b|chambers?", re.I)
+PROMPT_VERSION = "v1"   # extraction prompt version (cache key); the G7 cue table below is applied at reconcile time
 PILOT_PRIORITY = ("diaphragm", "inguinal canal", "femoral sheath", "carotid sheath", "head of femur", "femur",
                   "rectal", "superior orbital fissure", "ureter", "coronary", "heart")
 
@@ -271,8 +279,8 @@ def pilot_subset(ts: list[dict], n: int) -> list[dict]:
     return chosen
 
 
-def _key(path: str, passage: str) -> Path:
-    return CACHE / (hashlib.md5(f"{PROMPT_VERSION}|{path}|{passage}".encode()).hexdigest() + ".json")
+def _key(path: str, passage: str, part: bool = False) -> Path:
+    return CACHE / (hashlib.md5(f"{PROMPT_VERSION}{'-part' if part else ''}|{path}|{passage}".encode()).hexdigest() + ".json")
 
 
 def _user(p: dict) -> str:
@@ -280,14 +288,15 @@ def _user(p: dict) -> str:
             f'Passage:\n"""\n{p["text"]}\n"""\n\nExtract the anatomy relations. Reply in valid JSON.')
 
 
-def _extract(p: dict, spend: dict) -> None:
+def _extract(p: dict, spend: dict, part: bool = False) -> None:
     from rag.backends import chat
-    cache = _key(p["path"], p["text"])
+    cache = _key(p["path"], p["text"], part)
     if cache.exists():
         return
     user = _user(p)
+    system = SYSTEM + PART_ONLY if part else SYSTEM
     try:
-        raw = chat(SYSTEM, user, temperature=0.0, max_tokens=4000, json_mode=True, purpose="anatomy relations")
+        raw = chat(system, user, temperature=0.0, max_tokens=4000, json_mode=True, purpose="anatomy relations")
         triples = []
         for item in json.loads(raw).get("triples", []):
             try:
@@ -300,7 +309,7 @@ def _extract(p: dict, spend: dict) -> None:
             spend["failed"] += 1
         return
     with _lock:
-        spend["in"] += (len(SYSTEM) + len(user)) // 4
+        spend["in"] += (len(system) + len(user)) // 4
         spend["out"] += len(raw) // 4
         spend["calls"] += 1
     CACHE.mkdir(parents=True, exist_ok=True)
@@ -308,8 +317,8 @@ def _extract(p: dict, spend: dict) -> None:
                      encoding="utf-8")
 
 
-def estimate(ps: list[dict]) -> dict:
-    tin = sum((len(SYSTEM) + len(_user(p))) // 4 for p in ps)
+def estimate(ps: list[dict], part: bool = False) -> dict:
+    tin = sum((len(SYSTEM) + (len(PART_ONLY) if part else 0) + len(_user(p))) // 4 for p in ps)
     tout = 700 * len(ps)
     return {"calls": len(ps), "tokens_in": tin, "tokens_out_guess": tout,
             "usd": round(tin / 1e6 * PRICE_IN + tout / 1e6 * PRICE_OUT, 3)}
@@ -328,11 +337,14 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-usd", type=float, default=2.0, help="refuse to start when the estimate for uncached calls exceeds this")
+    ap.add_argument("--part-of", action="store_true", help="second pass: PART_OF only, on passages with a part/segment cue")
     ap.add_argument("--no-verify", action="store_true")
     a = ap.parse_args()
     ts = targets()
     js = pilot_subset(ts, a.pilot) if a.pilot else ts
-    est = estimate([p for p in js if not _key(p["path"], p["text"]).exists()])
+    if a.part_of:
+        js = [p for p in js if PART_CUE.search(p["text"])]
+    est = estimate([p for p in js if not _key(p["path"], p["text"], a.part_of).exists()], a.part_of)
     print(json.dumps({"targets": len(ts), "passages": len(js), "to_run": est}))
     if a.dry_run:
         return
@@ -340,7 +352,7 @@ def main() -> None:
         raise SystemExit(f"estimated ${est['usd']} exceeds --max-usd {a.max_usd}; not running")
     spend = {"in": 0, "out": 0, "calls": 0, "failed": 0}
     with ThreadPoolExecutor(max_workers=a.workers) as pool:
-        list(pool.map(lambda p: _extract(p, spend), js))
+        list(pool.map(lambda p: _extract(p, spend, a.part_of), js))
     spend["usd"] = round(spend["in"] / 1e6 * PRICE_IN + spend["out"] / 1e6 * PRICE_OUT, 3)
     from ontology.compiler import load_compiled_facts, save_compiled_facts
     stats: dict = {}
