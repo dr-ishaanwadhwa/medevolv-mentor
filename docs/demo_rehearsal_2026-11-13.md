@@ -1,114 +1,86 @@
-# Demo rehearsal, live site, 13 Nov 2026 (read-only)
+# Demo rehearsal on the LIVE site (13/14 Nov 2026)
 
-Target: https://mentor.medevolv.in and https://atlas.medevolv.in. Script followed: `docs/demo_script.md`.
-Method: (a) a browser pass on the live site (1440x900, no sign-in, Multi-hop ON); (b) backend timing on the VM, running
-`rag.answer.answer_multihop(q)` inside `eka-app-1` twice per question (code piped over ssh stdin, nothing written on the
-server). Screenshots are in `docs/demo_backup/` (`step-N-*.jpg`).
+Run on 14 Nov 2026 (evening) against https://mentor.medevolv.in and https://atlas.medevolv.in, read-only, built-in browser,
+no sign-in, no code or deploy changes. Script followed: `docs/demo_script.md`.
 
-Pass rate: **7 of 8 script steps pass on the live site** (opening, 1, 2, 4, 5, 6, 7). **Step 3 (anatomy) fails**: the live
-app crashes with a NameError when the answer is rendered. All 11 backend questions return the expected route and status;
-the one soft spot is the DKA fallback, whose "Warnings" line was missing on 1 of 2 runs. Explore click paths: 3 of 3 pass.
+**Result: all 9 demo steps pass functionally (9/9). 14/14 main question runs and 7/7 fallback questions behaved as scripted
+(route pill, status pill). No crash, no errors in console. 6 script details differ from the live behaviour (listed in "Deviations").**
 
-## Top 3 risks
+## How latency was measured
 
-1. **Step 3 (Gray's anatomy) crashes the page on the live site (reproduced 2 of 2).** The answer text appears, then a red
-   `NameError: name '_safe' is not defined` replaces the Sources panel (`app.py` line 301, called from `render_sources` via
-   line 463). Cause: `_safe` is defined at line 703, after the chat render at line 463 runs. It only triggers on Gray's
-   passages (the "View in 3D" lookup), so steps 1, 2, 4 and 5 are unaffected. The failed answer is also dropped from the chat
-   history on the next turn, leaving an orphan question. The fallback anatomy question (rotator cuff) is Gray's-only and will
-   hit the same path (not run in the UI). It also means the "View in 3D" link from an Ask answer cannot be shown. Not fixed
-   here (rules: no code edits). Needs a fix before the demo, or drop step 3 and say nothing about anatomy, or pre-record it.
-2. **Step 1 answer contradicts itself in the visible text.** Under "Emergency stabilization" and "Definitive pharmacology" it
-   says IV beta blockers can be given, and lists nitrates "to relieve angina", then the "Avoid:" block (which is correct) says
-   nitrates and beta blockers are contraindicated. A cardiologist reading the whole answer will spot it. Say up front: "read
-   the Avoid line, and note the model also restates the textbook's general indications, with conditions". Wording varies per run.
-3. **Latency and cold starts.** Backend first call per fresh process was 20.1 s (step 1), 14.3 s (step 3), 12.3 s (cricket),
-   against 6 to 9 s warm. On the live site the first vignette took 7.0 s (warm process). Case route is the slowest at 6 to
-   9 s. Everything depends on DeepSeek reachability; the VM is shared with other containers (life-inbox, ps11-copilot).
+"Server" is the number the app prints itself ("Done · N steps in X s"). "Wall" is click/Enter to the end of the Streamlit rerun,
+measured in the page (includes about 1 s of Streamlit rerun overhead, which is why instant refusals show ~1 s wall).
+Run 1 is the first call of that question in this session; Run 2 is straight after. The site had been idle before run 1 of step 1.
+
+Step 1 run 1: only the server time (6.1 s) was captured, the wall clock was not (my timer misfired). Run 2 wall was 6.0 s.
 
 ## Step table
 
-Latency columns are backend `answer_multihop` wall time (run 1 / run 2). Run 1 of the first question in each of my three
-processes includes embedding-model load (about 6 to 12 s), which the live Streamlit process does not pay once warm. "UI" is
-the time the live page itself reported.
+| Step | Latency run 1 (wall / server) | Latency run 2 (wall / server) | Pass? | Notes |
+|---|---|---|---|---|
+| 0 Opening: How it works tab, empty screen with tiles | page loads in 0.4 s (curl) | - | PASS | Diagram is tiny at a 1024-px-wide window (hard to read from the back of a room). The "Try a demo question" tile box is a scroll box, so tiles are cut off at small window heights. |
+| 1 Clinical vignette (38-year-old, pheochromocytoma) | n/a / 6.1 s | 6.0 s / 4.9 s | PASS | Pills "Grounded answer" + "Long case · focused look-ups" both runs. Alpha-blockade first, beta-blocker only after, "Avoid:" line (beta-blocker first, furosemide) in both runs. 13 steps, 4 textbook searches, 2 model calls. Sources: 7 and 6 cited of 9. The "books give no dosing protocol" line is present in run 2 ("Note: the sources do not give a specific acute i.v. dosing regimen...") but NOT in run 1. |
+| 2 Wheeze + breathlessness (graph route, Warnings) | 4.0 s / 2.9 s | 4.3 s / 3.2 s | PASS | Pills "Grounded answer" + "Clinical case · graph route". "Warnings" line present both runs (run 2: timolol, adenosine, beta blockers in asthma; zanamivir and high-flow oxygen in COPD). First-line = inhaled corticosteroids. |
+| 3 Femoral triangle (Gray's) | 3.2 s / 2.3 s | 3.1 s / 2.1 s | PASS | "Single question · direct search". All 6 retrieved passages are Gray's, match 0.72-0.80. Cited: 2 of 6 (run 1), 3 of 6 (run 2), script says 4 of 6. No crash (an old backup image in the folder shows a NameError on this question; it does not reproduce live). |
+| 4 Compare penicillins vs aminoglycosides (tile) | 5.4 s / 4.4 s | 5.9 s / 4.9 s | PASS | "Compound · split into parts". Trace row "Split into 2 sub-question(s)" shows the exact two questions in the script. One section per drug class. Optional contrast (Multi-hop OFF) works: no Compound pill, single search, 6 steps, 3.5 s, sources mostly Tripathi. Toggle restored to ON. |
+| 5a Personal refusal (tile) | 1.0 s / 0.0 s | 1.0 s / 0.0 s | PASS | Red pill "Personal medical advice: declined", 2 steps. |
+| 5b Cricket (tile) | 1.1 s / 0.1 s | 1.2 s / 0.1 s | PASS | Amber pill "Not in the textbooks: declined". Trace row: "Best match scored 0.53, below the 0.60 threshold ... language model is never called". 0 model calls. |
+| 5c Learn pharmacology (optional third refusal) | 2.4 s / 1.4 s | 1.8 s / 0.8 s | PASS | "Evidence insufficient: declined". |
+| 6 Explore: Rifampin, TB, Antibiotics hub, local graph | search to page: 0.9 s; TB 1.2 s; Back 0.9 s; hub 0.9 s; Show hubs 1.3 s | not repeated (no model call) | PASS | Search lists "Rifampin · Drug / therapy" first. Four book pills. Part of: Antibiotics, Antimicrobial agents, Antimicrobials + Mechanism: Cytochrome P450 enzymes. "Treats · 26 derived", then "Tuberculosis · 4 books". TB page: breadcrumb "Explore > Rifampin > Tuberculosis", six book pills incl. Gray's, Part of Infectious, Also in BODHI "Tuberculosis same concept T2", "Rifampin · 4 books" present. See also · 10 (Rifamycins, Rifabutin, Pyrazinamide, Ethambutol, Isoniazid ...). Hub: "Drug class · 44 members · suggested". Local graph: "24 concepts shown", Show hubs adds a grey box (Cytochrome P450 enzymes) on a dotted line. Header on the Explore tab: 5001 conditions, 25,902 certified facts. |
+| 7 Books differ, rheumatoid arthritis | Browse 1.0 s; RA 1.1 s | - | PASS | Condition box reads "Rheumatoid arthritis · 114 facts". "Books differ · 1 case": methotrexate card, treatment cited to Tripathi, Robbins, Davidson, Harrison; contraindication cited to Davidson pp. 1043-1048 ("DMARDs that must be avoided..."); banner "Neither is marked wrong, so read both sources." |
+| 8 Atlas deep links (3D) | `?select=FMA62045`: opens Optic Chiasm with info panel in under 4 s cold, 0.25 s warm | - | PASS | FMA62045 = Optic Chiasm (panel, "Show surrounding anatomy"). FMA9921 (from the TB "View involved structures in 3D" button) = lumbar vertebra, panel fades in. FMA10446 (Intervertebral disc, from "Also in 3D") shows the 3D pieces with a label but no info panel. Invalid ID (FMA99999999) falls back to the whole-body view, no error. Links open in a new tab (`target=_blank`). Console clean. |
+| Backup / infrastructure | - | - | PASS | https://130-210-60-153.sslip.io returns 200. HTTPS certificates (Let's Encrypt) valid until 10-11 Feb 2027 on mentor, atlas and the sslip.io backup. |
 
-| Step | Question / click path | Run 1 | Run 2 | UI | Pass | Notes |
-|---|---|---|---|---|---|---|
-| 0 | Opening: How it works tab, question-time diagram | n/a | n/a | n/a | PASS | Diagram renders. Header says 35,902 passages; the trace says "36,725 textbook passages" (mismatch, see risks list below). |
-| 1 | RV-infarct vignette (64 words) | 20.1 s (cold process) | 6.3 s | 7.0 s, 15 steps | PASS | Route `case`, status `answered`, 3 axes, 6 hops, 2 certified warnings (flecainide, beta blockers), 7 to 8 cited, books Davidson, Harrison, Tripathi. UI pills "Grounded answer" and "Long case · focused look-ups"; trace has "3 clinical axis/axes, 5 look-ups", 6 vector searches, "Textbook ontology lookup" (4 facts), "Citation check: 8 of 9 passages, 4 of 4 graph facts". Avoid line named nitrates, IV and oral beta blockers, flecainide, short-acting nifedipine. UI run cited Davidson and Harrison only (no Tripathi). Contradictory statements elsewhere in the answer (risk 2). Trace row 2 shows "onset of → Fever onset" as a linked symptom, which looks wrong. |
-| 1 fb | DKA vignette | 8.1 s | 8.7 s | n/a | PASS (soft) | `case`, `answered`, 3 axes, 3 warnings, books Davidson, Guyton, Harrison, Robbins, Tripathi. The "Warnings" line was absent on run 1, present on run 2. No "Avoid" line in either run (expected for this case). |
-| 2 | Wheeze and breathlessness: first-line class and drugs to avoid | 3.2 s | 2.5 s | 2.7 s, 16 steps | PASS | Route `graph`, `answered`, 5 warnings in evidence, "Warnings — drugs to avoid" present. Pill "Clinical case · graph route". Asthma, COPD, lung abscess differential; inhaled corticosteroids first-line. Warning rows: timolol (Tripathi), adenosine (Davidson), beta blockers (Harrison), plus zanamivir and high-flow oxygen for COPD. Books Tripathi, Harrison, Davidson. |
-| 2 fb | Wheeze, breathlessness, cough at night | 3.1 s | 3.2 s | n/a | PASS | `graph`, `answered`, 4 warnings, Warnings line both runs. Differential here is asthma, pneumonia, bronchitis. |
-| 3 | Femoral triangle boundaries and contents | 14.3 s (cold process) | 1.6 s | 1.9 s, 8 steps | **FAIL (UI)** | Backend is fine: `single`, `answered`, Gray's only, 2 to 3 cited. In the UI the answer text renders and is correct, then the `_safe` NameError crashes the Sources panel (reproduced twice). See risk 1. |
-| 3 fb | Rotator cuff muscles and nerve supply | 1.4 s | 1.3 s | not run | PASS (backend) / expected FAIL (UI) | `single`, `answered`, Gray's only. Same render path as step 3. |
-| 4 | Tile: Compare penicillins and aminoglycosides | 4.3 s | 4.3 s | 4.1 s, 10 steps | PASS | Route `decompose`, `answered`, 3 hops. UI pill "Compound · split into parts"; trace "Split into 2 sub-question(s)" with the two mechanism questions and two searches. Books: Harrison and Tripathi (run 1), Tripathi only (run 2 and UI). Both classes have their own sections plus a "Key contrast" block. |
-| 4 fb | Compare type 1 and type 2 diabetes | 4.1 s | 4.1 s | n/a | PASS | `decompose`, `answered`, Davidson and Harrison. |
-| 5a | Tile: My mother has TB, how much rifampicin | 0.1 s | 0.0 s | 0.0 s, 2 steps | PASS | `personal_refusal`, no route, no search. Red pill "Personal medical advice: declined". |
-| 5b | Tile: Who won the 2011 cricket world cup | 12.3 s (cold process) | 0.1 s | 0.1 s, 6 steps | PASS | `not_in_sources`. Amber pill "Not in the textbooks: declined"; trace "Best match scored 0.53, below the 0.60 threshold", 0 model calls. |
-| 5c | Optional: best way to learn pharmacology quickly | 0.6 s | 0.9 s | not run | PASS (backend) | `insufficient`, no cited books. |
-| 6 | Explore: Rifampin, backlinks, hub, local graph | n/a | n/a | page loads in 1 to 3 s | PASS | See Explore check below. |
-| 7 | Explore: Rheumatoid arthritis, Books differ | n/a | n/a | 1 to 3 s | PASS | See Explore check below. |
+## Fallback questions (one run each, all behave as scripted)
 
-## Explore click-path check (live site, no model calls)
-
-| Path | Result | What I saw |
+| Fallback | Wall / server | Route pill |
 |---|---|---|
-| Rifampin, backlinks, hub, local graph | PASS | Search "Rifampin" returns "Rifampin · Drug / therapy" first. Page shows four book pills (Davidson, Harrison, Microbiology, Tripathi), Part of: Drug class (suggested) Antibiotics, Antimicrobial agents, Antimicrobials; Mechanism: Cytochrome P450 enzymes. "Linked from: Treats · 26 derived". Click "Tuberculosis · 4 books": breadcrumb "Explore › Rifampin › Tuberculosis", six book pills including Gray's, Part of Infectious, "Also in BODHI: Tuberculosis same concept T2", and "Treated by · 24" containing "Rifampin · 4 books". "← Back" returns to Rifampin; "See also · 10" present. Click "Antibiotics": "Drug class · 44 members · suggested", page 1 of 2, with the "not a textbook statement" caption. Local graph: "24 concepts shown", "is a First-line antitubercular drug", 3 adverse-effect nodes, treats nodes drawn dashed. |
-| Rheumatoid arthritis "Books differ" | PASS | Browse by organ system, Blood & immunology is selected by default, click "Rheumatoid Arthritis" (it is not pre-selected, as the script says you click it). "Rheumatoid arthritis · 114 facts". "Books differ · 1 case": methotrexate, Listed as a treatment (Tripathi's book titled "Essentials of Medical Pharmacology", Robbins, Davidson, Harrison), Listed as a contraindication (Davidson, "DMARDs that must be avoided: methotrexate, leflunomide..."), banner "Neither is marked wrong, so read both sources." Clinical facets tabs below include Warnings. |
-| "View in 3D" opens atlas with structure selected | PASS (Explore) / BLOCKED (Ask) | Tuberculosis page has "View involved structures in 3D" linking to `https://atlas.medevolv.in/?select=FMA9921`; the atlas loaded in about 8 s and selected "Lumbar Vertebra" (5 pieces, Pott's spine as the TB structure, not the lung; expect a question). `?select=FMA62045` loaded and selected "Optic Chiasm". The Ask-side link ("View X in 3D" under a Gray's source) is the code path that crashes, so it cannot be shown from an Ask answer today. |
+| 1 Falciparum malaria vignette | 9.2 s / 8.0 s | Long case · focused look-ups |
+| 2 Wheeze, breathlessness, cough at night | 3.9 s / 2.7 s | Clinical case · graph route |
+| 2 Morphine in head injury | 2.4 s / 1.3 s | Single question |
+| 3 Rotator cuff | 2.3 s / 1.0 s | Single question |
+| 4 Type 1 vs type 2 diabetes | 5.1 s / 3.8 s | Compound · split into parts |
+| 5 Ibuprofen for my headache | 1.4 s / 0.0 s | Personal medical advice: declined |
+| 5 Eka Care's revenue | 2.0 s / 0.6 s | Evidence insufficient: declined (the script text says off-topic; it still declines) |
 
-## Other discrepancies versus the script
+## Deviations from the script (edit the script, not the site)
 
-- Rifampin page does NOT show "Second-line anti-tubercular agents" in Part of any more (only Antibiotics, Antimicrobial agents,
-  Antimicrobials). The "do not click" warning is moot on this page; keep it in case the group appears elsewhere.
-- "Show hubs" on Rifampin adds one box only ("Cytochrome P450 enzymes", dotted "part of"), not the drug-class group boxes
-  the script describes. Say "a group box", singular.
-- The local graph is a tall vertical column (24 nodes, over one screen high even at 1600x1500). Browser zoom of 80 to 90%
-  will not fit it on one screen; plan to scroll, or use the screenshots.
-- Answers now include a "Generate diagram" button and a "Clinical graph" drill-down panel (steps 1 and 2) that the script
-  does not mention. Do not click Generate diagram live (unrehearsed, may call the model).
-- Header says 35,902 passages and 2,611 sections; the trace says "Vector search over 36,725 textbook passages". Pick one to
-  quote or be ready to explain.
-- Live Explore header: "5001 conditions, 25,902 certified facts", matching the script's note.
-- Orphan question after the step 3 crash: the question stays in the chat with no answer. "Clear chat" fixes it.
-- VM has 2 CPUs (script says 1), 9.4 GB disk free, 9 GB RAM available; other containers share it.
-- Backup URL https://130-210-60-153.sslip.io returned HTTP 200 in 0.22 s; mentor and atlas 200 in under 0.2 s.
+1. **Step 1, "where the books stop" point is not guaranteed.** Run 1 had no "no dosing protocol" line; run 2 did. Say it only if it is on screen.
+2. **Step 3 "4 of 6 passages cited"** is really 2 to 3 of 6 on the live site. All passages are still Gray's.
+3. **Step 6, "5 hub chips"**: the Rifampin page shows 3 drug-class chips (Antibiotics, Antimicrobial agents, Antimicrobials) plus the Mechanism chip. The "Second-line anti-tubercular agents" chip is no longer on the page, so the "known flaw" paragraph and "Do not click that chip" are out of date.
+4. **Step 6 / Local graph size:** the graph is 2,519 px tall with Show hubs on. It does not fit one screen at 80-90% zoom on a typical laptop; plan to scroll or zoom to about 50%, or use the screenshots.
+5. **New features the script does not mention:** "Generate diagram" button and the "Clinical graph · complaints > differential > phases > workup > therapy" panel under every clinical answer (Drill in / Show all 5 levels / Reset), and "View involved structures in 3D" on condition pages. The professor will see them; know what they do.
+6. **Step 6 hub count / book pills for TB** match the script (six pills, Gray's included).
 
-## Fallback questions (all verified on the backend)
+## Risks and fallbacks
 
-| If this fails | Use | Evidence |
-|---|---|---|
-| Step 1 slow (over 15 s) or errors | DKA vignette (script text) | `case`, 8.1 and 8.7 s, 3 warnings; may lack the "Warnings" line |
-| Step 2 slow or no Warnings line | "A patient has wheeze, breathlessness and cough at night. Likely diagnosis and drug treatment?" | `graph`, about 3 s, Warnings both runs |
-| Step 3 crashes (it does today) | Skip anatomy and say so; or show `step-3-anatomy-NameError-crash.jpg` only if asked. Rotator cuff will crash too | See risk 1 |
-| Step 4 slow | "Compare type 1 and type 2 diabetes mellitus." | `decompose`, about 4 s |
-| Step 5 | "Should I take ibuprofen for my headache?" (personal) | not re-run today, per script |
-| Explore search fails | Browse by organ system, then step 7 path | Works, verified |
-| Site down | Backup screenshots in `docs/demo_backup/` and https://130-210-60-153.sslip.io | Both exist |
+| # | Risk | Likelihood / impact | Fallback |
+|---|---|---|---|
+| 1 | **Single point of failure: DeepSeek API balance and the 1-CPU Oracle VM.** Steps 1, 2, 3, 4 all call the model; if DeepSeek is down or the balance is zero, they all fail. Explore (6, 7), the refusals 5a/5b and atlas make no model call and keep working. | Low / High | Check balance on the morning. Reorder the demo to lead with Explore and refusals if the model is down. The offline Ollama fallback exists but is weaker. |
+| 2 | **Long answers are the slow ones.** Step 1 is 5-6 s warm; the malaria fallback is 9 s; first call after a restart or idle can take longer (about 12 s per the script). | Medium / Medium | Warm the site (anatomy question, then step 1) and Clear chat 5 minutes before. Prefer the faster step 1 alternative: the wheeze case (3-4 s). Keep the status box talking while it works. |
+| 3 | **Local graph does not fit the screen** (2,519 px tall), and the "Drill in" buttons wrap badly in a narrow window; the opening diagram is tiny. | High / Low | Browser zoom to 50-67% for the graph, full-screen window, or show `step-6-local-graph-hubs-bottom.png`. Test the projector resolution on the day. |
+| 4 | **Answers are non-deterministic.** The wording, number of cited passages and optional lines (e.g. the "no protocol" note) vary run to run. | High / Low | Do not promise exact text; use the "point at" list, not the wording. |
+| 5 | **Atlas details are uneven.** FMA10446 (Intervertebral disc) shows no info panel, and Optic Chiasm shows generic nervous-system text. | Medium / Low | Demo only FMA62045 and FMA9921 (both have panels). |
+| 6 | Stale files in `docs/demo_backup/`: older `.jpg` screenshots from an earlier pass remain, including `step-3-anatomy-NameError-crash.jpg` which would be embarrassing if opened on screen. | Low / Medium | Delete or move the `.jpg` files before the demo (I did not touch them). |
+| 7 | Free Oracle trial credit / certificate: VM stops when trial credit ends; cert expires 10 Feb 2027 (fine). | Low / High | Check the Oracle console on the morning. Backup address already works. |
 
-## Morning-of checklist (17 Nov)
+## Pre-demo checklist (additions marked NEW)
 
-- [ ] Confirm the `_safe` crash is fixed (or step 3 is cut), by asking the femoral triangle question once on the live site
-  and checking that Sources opens with no red box. Do this before 16 Nov, then freeze deploys.
-- [ ] Note the commit hash live; no deploys, pushes, re-indexing or `.env` edits on the day.
-- [ ] DeepSeek balance above $2. Oracle VM running, trial credit not exhausted.
-- [ ] Open https://mentor.medevolv.in in two tabs (A: Ask, B: Explore). Lock icon valid. Backup URL loads.
-- [ ] Warm up: one anatomy-style or short question, then the step 1 vignette once (6 to 9 s warm, 20 s cold), then open
-  Explore and search Rifampin once. Click "Clear chat".
-- [ ] Sidebar: Multi-hop reasoning ON (it was ON by default today). Threshold shows 0.60.
-- [ ] Paste file ready: step 1 vignette, step 2 question, DKA fallback, short-vignette fallback.
-- [ ] Screenshots folder `docs/demo_backup/` open in another window, plus a slide copy.
-- [ ] Browser full screen, 100% zoom; expect to scroll the local graph.
-- [ ] Rehearse the sentence for the step 1 contradiction (IV beta blocker and nitrate lines versus the Avoid block).
-- [ ] Be ready for: why the TB "View in 3D" selects the lumbar vertebra; "Viral exanthem" versus measles limit; DeepSeek
-  grading itself.
-- [ ] Phone hotspot, projector and Wi-Fi checked. Terminal and `.env` closed. No API keys on screen.
+- [ ] Freeze: no deploys, no re-index, no `.env` edits. Write down the live commit hash.
+- [ ] Check DeepSeek balance (>= $2) and the Oracle VM + credit.
+- [ ] Open https://mentor.medevolv.in in two tabs (Ask, Explore). Confirm the lock icon. Open the backup https://130-210-60-153.sslip.io once.
+- [ ] Warm-up: anatomy question, then the step 1 vignette, then "Clear chat". Search Rifampin once in Explore.
+- [ ] Sidebar: Multi-hop reasoning ON (verified ON and restored after the contrast test).
+- [ ] NEW: Set browser zoom for the local graph (50-67%) and check it on the projector.
+- [ ] NEW: Open both atlas links once beforehand: `https://atlas.medevolv.in/?select=FMA62045` and `?select=FMA9921` (about 4 s cold).
+- [ ] NEW: Remove the stale `.jpg` files (including the NameError one) from `docs/demo_backup/`, keep the `.png` set; open that folder in a second window.
+- [ ] NEW: Update the script for deviations 1-5 above (step 3 cited count, step 6 hub chips, the "second-line" note, new diagram and 3D features).
+- [ ] Paste-ready notes file with step 1, step 2 and fallback vignettes. Phone hotspot ready.
 
-## Screenshots saved (`docs/demo_backup/`)
+## Screenshots (docs/demo_backup/, PNG, from the live site)
 
-step-0-opening-how-it-works, step-0-empty-screen-demo-tiles, step-1-vignette-avoid-line, step-1-vignette-trace,
-step-2-asthma-warnings, step-3-anatomy-NameError-crash, step-4-compare-decompose-pill, step-5a-personal-refusal,
-step-5b-cricket-threshold-trace, step-6-rifampin-page, step-6-tuberculosis-page, step-6-antibiotics-hub,
-step-6-local-graph-middle, step-6-local-graph-hubs-bottom, step-6-atlas-3d-from-tuberculosis-FMA9921,
-step-6-atlas-FMA62045-optic-chiasm, step-7-books-differ-ra. (All `.jpg`. There is no good screenshot of the step 2 Sources
-panel or the step 1 "Sources" panel; both were verified by text only.)
+`step-0-empty-screen-demo-tiles.png`, `step-0-opening-how-it-works.png`, `step-1-vignette-answer.png`, `step-1-vignette-trace.png`,
+`step-2-warnings-line.png`, `step-3-anatomy-grays.png`, `step-4-compare-decompose.png`,
+`step-5-refusals-personal-and-insufficient.png`, `step-5b-cricket-threshold-trace.png`, `step-6-rifampin-page.png`,
+`step-6-rifampin-backlinks.png`, `step-6-tuberculosis-page.png`, `step-6-antibiotics-hub.png`, `step-6-local-graph-hubs-bottom.png`,
+`step-7-books-differ-ra.png`, `step-8-atlas-FMA62045-optic-chiasm.png`, `step-8-atlas-from-tuberculosis-FMA9921.png`.
