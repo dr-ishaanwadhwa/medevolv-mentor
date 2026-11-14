@@ -1,0 +1,26 @@
+TAM users                           823,000
+TAM Rs cr                             303.1
+SAM payers                          130,600
+SAM gross Rs cr                       15.67
+SAM net Rs cr                         13.28
+Y3 reach                             21,280
+Y3 installs                           6,820
+Y3 payers                              71.2
+Y3 net/payer Rs                       848.4
+Y3 revenue Rs                        60,407
+Y1 reach                              6,080
+Y1 installs                           1,895
+Y1 payers                              18.9
+Y1 net/payer Rs                       721.5
+Y1 revenue Rs                        13,672
+Y3 payers @ 0.7%                       47.7
+Y3 payers @ 1.4%                       95.5
+SAM/SOM gap (revenue x)               2,199
+
+# Worksheet: derivations
+in-college students = 0.95 x 595,873 (5 cohorts) = 566,079
+interns = 0.95 x ~92,000 (2021-22 cohort proxy) = 87,400
+Y3 effective colleges = 80 x (1 - 0.40 x 0.30) = 70.4  (report uses 70)
+bull: effective colleges 136.5; reach 82,992; installs 29,898; payers 618 (report: ~600)
+bull revenue at report's Rs 6.6 lakh implies Rs 1,068 net per payer (base mix gives Rs 848)
+bear: effective colleges 34.0; payers 9.8 (report: ~10-12)
