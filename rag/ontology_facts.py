@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -22,6 +23,9 @@ from pathlib import Path
 from ontology.merge import merge_key
 
 PATH = Path("data/ontology/clinical_ontology.jsonl")
+# Inline contraindication caveats on first-line lists. Off by default: the A/B (docs/demo_step1_decision.md) showed no
+# measurable gain, and the live demo build stays unchanged until after 17 Nov.
+FIRST_LINE_CAVEAT = os.getenv("FIRST_LINE_CAVEAT", "0") == "1"
 CONDITION_TYPES = {"PathologicalCondition", "ClinicalStage"}
 GENERIC = {"acute", "chronic", "severe", "mild", "primary", "secondary", "disease", "disorder", "syndrome",
            "infection", "infections", "pulmonary", "fever", "with", "without", "type", "unspecified", "general"}
@@ -355,9 +359,13 @@ def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_
                 return ""
             why = re.sub(r"^\s*avoid\s*(it\s*)?", "", ci[hit], flags=re.I).rstrip(". ")
             return " [general list, not for every patient: avoid" + (f" {why}" if why else " where contraindicated") + "]"
-        out.append(f"Textbook ontology: first-line treatment for {labels[0]} (in general; check each drug against "
-                   f"this patient): "
-                   + "; ".join(f"{f['object_label']}{_for(f, labels[0])}{caveat(f)} ({cite(f)})" for f in fl) + ".")
+        if FIRST_LINE_CAVEAT:
+            out.append(f"Textbook ontology: first-line treatment for {labels[0]} (in general; check each drug against "
+                       f"this patient): "
+                       + "; ".join(f"{f['object_label']}{_for(f, labels[0])}{caveat(f)} ({cite(f)})" for f in fl) + ".")
+        else:
+            out.append(f"Textbook ontology: first-line treatment for {labels[0]}: "
+                       + "; ".join(f"{f['object_label']}{_for(f, labels[0])} ({cite(f)})" for f in fl) + ".")
     dx = _dedupe(diagnostics_for(condition))[:max_tests]
     if dx:
         out.append(f"Textbook ontology: {labels[0]} is confirmed by: "
