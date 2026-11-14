@@ -39,6 +39,11 @@ CAUSED_BY = SUBJECT is caused by OBJECT. CAUSES_ADVERSE_EFFECT = drug SUBJECT ca
 TARGETS_MECHANISM = drug SUBJECT acts on OBJECT. DISRUPTS_PATHWAY = SUBJECT disturbs process OBJECT.
 HAS_CLINICAL_STAGE = OBJECT is a stage/phase of SUBJECT. DIFFERENTIAL_OF = the two are considered in each other's
 differential. INVOLVES_STRUCTURE = condition SUBJECT affects or arises in anatomical structure OBJECT.
+INNERVATED_BY = nerve OBJECT supplies SUBJECT. SUPPLIED_BY = artery OBJECT supplies blood to SUBJECT.
+DRAINED_BY = vein or lymphatic OBJECT drains SUBJECT. BOUNDED_BY = OBJECT forms a wall, roof, floor or boundary of SUBJECT.
+CONTAINS = SUBJECT holds OBJECT inside it or OBJECT passes through SUBJECT. BRANCH_OF = vessel or nerve SUBJECT arises
+from (is given off by, is a branch of) OBJECT. PART_OF = SUBJECT is a component or segment of OBJECT (a branch of a
+vessel is "no" for PART_OF; "yes" only if the quote says it is a part or segment).
 is_a = SUBJECT is a kind of OBJECT. If the item has a line of therapy (e.g. FIRST_LINE), ignore it.
 Reply as JSON: {"results": [{"i": <item number>, "v": "yes"|"partial"|"no"}, ...]} with one entry per item."""
 

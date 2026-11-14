@@ -146,9 +146,9 @@ def process_section_paths(paths: list[Path], force: bool = False, rebuild: bool 
 
     # targeted gap-fill (ontology/gapfill.py) and Gray's clinical boxes/cases (ontology/grays.py) are kept on
     # rebuild, from their caches
-    from ontology import grays
+    from ontology import anatomy, grays
     from ontology.gapfill import reconcile_cached
-    for f in reconcile_cached(stats) + reconcile_cached(stats, grays.CACHE):
+    for f in reconcile_cached(stats) + reconcile_cached(stats, grays.CACHE) + reconcile_cached(stats, anatomy.CACHE):
         facts_dict.setdefault(f.id, f)
 
     save_compiled_facts(list(facts_dict.values()), merge_report=Path("reports/ontology_merges.tsv"))

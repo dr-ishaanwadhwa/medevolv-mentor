@@ -68,12 +68,15 @@ def save_compiled_facts(facts: list[ProvenancedOntologyFact], path: Path = ONTOL
                         merge_report: Path | None = None) -> None:
     """Save reconciled facts to JSONL: merge entity spellings (ontology/merge.py), merge duplicate triples with
     all their sources, and apply cached verifier verdicts (ontology/verifier.py; no LLM calls here)."""
+    from ontology.anatomy import drop_cycles
     from ontology.merge import apply_merges, plan_merges
     from ontology.verifier import apply_ci_triage, apply_verdicts
 
     path.parent.mkdir(parents=True, exist_ok=True)
     mapping, report = plan_merges(facts)
     facts = soften_treated_contraindications(apply_ci_triage(apply_verdicts(merge_duplicates(apply_merges(facts, mapping)))))
+    facts = drop_cycles([f for f in facts if f.subject_id != f.object_id or f.predicate.value not in
+                         ("PART_OF", "part_of", "BRANCH_OF")])             # G8: acyclic PART_OF / BRANCH_OF
     if merge_report:
         merge_report.parent.mkdir(parents=True, exist_ok=True)
         merge_report.write_text("".join(f"{r['canonical_label']}\t{r['type']}\t{' | '.join(r['merged'])}\n"

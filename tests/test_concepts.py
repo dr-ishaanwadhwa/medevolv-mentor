@@ -26,6 +26,7 @@ FACTS = (
 @pytest.fixture
 def onto(monkeypatch):
     monkeypatch.setattr(ontology_facts, "facts", lambda: FACTS)
+    monkeypatch.setattr(ontology_facts, "anatomy_facts", lambda: ())
     monkeypatch.setattr(concepts, "_heading_nav", lambda: ({}, {}, {}))   # real headings must not be cached against fake facts
     concepts._index.cache_clear()
     yield
@@ -70,6 +71,7 @@ def test_search_prefix(onto):
 
 def test_empty_when_ontology_missing(monkeypatch):
     monkeypatch.setattr(ontology_facts, "facts", lambda: ())
+    monkeypatch.setattr(ontology_facts, "anatomy_facts", lambda: ())
     concepts._index.cache_clear()
     assert concepts.concept("Tuberculosis") == {} and concepts.related("x") == [] and concepts.search_concepts("t") == []
     concepts._index.cache_clear()
