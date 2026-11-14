@@ -19,6 +19,8 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from ontology.merge import merge_key
+
 PATH = Path("data/ontology/clinical_ontology.jsonl")
 CONDITION_TYPES = {"PathologicalCondition", "ClinicalStage"}
 GENERIC = {"acute", "chronic", "severe", "mild", "primary", "secondary", "disease", "disorder", "syndrome",
@@ -313,6 +315,24 @@ def _for(f: dict, label: str) -> str:
     return "" if _keys(f["subject_label"]) == _keys(label) else f" (for {f['subject_label']})"
 
 
+# WHO INN stems: a drug's name places it in a class (metoprolol -> beta blockers). Used only to attach a
+# contraindication caveat to a general first-line list, never to state a fact about the drug.
+INN_STEMS = [(r"olol$|alol$", ("Beta blockers", "Beta-blockers", "beta adrenergic blockers")),
+             (r"pril(at)?$", ("ACE inhibitors", "Angiotensin-converting enzyme inhibitors")),
+             (r"sartan$", ("Angiotensin receptor blockers", "ARBs")),
+             (r"statin$", ("Statins",)),
+             (r"dipine$", ("Calcium channel blockers", "Dihydropyridines")),
+             (r"(o|e)fen$|profen$|coxib$", ("Nonsteroidal anti-inflammatory agents", "NSAIDs")),
+             (r"(i|e)sone$|olone$", ("Glucocorticoids", "Corticosteroids")),
+             (r"(floxacin)$", ("Fluoroquinolones",)),
+             (r"(teplase|kinase)$", ("Thrombolytics", "Fibrinolytics"))]
+
+
+def drug_classes(label: str) -> tuple[str, ...]:
+    name = (label or "").strip().lower().split()[-1] if label else ""
+    return tuple(c for pat, classes in INN_STEMS if re.search(pat, name) for c in classes)
+
+
 def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_warnings: int = 3) -> list[str]:
     """Short, cited fact strings about one condition for the answer prompt ([G#] evidence)."""
     labels = match_conditions(condition)
@@ -321,8 +341,23 @@ def graph_facts_for(condition: str, max_drugs: int = 5, max_tests: int = 3, max_
     out = []
     fl = _dedupe(first_line_drugs_for(condition))[:max_drugs]
     if fl:
-        out.append(f"Textbook ontology: first-line treatment for {labels[0]}: "
-                   + "; ".join(f"{f['object_label']}{_for(f, labels[0])} ({cite(f)})" for f in fl) + ".")
+        # a first-line drug that the books also contraindicate for some patients with this condition carries the
+        # caveat inline, so the general list is never read as "give it to this patient" (beta blockers in shock MI)
+        ci = {}
+        for c in contraindications_for(condition):
+            why = c["clinical_facets"].get("population") or c["clinical_facets"].get("rationale") or ""
+            ci.setdefault(merge_key(c["object_label"]), why)
+
+        def caveat(f):
+            keys = [merge_key(f["object_label"])] + [merge_key(c) for c in drug_classes(f["object_label"])]
+            hit = next((k for k in keys if k in ci), None)
+            if hit is None:
+                return ""
+            why = re.sub(r"^\s*avoid\s*(it\s*)?", "", ci[hit], flags=re.I).rstrip(". ")
+            return " [general list, not for every patient: avoid" + (f" {why}" if why else " where contraindicated") + "]"
+        out.append(f"Textbook ontology: first-line treatment for {labels[0]} (in general; check each drug against "
+                   f"this patient): "
+                   + "; ".join(f"{f['object_label']}{_for(f, labels[0])}{caveat(f)} ({cite(f)})" for f in fl) + ".")
     dx = _dedupe(diagnostics_for(condition))[:max_tests]
     if dx:
         out.append(f"Textbook ontology: {labels[0]} is confirmed by: "
