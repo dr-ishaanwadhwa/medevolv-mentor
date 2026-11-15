@@ -1,0 +1,24 @@
+# Append to ~/eka/Caddyfile on the VM (push.sh does it once, idempotently). /api goes straight to FastAPI with
+# flushing on so SSE streams token by token; /models is served same-origin from the static atlas mount.
+v2.130-210-60-153.sslip.io {
+	header X-Robots-Tag "noindex, nofollow"
+	respond /robots.txt "User-agent: *
+Disallow: /
+" 200
+	handle /api/* {
+		reverse_proxy v2-api:8000 {
+			flush_interval -1
+		}
+	}
+	handle /models/* {
+		root * /srv/atlas
+		file_server {
+			precompressed gzip
+		}
+		header Cache-Control "public, max-age=604800"
+	}
+	handle {
+		encode gzip
+		reverse_proxy v2-web:3000
+	}
+}

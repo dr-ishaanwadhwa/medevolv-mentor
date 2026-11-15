@@ -1,0 +1,22 @@
+# MedEvolv Mentor v2 (Next.js + FastAPI). Lives in ~/v2 on the VM, outside eka/ so eka's rsync --delete keeps it.
+# Joins eka's network so the existing Caddy (eka-caddy-1) reaches it by service name.
+services:
+  v2-api:
+    build: { context: ., dockerfile: Dockerfile.api }
+    env_file: .env                  # DEEPSEEK_API_KEY, ATLAS_URL, LLM_BACKEND, EMBED_BACKEND (copied by push.sh)
+    restart: unless-stopped
+    expose: ["8000"]
+    volumes: [v2_appdb:/home/user/var]
+    networks: [eka_default]
+  v2-web:
+    build: { context: ., dockerfile: Dockerfile.web }
+    restart: unless-stopped
+    expose: ["3000"]
+    environment: { BACKEND_API_URL: "http://v2-api:8000" }
+    depends_on: [v2-api]
+    networks: [eka_default]
+volumes:
+  v2_appdb:
+networks:
+  eka_default:
+    external: true
