@@ -34,3 +34,8 @@ node_modules
 /apps/web/*.tsbuildinfo
 var/
 apps/web/public/story/
+
+# Female atlas source GLB (211 MB, CC BY 4.0, downloaded; see deploy/atlas/female/README.md) and converter scratch output
+/deploy/atlas/female/source/
+/deploy/atlas/female/work/
+/deploy/atlas/female/node_modules/
