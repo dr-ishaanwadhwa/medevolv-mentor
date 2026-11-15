@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowUp, Square } from 'lucide-react';
 import { useChat } from '@/store/chat';
 
-export function Composer() {
+/** `above`: rendered inside the pinned area, so it stays visible while a long answer scrolls. */
+export function Composer({ above }: { above?: ReactNode } = {}) {
   const { draft, setDraft, ask, busy, stop } = useChat();
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -22,6 +23,7 @@ export function Composer() {
 
   return (
     <div className="sticky bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom))] z-20 bg-gradient-to-t from-bg from-70% to-transparent pb-3 pt-6 md:bottom-0">
+      {above}
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -134,8 +134,7 @@ export function ChatView() {
         )}
         <div ref={bottom} />
       </div>
-      {turns.length > 0 && <TryRow />}
-      <Composer />
+      <Composer above={turns.length > 0 ? <TryRow /> : null} />
       <SourceDrawer citations={srcTurn?.answer?.citations ?? []} active={srcTurn ? src!.n : null} onClose={() => setSrc(null)} />
     </div>
   );
