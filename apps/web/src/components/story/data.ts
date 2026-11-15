@@ -51,7 +51,7 @@ export async function loadStory(mobile: boolean, signal?: AbortSignal): Promise<
   const magic = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
   if (magic.length === 4 && String.fromCharCode(...magic) === 'LIB2') {
     // LIB2: 16-byte header (magic, uint32 N, float32 scale), Int16 galaxy, Int16 cluster, Uint8 book
-    if (buf.byteLength < 16 + N * 25) throw new Error('library.bin is incomplete');
+    if (buf.byteLength < 16 + N * 13) throw new Error('library.bin is incomplete'); // 3 Int16 + 3 Int16 + 1 Uint8 per point
     const dv = new DataView(buf);
     const scale = dv.getFloat32(8, true);
     const k = scale / 32767;

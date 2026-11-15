@@ -8,6 +8,8 @@ import { CHAPTERS, RAIL_LABELS } from './narration';
 import { bookNick, loadStory, type StoryData } from './data';
 import { bookColor } from './palette';
 import type { StoryController } from './controller';
+import TryQuestion from './TryQuestion';
+import type { StoryExploreResult } from '@/lib/api';
 import './story.css';
 
 const HEIGHTS = [200, 460, 320, 220, 240, 240, 230, 300, 200, 200]; // dvh per chapter
@@ -74,6 +76,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
   const answerHtml = useMemo(() => renderMarkdown(story.answer ?? ''), [story.answer]);
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const [libCount, setLibCount] = useState(false);
+  const [explore, setExplore] = useState<StoryExploreResult | null>(null);
 
   useEffect(() => {
     const mo = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')));
@@ -102,6 +105,12 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
   }, [data, mobile, reduced, onFail]);
 
   useEffect(() => { ctl.current?.setTheme(dark); }, [dark]);
+  useEffect(() => {
+    if (active !== 9) setExplore(null); // scrolling out of the measured chapter clears the visitor's question
+  }, [active]);
+  useEffect(() => {
+    ctl.current?.setExplore(explore ? { refused: explore.refused, neighbours: explore.neighbours } : null);
+  }, [explore, libCount]);
   const jump = useCallback((k: number) => ctl.current?.jump(k), []);
   const fmtInt = (v: number) => Math.round(v).toLocaleString('en-US');
   const subs = data.subs;
@@ -124,6 +133,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
             <div key={b.id} className="st-abs" data-booklabel={i}><span className="st-booklabel">{bookNick[b.id] ?? b.title}<span>{b.count.toLocaleString('en-US')}</span></span></div>
           ))}
           <div className="st-abs" data-chip="query"><div className="st-chipi"><b>Question</b><span className="st-q">{story.journey.question}</span></div></div>
+          <div className="st-abs" data-chip="explore"><div className="st-chipi"><b>Your question</b></div></div>
           {story.refusal && (
             <>
               <div className="st-abs" data-chip="refuse"><div className="st-chipi st-left st-chip-bad"><b>Question</b><span className="st-q">{story.refusal.question}</span></div></div>
@@ -193,7 +203,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
       {CHAPTERS.map((c, k) => (
         <section key={c.id} data-section={k} className="st-sec" style={{ height: `${HEIGHTS[k]}dvh` }} aria-labelledby={`st-h-${c.id}`}>
           <div className="st-sticky h-page">
-            <div className="st-panel" data-panel={k} style={k === 0 ? undefined : { opacity: 0 }}>
+            <div className={`st-panel${c.id === 'measured' ? ' st-panel-measured' : ''}`} data-panel={k} style={k === 0 ? undefined : { opacity: 0 }}>
               <div className="st-kicker">{String(k + 1).padStart(2, '0')} · {c.kicker}</div>
               {k === 0 ? (
                 <>
@@ -228,6 +238,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
                     ))}
                   </div>
                   <p className="st-caveat">Results on our own question sets, not a clinical-safety guarantee. Retrieval is not yet measured for every book. A study aid, not medical advice.</p>
+                  <TryQuestion live={active === 9} books={books} dark={dark} result={explore} onResult={setExplore} />
                   <div className="st-cta">
                     <LinkButton href="/" variant="primary" size="lg">Ask a question</LinkButton>
                     <LinkButton href="/why" size="lg">Why was I wrong?</LinkButton>

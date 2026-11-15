@@ -5,6 +5,7 @@ import { BOOK_COLORS, SUB_COLORS, bookColor } from './palette';
 import { ACTOR_FRAG, ACTOR_VERT, BEAM_FRAG, BEAM_VERT, POINTS_FRAG, POINTS_VERT, SHELL_FRAG, SHELL_VERT, SHIELD_FRAG, SHIELD_VERT } from './shaders';
 import type { StoryData } from './data';
 import { loadChiasm } from './chiasm';
+import { weightedMean, type Vec3 } from './explore';
 
 const FOV = 40;
 const RING_Z = 1.0;
@@ -60,6 +61,25 @@ function fade(el: El | null, o: number, dy = 0) {
 
 interface Actor { x: number; y: number; z: number; r: number; g: number; b: number; size: number; a: number }
 
+/** Beam segments from each source to its targets; one colour per source. */
+function mkLines(srcs: THREE.Vector3[], targets: THREE.Vector3[][], cols: THREE.Vector3[]) {
+  const pos: number[] = [], t: number[] = [], d: number[] = [], c: number[] = [];
+  srcs.forEach((s0, k) => targets[k].forEach((tp, m) => {
+    pos.push(s0.x, s0.y, s0.z, tp.x, tp.y, tp.z);
+    t.push(0, 1);
+    const dl = ((m * 37) % 20) / 20;
+    d.push(dl, dl);
+    c.push(cols[k].x, cols[k].y, cols[k].z, cols[k].x, cols[k].y, cols[k].z);
+  }));
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  bg.setAttribute('aT', new THREE.Float32BufferAttribute(t, 1));
+  bg.setAttribute('aDelay', new THREE.Float32BufferAttribute(d, 1));
+  bg.setAttribute('aCol', new THREE.Float32BufferAttribute(c, 3));
+  bg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 10);
+  return bg;
+}
+
 export class StoryController {
   private o: ControllerOpts;
   private renderer: THREE.WebGLRenderer;
@@ -102,6 +122,17 @@ export class StoryController {
   private h = 1;
   private dead = false;
   private lostHandler: (e: Event) => void;
+
+  // "Try your own question" (last chapter): neighbour highlight, beams from the query point, camera pan
+  private exMat: THREE.ShaderMaterial;
+  private exBeams: THREE.LineSegments;
+  private exMask: Float32Array;
+  private exMaskAttr: THREE.BufferAttribute;
+  private exData: { refused: boolean; q: THREE.Vector3 | null; pos: THREE.Vector3[] } | null = null;
+  private exAmt = 0;
+  private exT0 = 0;
+  private exBadT0 = -10;
+  private exTmp = new THREE.Vector3();
 
   // scene geometry (local/world-group space)
   private Q0 = new THREE.Vector3(0.05, 0.12, 0.45);
@@ -154,6 +185,9 @@ export class StoryController {
     geo.setAttribute('aBook', new THREE.BufferAttribute(data.book, 1));
     geo.setAttribute('aSeed', new THREE.BufferAttribute(data.seed, 1));
     geo.setAttribute('aMask', new THREE.BufferAttribute(data.mask, 4));
+    this.exMask = new Float32Array(data.count);
+    this.exMaskAttr = new THREE.BufferAttribute(this.exMask, 1).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aQ', this.exMaskAttr);
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 3);
     this.pointsMat = new THREE.ShaderMaterial({
       vertexShader: POINTS_VERT,
@@ -166,7 +200,7 @@ export class StoryController {
         uDim: { value: 1 }, uFocusAmt: { value: 0 }, uSearch: { value: 0 }, uDecl: { value: 0 }, uHideEv: { value: 0 },
         uFade: { value: 1 }, uDrift: { value: o.reduced ? 0 : 1 }, uMinPx: { value: 1.6 * dpr }, uLight: { value: 0 }, uGain: { value: 0.3 },
         uFocusW: { value: this.focusW }, uPal: { value: Array.from({ length: 7 }, () => new THREE.Vector3()) },
-        uGrey: { value: new THREE.Vector3() }, uFocusLo: { value: 0.16 },
+        uGrey: { value: new THREE.Vector3() }, uFocusLo: { value: 0.16 }, uExpl: { value: 0 },
       },
     });
     const points = new THREE.Points(geo, this.pointsMat);
@@ -222,23 +256,6 @@ export class StoryController {
     this.queryCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-2.1, 0.95, 2.3), new THREE.Vector3(0, 0.05, RING_Z), this.Q0.clone()], false, 'catmullrom', 0.5);
 
     // ---- beams ----
-    const mkLines = (srcs: THREE.Vector3[], targets: THREE.Vector3[][], cols: THREE.Vector3[]) => {
-      const pos: number[] = [], t: number[] = [], d: number[] = [], c: number[] = [];
-      srcs.forEach((s0, k) => targets[k].forEach((tp, m) => {
-        pos.push(s0.x, s0.y, s0.z, tp.x, tp.y, tp.z);
-        t.push(0, 1);
-        const dl = ((m * 37) % 20) / 20;
-        d.push(dl, dl);
-        c.push(cols[k].x, cols[k].y, cols[k].z, cols[k].x, cols[k].y, cols[k].z);
-      }));
-      const bg = new THREE.BufferGeometry();
-      bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      bg.setAttribute('aT', new THREE.Float32BufferAttribute(t, 1));
-      bg.setAttribute('aDelay', new THREE.Float32BufferAttribute(d, 1));
-      bg.setAttribute('aCol', new THREE.Float32BufferAttribute(c, 3));
-      bg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 10);
-      return bg;
-    };
     const subNb = this.subT.map((_, k) => (near[Math.min(k, near.length - 1)]?.neighbours ?? []).map((x) => gp(x.i)));
     this.beamMat = new THREE.ShaderMaterial({ vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG, transparent: true, depthWrite: false, depthTest: false, uniforms: { uDraw: { value: 0 }, uAlpha: { value: 0.6 } } });
     this.beams = new THREE.LineSegments(mkLines(this.subT, subNb, this.subT.map(() => new THREE.Vector3(1, 1, 1))), this.beamMat);
@@ -251,6 +268,10 @@ export class StoryController {
     );
     this.floorLines.frustumCulled = false; this.floorLines.renderOrder = 3;
     this.world.add(this.floorLines);
+    this.exMat = new THREE.ShaderMaterial({ vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG, transparent: true, depthWrite: false, depthTest: false, uniforms: { uDraw: { value: 0 }, uAlpha: { value: 0.8 } } });
+    this.exBeams = new THREE.LineSegments(new THREE.BufferGeometry(), this.exMat);
+    this.exBeams.frustumCulled = false; this.exBeams.renderOrder = 3; this.exBeams.visible = false;
+    this.world.add(this.exBeams);
 
     // ---- cut-off shell ----
     this.shellMat = new THREE.ShaderMaterial({ vertexShader: SHELL_VERT, fragmentShader: SHELL_FRAG, transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide, uniforms: { uCol: { value: new THREE.Vector3(1, 1, 1) }, uAlpha: { value: 0 } } });
@@ -385,7 +406,7 @@ export class StoryController {
     const muted = cssRgb('--c-muted');
     (this.pointsMat.uniforms.uGrey.value as THREE.Vector3).copy(dark ? hex3('#8a96a0') : hex3('#7b868e'));
     const blend = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
-    for (const m of [this.pointsMat, this.actorMat, this.beamMat, this.floorMat, this.shellMat, this.shieldMat]) { m.blending = blend; m.needsUpdate = true; }
+    for (const m of [this.pointsMat, this.actorMat, this.beamMat, this.floorMat, this.exMat, this.shellMat, this.shieldMat]) { m.blending = blend; m.needsUpdate = true; }
     this.ringMat.blending = blend; this.ringMat.needsUpdate = true;
     const L = dark ? 0 : 1;
     this.pointsMat.uniforms.uLight.value = L;
@@ -412,6 +433,7 @@ export class StoryController {
     this.themeAccent = accent;
     this.atlasTheme();
     this.themeBad = bad;
+    if (this.exData) this.buildExBeams();
     this.resize();
   }
   private atlasTheme() {
@@ -467,6 +489,44 @@ export class StoryController {
       (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose());
     });
     this.renderer.dispose();
+  }
+
+  /**
+   * Place the visitor's question on the map from its 12 neighbours (`i` = story map index), or clear it with null.
+   * The query point sits at the similarity-weighted mean of their galaxy positions. A refused question has no
+   * neighbours: no beams, no highlight, only a short red pulse at the shield.
+   */
+  setExplore(ex: { refused: boolean; neighbours: { i: number; sim: number }[] } | null) {
+    this.exMask.fill(0);
+    if (!ex) {
+      this.exData = null;
+      this.exMaskAttr.needsUpdate = true;
+      this.exBeams.visible = false;
+      return;
+    }
+    const d = this.o.data;
+    const g = d.galaxyAll;
+    const nb = ex.refused ? [] : ex.neighbours.filter((x) => Number.isInteger(x.i) && x.i >= 0 && x.i * 3 + 2 < g.length);
+    const pos = nb.map((x) => new THREE.Vector3(g[x.i * 3], g[x.i * 3 + 1], g[x.i * 3 + 2]));
+    const mean: Vec3 | null = weightedMean(pos.map((p) => [p.x, p.y, p.z] as Vec3), nb.map((x) => x.sim));
+    const q = mean ? new THREE.Vector3(mean[0], mean[1], mean[2]) : null;
+    nb.forEach((x) => {
+      const r = d.remap ? d.remap[x.i] : x.i; // mobile drops some points from the rendered cloud
+      if (r >= 0 && r < this.exMask.length) this.exMask[r] = 1;
+    });
+    this.exMaskAttr.needsUpdate = true;
+    const refused = ex.refused || !q;
+    this.exData = { refused, q: refused ? null : q, pos: refused ? [] : pos };
+    this.exT0 = this.time;
+    if (refused) this.exBadT0 = this.time;
+    this.buildExBeams();
+  }
+  private buildExBeams() {
+    const old = this.exBeams.geometry;
+    this.exBeams.geometry = this.exData?.q && !this.exData.refused
+      ? mkLines([this.exData.q], [this.exData.pos], [this.themeAccent])
+      : new THREE.BufferGeometry();
+    old.dispose();
   }
 
   // ---------------------------------------------------------------- helpers
@@ -546,6 +606,14 @@ export class StoryController {
     this.world.rotation.y = reduced ? 0.5 * Math.min(1, aw) : (wrapped + 0.45 * Math.min(s, 2)) * clamp(aw);
     this.world.rotation.x = 0.2 * (1 - smooth(s, 1, 2.3)) * (1 - smooth(s, 8.5, 9));
     this.world.updateMatrixWorld();
+    // ease the camera's target a little toward the visitor's point (a pan, not a zoom)
+    if (this.exAmt > 0.001 && this.exData?.q) {
+      this.exTmp.copy(this.exData.q).applyMatrix4(this.world.matrixWorld).sub(this.tmp).multiplyScalar(0.3 * this.exAmt);
+      this.camera.position.add(this.exTmp);
+      this.tmp.add(this.exTmp);
+      this.camera.lookAt(this.tmp);
+      this.camera.updateMatrixWorld();
+    }
 
     // ---- point uniforms ----
     const U = this.pointsMat.uniforms;
@@ -568,6 +636,17 @@ export class StoryController {
     U.uHideEv.value = smooth(s, 5.97, 6.03);
     U.uFade.value = clamp(1 - smooth(s, 8.0, 8.4) + smooth(s, 9.05, 9.45));
     this.shieldMat.uniforms.uTime.value = this.time;
+
+    // "try your own question": ease in on the last chapter, out when leaving it (jump-cut when reduced)
+    const exTarget = this.exData && !this.exData.refused && s >= 9 ? 1 : 0;
+    if (reduced) this.exAmt = exTarget;
+    else this.exAmt += (exTarget - this.exAmt) * (1 - Math.exp(-dt * 5));
+    if (Math.abs(exTarget - this.exAmt) < 1e-3) this.exAmt = exTarget;
+    const exA = this.exAmt;
+    U.uExpl.value = exA;
+    this.exMat.uniforms.uDraw.value = reduced ? 1 : easeInOut(ramp(this.time - this.exT0, 0.1, 1.1));
+    this.exMat.uniforms.uAlpha.value = (dark ? 0.75 : 0.85) * exA;
+    this.exBeams.visible = exA > 0.003;
 
     // legend / book labels
     const books = this.o.data.story.books;
@@ -713,6 +792,16 @@ export class StoryController {
       this.push(p, c, size, al);
     });
 
+    // "try your own question": query point, halos on its neighbours, and a short red pulse for a refused question
+    if (this.exData && s >= 9) {
+      if (exA > 0.004 && this.exData.q) {
+        this.push(this.exData.q, white, 0.085, exA);
+        for (const p of this.exData.pos) this.push(p, acc, 0.04, exA * 0.9);
+      }
+      const age = this.time - this.exBadT0;
+      if (this.exData.refused && !reduced && age >= 0 && age < 0.9) this.push(hitP, bad, 0.05 + 0.25 * age, 0.9 * (1 - age / 0.9));
+    }
+
     // flush actors
     const n = this.actors.length;
     for (let k = 0; k < n; k++) {
@@ -788,6 +877,14 @@ export class StoryController {
         put(this.bestChips[k], pj.x, pj.y, ramp(s, 4.62, 4.78) * (1 - ramp(s, 5.08, 5.28)));
       }
     });
+
+    // "try your own question": label on the query point
+    const xEl = this.$('[data-chip="explore"]');
+    if (this.exData?.q && !this.exData.refused) {
+      this.proj(this.exData.q, pj);
+      put(xEl, pj.x, pj.y, this.exAmt);
+      this.side(xEl, pj.x, 'right');
+    } else put(xEl, 0, 0, 0);
 
     // declined
     if (this.decl) {

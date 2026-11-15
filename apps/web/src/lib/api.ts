@@ -119,3 +119,32 @@ export async function sendFeedback(f: { answer_id?: string; question?: string; k
     await fetch(url('/api/feedback'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) }),
   );
 }
+
+// ---- /how "Try your own question" (api/story.py)
+export interface StoryExploreNeighbour {
+  /** index into the story map (same order as library.bin) */
+  i: number;
+  sim: number;
+  /** textbook display name, e.g. "Harrison's Principles of Internal Medicine (22nd ed.)" */
+  book: string;
+}
+export interface StoryExploreResult {
+  question: string;
+  refused: boolean;
+  neighbours: StoryExploreNeighbour[];
+  best: number | null;
+  min_similarity: number;
+  passes_floor: boolean;
+  narration: string;
+}
+
+export async function exploreStory(question: string, signal?: AbortSignal): Promise<StoryExploreResult> {
+  const res = await fetch(url('/api/story/explore'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+    cache: 'no-store',
+    signal,
+  });
+  return json<StoryExploreResult>(res);
+}

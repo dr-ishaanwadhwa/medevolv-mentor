@@ -3,7 +3,8 @@ attribute vec3 aCluster;
 attribute float aBook;
 attribute float aSeed;
 attribute vec4 aMask; // x search neighbour, y evidence, z declined neighbour, w cited evidence
-uniform float uMix, uTime, uPx, uSize, uDim, uFocusAmt, uSearch, uDecl, uHideEv, uFade, uDrift, uMinPx;
+attribute float aQ; // 1 = neighbour of the visitor's own question (last chapter)
+uniform float uMix, uTime, uPx, uSize, uDim, uFocusAmt, uSearch, uDecl, uHideEv, uFade, uDrift, uMinPx, uExpl;
 uniform float uFocusW[7];
 uniform vec3 uPal[7];
 uniform vec3 uGrey;
@@ -21,11 +22,12 @@ void main() {
   float b = uDim;
   b = mix(b, mix(uFocusLo, 1.35, fw), uFocusAmt);
   b = mix(b, mix(0.10, 1.9, aMask.x), uSearch);
+  b = mix(b, mix(0.12, 1.9, aQ), uExpl);
   float dn = aMask.z * uDecl;
   b = mix(b, max(b, 1.5), dn);
   col = mix(col, uGrey, dn);
   float hide = 1.0 - uHideEv * aMask.y;
-  float grow = 1.0 + 0.8 * aMask.x * uSearch + 0.7 * fw * uFocusAmt + 1.3 * dn;
+  float grow = 1.0 + 0.8 * aMask.x * uSearch + 0.7 * fw * uFocusAmt + 1.3 * dn + 0.9 * aQ * uExpl;
   float tw = 1.0 + 0.22 * sin(uTime * 1.6 + aSeed * 60.0);
   float s = uSize * (0.55 + 0.9 * aSeed * aSeed) * grow * tw * hide * mix(1.0, 0.6, uMix);
   gl_PointSize = clamp(s * uPx / max(0.1, -mv.z), uMinPx * step(0.001, hide), 28.0);
