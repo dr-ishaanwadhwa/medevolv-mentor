@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Date | 2026-11-15 |
-| Status | **Proposed**. Nothing is approved, built or deployed. The user decides OQ-8 (v2 freeze) and OQ-1 (public landing) first |
+| Status | **Accepted** on 2026-11-15 (late evening): the user chose a public landing (OQ-1 C), lifted the freeze for the whole release (OQ-8 A, female model download approved), will create the YouTube key, and asked to ship ASAP. See PRD §6.2a. Superseding the earlier "Proposed" status recorded the same day. |
 | Repo state | `main` @ `e0eec26` |
 | Spec | [Next release PRD](../../prd/2026-11-15-next-release-prd.md) |
 | Evidence | [Code audit](../research/2026-11-15-next-release-code-audit.md) · [YouTube related videos](../research/2026-11-15-youtube-related-videos.md) · [Female 3D models](../research/2026-11-15-female-anatomy-3d-models.md) · [Strategy review](../../strategy_review_2026-11-14.md) |
