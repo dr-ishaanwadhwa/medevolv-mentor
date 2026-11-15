@@ -33,3 +33,4 @@ node_modules
 /apps/web/next-env.d.ts
 /apps/web/*.tsbuildinfo
 var/
+apps/web/public/story/

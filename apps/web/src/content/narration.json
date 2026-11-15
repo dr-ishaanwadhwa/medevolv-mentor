@@ -1,0 +1,74 @@
+{
+  "chapters": [
+    {
+      "id": "library",
+      "kicker": "One dot, one passage",
+      "title": "Seven textbooks, in one view",
+      "body": "Each dot you see is one passage from seven standard MBBS textbooks, and there are 36,725 of them. Passages about similar things sit close together, so the shape you're watching is those books laid out by topic. Every answer is built only from these passages.",
+      "onscreen": "Each dot is one passage, coloured by textbook"
+    },
+    {
+      "id": "books",
+      "kicker": "Seven books, one map",
+      "title": "Why the dots split into clusters",
+      "body": "Each cluster is one book, and the dots inside it are passages from that book. Harrison's holds 17,798 passages and Davidson's 3,837; in the full map those two overlap the most, because both cover general medicine. That's why, for some questions, either book can be the source.",
+      "onscreen": "Watch the dots separate into seven labelled clusters"
+    },
+    {
+      "id": "guard",
+      "kicker": "Study aid only",
+      "title": "Why one question gets through",
+      "body": "Each question you see arrives as a bright point. The one about the pheochromocytoma patient passes through the ring, because it's a study question. The one asking a dose for a real person bounces off before any textbook search, since the app is a study aid.",
+      "onscreen": "A question passes the ring while another bounces off"
+    },
+    {
+      "id": "route",
+      "kicker": "One question, two parts",
+      "title": "Why the question splits in two",
+      "body": "That single point just became two smaller ones, each heading into the library on its own. Your question asks two things — which drug first, and why — so it becomes 2 sub-questions. Splitting them keeps one topic from crowding out the other in the search.",
+      "onscreen": "The question splits into two points heading into the library"
+    },
+    {
+      "id": "search",
+      "kicker": "Closest matches",
+      "title": "How one sub-question finds its passages",
+      "body": "Each sub-question gets checked against all 36,725 passages. The nearest ones sit around 0.723 to 0.724, where 1 means identical meaning. Both searches together took 63 ms, so this happens while you keep reading.",
+      "onscreen": "Beams link each sub-question to its nearest dots"
+    },
+    {
+      "id": "floor",
+      "kicker": "Off-topic questions",
+      "title": "When the app says it doesn't know",
+      "body": "That question about the 2011 cricket world cup isn't in your textbooks, so it lands far from everything. Its best match scores 0.526, under the cut-off of 0.6, so the language model is never called. The app tells you it couldn't find this instead of guessing.",
+      "onscreen": "Each nearby dot stays dark outside the cut-off shell"
+    },
+    {
+      "id": "evidence",
+      "kicker": "Evidence first",
+      "title": "Four passages, numbered and cited",
+      "body": "Each dot you see lifts out of the library and turns into a numbered card. Four passages are sent to the language model as numbered evidence, and it's told to use nothing else. Every claim it makes carries a number like [1] after it, so you can trace the answer back to the book it came from.",
+      "onscreen": "Four dots lift out of the library and become numbered cards"
+    },
+    {
+      "id": "cite",
+      "kicker": "Cited, then checked",
+      "title": "Lines show which cards the answer used",
+      "body": "Each line you see runs from a number in the answer back to the card it came from. Two of the four passages light up because the answer cites [1] and [3]; the rest stay grey as retrieved but not cited. Code then checks every [n] points at a passage that was actually sent, and a failing answer is not shown.",
+      "onscreen": "Lines link each cited number back to its lit card"
+    },
+    {
+      "id": "atlas",
+      "kicker": "Anatomy in 3D",
+      "title": "Where the structure actually sits",
+      "body": "The dots fade and a 3D model of the optic chiasm takes their place. It comes from a real anatomical atlas, so you can see where the structure sits instead of only reading about it. The highlight is labelled navigation only, never a clinical claim.",
+      "onscreen": "The optic chiasm appears and slowly turns"
+    },
+    {
+      "id": "measured",
+      "kicker": "Test results",
+      "title": "What the counters are showing you",
+      "body": "Three numbers tick up on screen: the right behaviour on 39 out of 39 of the team's own test questions, a citation on 30 out of 30 answers, and the right chapter in the top three search results for 90.8% of 446 pharmacology questions. These are internal test sets: a look at how it was checked, not a clinical-safety guarantee.",
+      "onscreen": "Three counters climb to 39/39, 30/30 and 90.8%"
+    }
+  ]
+}
