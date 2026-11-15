@@ -1,6 +1,6 @@
 # Append to ~/eka/Caddyfile on the VM (push.sh does it once, idempotently). /api goes straight to FastAPI with
 # flushing on so SSE streams token by token; /models is served same-origin from the static atlas mount.
-v2.130-210-60-153.sslip.io {
+mentor.medevolv.in, v2.130-210-60-153.sslip.io {
 	header X-Robots-Tag "noindex, nofollow"
 	respond /robots.txt "User-agent: *
 Disallow: /

@@ -44,6 +44,29 @@ function Hero() {
   );
 }
 
+/** The demo prompts stay one tap away after the first answer (the hero cards disappear once a chat starts). */
+function TryRow() {
+  const ask = useChat((s) => s.ask);
+  const streaming = useChat((s) => s.turns.some((t) => t.phase === 'streaming'));
+  return (
+    <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:none]" aria-label="Try a demo question">
+      <span className="label-mono shrink-0">Try</span>
+      {DEMO_PROMPTS.map((d) => (
+        <button
+          key={d.text}
+          type="button"
+          disabled={streaming}
+          title={d.text}
+          onClick={() => ask(d.text)}
+          className="shrink-0 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/50 hover:text-ink disabled:opacity-50"
+        >
+          {d.tag}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Reads ?q=&go=1 once, then cleans the URL. */
 function QueryPrefill() {
   const sp = useSearchParams();
@@ -73,7 +96,10 @@ export function ChatView() {
     if (lastId) bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [lastId]);
   useEffect(() => {
-    if (lastId && lastHasAnswer) document.getElementById(`ans-${lastId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!lastId || !lastHasAnswer) return;
+    // after layout settles; instant, because a smooth scroll still heading to the bottom would swallow a smooth one
+    const t = window.setTimeout(() => document.getElementById(`ans-${lastId}`)?.scrollIntoView({ behavior: 'auto', block: 'start' }), 60);
+    return () => window.clearTimeout(t);
   }, [lastId, lastHasAnswer]);
 
   const srcTurn = useMemo(() => turns.find((t) => t.id === src?.turnId), [turns, src]);
@@ -107,6 +133,7 @@ export function ChatView() {
         )}
         <div ref={bottom} />
       </div>
+      {turns.length > 0 && <TryRow />}
       <Composer />
       <SourceDrawer citations={srcTurn?.answer?.citations ?? []} active={srcTurn ? src!.n : null} onClose={() => setSrc(null)} />
     </div>

@@ -36,7 +36,7 @@ $SSH "ubuntu@$HOST" bash -s <<REMOTE
 set -euo pipefail
 chmod 600 ~/v2/.env
 cd ~/v2 && sudo docker compose up -d --build
-if ! grep -q "^$V2HOST" ~/eka/Caddyfile; then
+if ! grep -q "$V2HOST" ~/eka/Caddyfile; then
   cat ~/eka/Caddyfile <(echo) ~/v2/Caddyfile.v2-block > /tmp/Caddyfile.new
   sudo docker cp /tmp/Caddyfile.new eka-caddy-1:/tmp/Caddyfile.new
   sudo docker exec eka-caddy-1 caddy validate --adapter caddyfile --config /tmp/Caddyfile.new

@@ -9,7 +9,7 @@ const BOOKS = [
   ['Robbins', 'Pathology'],
   ['Davidson', 'Medicine'],
   ['Harrison', 'Internal Medicine'],
-  ['Microbiology', 'Textbook'],
+  ['Essentials of Medical', 'Microbiology'],
   ["Gray's Anatomy", 'for Students'],
 ];
 
