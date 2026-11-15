@@ -26,3 +26,9 @@ node_modules
 
 # Local dev: worktrees symlink data/ to the main checkout (the real folders above stay ignored too)
 /data
+
+# 3D model binaries (BodyParts3D via human-atlas, ~90 MB): fetch with apps/web/scripts/fetch-models.sh
+/apps/web/public/models/
+/apps/web/.next/
+/apps/web/next-env.d.ts
+/apps/web/*.tsbuildinfo
