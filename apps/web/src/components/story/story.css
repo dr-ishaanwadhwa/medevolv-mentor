@@ -4,7 +4,7 @@
 @media (min-width: 768px) { .st-stage { left: var(--rail-w); bottom: 0; } }
 .st-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .st-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgb(var(--c-bg) / .97) 0%, rgb(var(--c-bg) / .9) 42%, rgb(var(--c-bg) / 0) 72%); }
-@media (min-width: 768px) { .st-scrim { background: linear-gradient(90deg, rgb(var(--c-bg) / .94) 0%, rgb(var(--c-bg) / .78) 26%, rgb(var(--c-bg) / 0) 48%); } }
+@media (min-width: 768px) { .st-scrim { background: linear-gradient(90deg, rgb(var(--c-bg) / .96) 0, rgb(var(--c-bg) / .88) 24rem, rgb(var(--c-bg) / .55) 29rem, rgb(var(--c-bg) / 0) 36rem); } }
 .st-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 62% 50%, transparent 55%, rgb(var(--c-bg) / .7) 100%); }
 
 .st-sec { position: relative; z-index: 2; }
@@ -35,7 +35,7 @@
 .st-abs { position: absolute; left: 0; top: 0; opacity: 0; visibility: hidden; will-change: transform, opacity; pointer-events: none; }
 .st-chipi { display: block; margin: -.9rem 0 0 1rem; width: max-content; max-width: 13.5rem; padding: .4rem .6rem; border-radius: .7rem; border: 1px solid rgb(var(--c-border)); background: rgb(var(--c-surface) / .88); backdrop-filter: blur(6px); box-shadow: 0 4px 18px -8px rgb(var(--c-ink) / .35); font-size: .74rem; line-height: 1.35; color: rgb(var(--c-ink)); }
 @media (max-width: 767px) { .st-chipi { max-width: 9.5rem; font-size: .68rem; padding: .3rem .45rem; } }
-.st-chipi.st-left { margin: -.9rem 1rem 0 0; transform: translateX(-100%); }
+.st-chipi.st-left { margin: -.9rem 1rem 0 0; }
 .st-chipi b { display: block; font-family: var(--font-mono), monospace; font-size: .62rem; letter-spacing: .09em; text-transform: uppercase; color: rgb(var(--c-accent)); font-weight: 600; margin-bottom: .1rem; }
 .st-chipi .st-q { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .st-chip-bad { border-color: rgb(var(--c-bad) / .5); background: rgb(var(--c-bad-soft) / .92); }
@@ -89,12 +89,8 @@
 .st-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .st-line { stroke: rgb(var(--c-accent)); stroke-width: 1.6; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; stroke-linecap: round; }
 
-.st-still { position: absolute; left: 50%; top: 46%; width: min(17rem, 60%); transform: translate(-50%, -50%); opacity: 0; text-align: center; font-family: var(--font-mono), monospace; font-size: .68rem; color: rgb(var(--c-muted)); }
-@media (min-width: 768px) { .st-still { left: 66%; } }
-@media (max-width: 767px) { .st-still { top: 30%; } }
-.st-atag { position: absolute; left: 50%; top: 80%; margin-left: -4rem; opacity: 0; display: flex; flex-direction: column; align-items: center; gap: .4rem; font: 500 .7rem var(--font-mono), monospace; color: rgb(var(--c-ink) / .85); width: 8rem; text-align: center; }
-@media (min-width: 768px) { .st-atag { left: 66%; top: 82%; } }
-@media (max-width: 767px) { .st-atag { top: 38%; } }
+.st-still { width: 15rem; transform: translate(-50%, -50%); text-align: center; font-family: var(--font-mono), monospace; font-size: .68rem; color: rgb(var(--c-muted)); }
+.st-atag { display: flex; flex-direction: column; align-items: center; gap: .4rem; width: 12rem; transform: translateX(-50%); font: 500 .7rem var(--font-mono), monospace; color: rgb(var(--c-ink) / .85); text-align: center; }
 .st-nav-tag { padding: .22rem .6rem; border-radius: 9999px; border: 1px solid rgb(var(--c-warn) / .5); background: rgb(var(--c-warn-soft)); color: rgb(var(--c-warn)); font: 600 .64rem var(--font-mono), monospace; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
 /* rail */
@@ -134,3 +130,19 @@
   .st-caveat { margin-top: .6rem; } .st-cta { margin-top: .8rem; }
   .st-cap { margin-top: .7rem; padding-top: .5rem; }
 }
+
+/* narrow desktop (stage < ~1130px): narration 25rem; cards become a compact row under the answer */
+@media (min-width: 768px) and (max-width: 1360px) {
+  .st-panel { max-width: 25rem; }
+  .st-scrim { background: linear-gradient(90deg, rgb(var(--c-bg) / .96) 0, rgb(var(--c-bg) / .88) 20rem, rgb(var(--c-bg) / .5) 25rem, rgb(var(--c-bg) / 0) 31rem); }
+  .st-cards { top: auto; bottom: 1rem; right: 3.4rem; left: 25.5rem; width: auto; transform: none; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
+  .st-card { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .4rem; padding: .4rem .5rem; }
+  .st-card .st-n { grid-row: auto; flex: none; }
+  .st-card .st-wh { display: none; }
+  .st-card .st-bk { font-size: .58rem; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; }
+  .st-card .st-bk span { overflow: hidden; text-overflow: ellipsis; }
+  .st-card .st-st { flex-basis: 100%; font-size: .52rem; letter-spacing: .03em; line-height: 1.2; }
+  .st-answer { left: 25.5rem; right: 3.4rem; width: auto; min-width: 0; max-width: none; top: 1.6rem; bottom: 6.6rem; transform: none; max-height: none; }
+}
+
+@media (min-width: 768px) and (max-width: 1360px) { .st-chipi { max-width: 11rem; font-size: .68rem; } }

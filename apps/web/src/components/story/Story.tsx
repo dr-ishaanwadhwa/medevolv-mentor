@@ -176,8 +176,8 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
             {/* eslint-disable-next-line react/no-danger -- marked output, raw HTML escaped */}
             <div className="md" dangerouslySetInnerHTML={{ __html: answerHtml }} />
           </div>
-          <div className="st-still" data-atlas-still style={{ opacity: 0 }}>Optic chiasm · 3D model loading…</div>
-          <div className="st-atag" data-atlas-tag style={{ opacity: 0 }}><span>Optic chiasm · FMA62045</span><span className="st-nav-tag">Navigation only</span></div>
+          <div className="st-abs" data-atlas-still><div className="st-still">Optic chiasm · 3D model loading…</div></div>
+          <div className="st-abs" data-atlas-tag><div className="st-atag"><span>Optic chiasm · FMA62045</span><span className="st-nav-tag">Navigation only</span></div></div>
           <div className="st-cue" data-cue>Scroll<i /></div>
 
           <a className="st-skip" href="/how?classic=1" aria-label="Skip the story"><span className="md:hidden">Skip</span><span className="hidden md:inline">Skip the story</span></a>

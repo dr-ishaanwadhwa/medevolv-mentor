@@ -138,6 +138,15 @@ export class StoryController {
     this.renderer.setPixelRatio(dpr);
     this.$ = (sel) => o.root.querySelector<El>(sel);
 
+    // spread each book's cluster around its centroid so every book reads as its own cloud
+    {
+      const bk = data.story.books;
+      for (let k = 0; k < data.count; k++) {
+        const ct = bk[data.book[k]]?.centroid;
+        if (!ct) continue;
+        for (let a = 0; a < 3; a++) data.cluster[k * 3 + a] = ct[a] + (data.cluster[k * 3 + a] - ct[a]) * 2.1;
+      }
+    }
     // ---- points (one object; uniforms drive everything) ----
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(data.galaxy, 3));
@@ -265,10 +274,11 @@ export class StoryController {
     this.world.add(this.shield);
 
     this.scene.add(this.world);
-    const amb = new THREE.AmbientLight(0xffffff, 0.7);
-    const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(2, 3, 4);
-    const rim = new THREE.DirectionalLight(0xaad8ff, 1.2); rim.position.set(-3, -1, -2);
-    this.scene.add(amb, dl, rim); this.lights = [amb, dl, rim];
+    const amb = new THREE.AmbientLight(0xffffff, 0.35);
+    const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-2.5, 3, 3.5);
+    const fill = new THREE.DirectionalLight(0x8fd3e0, 1.1); fill.position.set(3, -1.5, 2);
+    const back = new THREE.DirectionalLight(0xffffff, 2.2); back.position.set(0.5, 2, -3.5);
+    this.scene.add(amb, key, fill, back); this.lights = [amb, key, fill, back];
 
     // ---- camera path ----
     const C = this.subT.length ? this.subT.reduce((a, b) => a.clone().add(b)).multiplyScalar(1 / this.subT.length) : new THREE.Vector3();
@@ -278,8 +288,8 @@ export class StoryController {
     this.camKeys = [
       { s: 0, p: V(0, 0.1, 4.2 * m), t: V(0, 0, 0) },
       { s: 1, p: V(0, 0.1, 3.9 * m), t: V(0, 0, 0) },
-      { s: 1.45, p: V(0, 0.15, 5.3 * m), t: V(0, 0, 0) },
-      { s: 2, p: V(0, 0.15, 5.3 * m), t: V(0, 0, 0) },
+      { s: 1.45, p: V(0, 3.5 * m, 4.2 * m), t: V(0, 0, 0) },
+      { s: 2, p: V(0, 3.5 * m, 4.2 * m), t: V(0, 0, 0) },
       { s: 2.5, p: V(0, 0.1, 3.9 * m), t: V(0, 0, 0) },
       { s: 4, p: V(0, 0.1, 3.9 * m), t: V(0, 0, 0) },
       { s: 4.9, p: C.clone().add(V(0.3, 0.1, 2.6 * m)), t: C.clone() },
@@ -380,7 +390,7 @@ export class StoryController {
     const L = dark ? 0 : 1;
     this.pointsMat.uniforms.uLight.value = L;
     this.pointsMat.uniforms.uGain.value = dark ? 0.85 : 1;
-    this.pointsMat.uniforms.uFocusLo.value = dark ? 0.16 : 0.34;
+    this.pointsMat.uniforms.uFocusLo.value = dark ? 0.3 : 0.4;
     this.actorMat.uniforms.uLight.value = L;
     this.shieldMat.uniforms.uCol.value.copy(accent);
     this.shieldMat.uniforms.uBad.value.copy(bad);
@@ -400,8 +410,18 @@ export class StoryController {
     // clear colour from the theme token (sRGB in, converted for the canvas by three)
     this.renderer.setClearColor(new THREE.Color().setRGB(bg.x, bg.y, bg.z, THREE.SRGBColorSpace), 1);
     this.themeAccent = accent;
+    this.atlasTheme();
     this.themeBad = bad;
     this.resize();
+  }
+  private atlasTheme() {
+    const ud = this.atlas?.userData as { material: THREE.MeshPhysicalMaterial; wireMat: THREE.MeshBasicMaterial; rim: { value: THREE.Color } } | undefined;
+    if (!ud) return;
+    const a = this.themeAccent, k = this.dark ? 0.55 : 0.8;
+    ud.material.color.setRGB(a.x * k, a.y * k, a.z * k, THREE.SRGBColorSpace);
+    ud.rim.value.setRGB(Math.min(1, a.x * 1.5), Math.min(1, a.y * 1.5), Math.min(1, a.z * 1.5), THREE.SRGBColorSpace);
+    ud.wireMat.color.setRGB(a.x, a.y, a.z, THREE.SRGBColorSpace);
+    (this.lights[2] as THREE.DirectionalLight).color.setRGB(a.x, a.y, a.z, THREE.SRGBColorSpace);
   }
   private themeAccent = new THREE.Vector3();
   private themeBad = new THREE.Vector3();
@@ -413,15 +433,23 @@ export class StoryController {
     this.renderer.setSize(this.w, this.h, false);
     this.camera.aspect = this.w / this.h;
     const portrait = this.w < 700 || this.h > this.w;
-    // shift the scene away from the narration column
-    if (portrait) this.camera.setViewOffset(this.w, this.h, 0, this.h * 0.16, this.w, this.h);
-    else this.camera.setViewOffset(this.w, this.h, -this.w * 0.14, 0, this.w, this.h);
+    // shift the scene into the area right of the narration column (desktop) or above the bottom panel (mobile)
+    if (portrait) {
+      this.camera.setViewOffset(this.w, this.h, 0, this.h * 0.16, this.w, this.h);
+      this.camAspectBoost = Math.max(1, 0.82 / this.camera.aspect);
+    } else {
+      const nw = this.w >= 1000 ? 464 : 400; // narration column incl. padding (see story.css)
+      const avail = Math.max(200, this.w - nw - 64); // minus the progress rail
+      const cx = nw + avail / 2;
+      this.camera.setViewOffset(this.w, this.h, -(cx - this.w / 2), 0, this.w, this.h);
+      // keep the scene's silhouette inside the free area
+      const dNeeded = (1.3 * this.h) / (0.728 * (avail / 2));
+      this.camAspectBoost = Math.max(1, dNeeded / 3.9);
+    }
     this.camera.updateProjectionMatrix();
     const px = this.renderer.getDrawingBufferSize(new THREE.Vector2()).y / (2 * Math.tan((FOV * Math.PI) / 360));
     this.pointsMat.uniforms.uPx.value = px;
     this.actorMat.uniforms.uPx.value = px;
-    // portrait: wider scene needs more distance; handled by camera keys scale
-    this.camAspectBoost = portrait ? Math.max(1, 0.82 / this.camera.aspect) : 1;
     this.engine?.measure();
   }
   private camAspectBoost = 1;
@@ -442,6 +470,23 @@ export class StoryController {
   }
 
   // ---------------------------------------------------------------- helpers
+  /** Put a chip on whichever side of its point has room (not under the narration, not off the right edge). */
+  private side(el: El | null, x: number, pref: 'left' | 'right') {
+    const inner = el?.firstElementChild as HTMLElement | null;
+    if (!inner) return;
+    const nw = this.o.mobile ? 4 : (this.w >= 1000 ? 464 : 400) + 8;
+    const rmax = this.w - (this.o.mobile ? 6 : 52);
+    const cw = inner.offsetWidth || 180;
+    let left = pref === 'left';
+    if (left && x - 16 - cw < nw) left = false;
+    if (!left && x + 16 + cw > rmax) left = true;
+    inner.classList.toggle('st-left', left);
+    // if neither side fits, slide the chip so it stays clear of the narration and the rail
+    let sh = 0;
+    if (left) { const edge = x - 16 - cw; if (edge < nw) sh = nw - edge; }
+    else { const edge = x + 16 + cw; if (edge > rmax) sh = rmax - edge; if (x + 16 + sh < nw) sh = nw - x - 16; }
+    inner.style.transform = left ? `translateX(calc(-100% + ${sh}px))` : sh ? `translateX(${sh}px)` : '';
+  }
   private proj(v: THREE.Vector3, out: { x: number; y: number; d: number }) {
     this.tmp2.copy(v).applyMatrix4(this.world.matrixWorld);
     out.d = this.tmp2.distanceTo(this.camera.position);
@@ -526,21 +571,36 @@ export class StoryController {
 
     // legend / book labels
     const books = this.o.data.story.books;
+    const lx: number[] = [], ly: number[] = [], lo: number[] = [];
     for (let k = 0; k < 7; k++) {
       const el = this.legend[k];
       if (el) { const on = act === k ? '1' : '0'; if (el.dataset.on !== on) el.dataset.on = on; }
-      const lb = this.bookLabels[k];
-      if (lb && books[k]) {
-        const mix = U.uMix.value as number;
-        const c0 = books[k].galaxy_centroid, c1 = books[k].centroid;
-        this.tmp.set(lerp(c0[0], c1[0], mix), lerp(c0[1], c1[1], mix), lerp(c0[2], c1[2], mix));
-        this.proj(this.tmp, this.pj);
-        const depth = clamp((this.pj.d - (this.camera.position.length() - 1.3)) / 2.6);
-        const vis = smooth(mix, 0.9, 1) * (1 - smooth(s, 2.0, 2.2));
-        const focus = fAmt > 0.01 ? lerp(0.35, 1, this.focusW[k]) : 1;
-        put(lb, this.pj.x, this.pj.y, vis * focus * (1 - 0.55 * depth));
+      const mix = U.uMix.value as number;
+      const bk = books[k];
+      if (!bk) { lx.push(0); ly.push(0); lo.push(0); continue; }
+      const c0 = bk.galaxy_centroid, c1 = bk.centroid;
+      this.tmp.set(lerp(c0[0], c1[0], mix), lerp(c0[1], c1[1], mix), lerp(c0[2], c1[2], mix));
+      this.proj(this.tmp, this.pj);
+      const depth = clamp((this.pj.d - (this.camera.position.length() - 1.3)) / 2.6);
+      const vis = smooth(mix, 0.9, 1) * (1 - smooth(s, 2.0, 2.2));
+      const focus = fAmt > 0.01 ? lerp(0.35, 1, this.focusW[k]) : 1;
+      lx.push(this.pj.x); ly.push(this.pj.y - 26); lo.push(vis * focus * (1 - 0.5 * depth));
+    }
+    if (lo.some((v) => v > 0.01)) {
+      // nudge overlapping labels apart vertically (a few relaxation passes)
+      const LW = this.o.mobile ? 70 : 118, LH = this.o.mobile ? 18 : 26;
+      for (let it = 0; it < 6; it++) {
+        for (let a = 0; a < 7; a++) for (let b = a + 1; b < 7; b++) {
+          const dx = Math.abs(lx[a] - lx[b]), dy = ly[a] - ly[b];
+          if (dx < LW && Math.abs(dy) < LH) {
+            const push = (LH - Math.abs(dy)) / 2 + 1;
+            const dir = dy === 0 ? (a < b ? -1 : 1) : Math.sign(dy);
+            ly[a] += dir * push; ly[b] -= dir * push;
+          }
+        }
       }
     }
+    for (let k = 0; k < 7; k++) put(this.bookLabels[k], lx[k], ly[k], lo[k]);
 
     // ---- actors ----
     this.actors.length = 0;
@@ -664,16 +724,19 @@ export class StoryController {
     this.actorGeo.setDrawRange(0, n);
     for (const nm of ['position', 'aCol', 'aSize', 'aAlpha']) (this.actorGeo.getAttribute(nm) as THREE.BufferAttribute).needsUpdate = true;
 
-    // ---- atlas mesh ----
-    const atlasA = smooth(s, 8.2, 8.6) * (1 - smooth(s, 9.05, 9.4));
+    // ---- atlas specimen ----
+    const atlasOut = 1 - smooth(s, 9.05, 9.4);
+    const solid = smooth(s, 8.45, 8.85) * atlasOut;
+    const wire = (smooth(s, 8.15, 8.5) * (1 - smooth(s, 8.7, 9.0)) * 0.55 + solid * 0.1) * atlasOut;
+    const atlasA = Math.max(solid, wire);
     if (this.atlas) {
-      const mat = this.atlas.userData.material as THREE.MeshStandardMaterial;
-      mat.opacity = atlasA;
+      const ud = this.atlas.userData as { material: THREE.MeshPhysicalMaterial; wireMat: THREE.MeshBasicMaterial };
+      ud.material.opacity = solid;
+      ud.wireMat.opacity = wire;
       this.atlas.visible = atlasA > 0.003;
-      this.atlas.rotation.y = reduced ? 0.6 : this.time * 0.45 + 0.4;
-      this.atlas.rotation.x = 0.25;
-      const sc = lerp(0.8, 1, atlasA);
-      this.atlas.scale.setScalar(sc);
+      this.atlas.rotation.y = reduced ? 0.7 : this.time * 0.3 + 0.5;
+      this.atlas.rotation.x = 0.32;
+      this.atlas.scale.setScalar(lerp(0.72, 1, smooth(s, 8.2, 8.9)));
     }
 
     // ---- DOM overlays ----
@@ -702,9 +765,13 @@ export class StoryController {
 
     // query chip
     this.proj(qPos, pj);
-    put(this.$('[data-chip="query"]'), pj.x, pj.y, qAlpha * ramp(s, 2.1, 2.25));
+    const qEl = this.$('[data-chip="query"]');
+    put(qEl, pj.x, pj.y, qAlpha * ramp(s, 2.1, 2.25));
+    this.side(qEl, pj.x, 'right');
     this.proj(rPos, pj);
-    put(this.$('[data-chip="refuse"]'), pj.x, pj.y, rAlpha * ramp(s, 2.62, 2.74));
+    const rEl = this.$('[data-chip="refuse"]');
+    put(rEl, pj.x, pj.y, rAlpha * ramp(s, 2.62, 2.74));
+    this.side(rEl, pj.x, 'left');
     put(this.$('[data-tag="refuse"]'), pj.x, pj.y, rAlpha * ramp(s, 2.74, 2.86));
 
     // sub chips: label always, text during the route chapter
@@ -713,6 +780,7 @@ export class StoryController {
       this.proj(p, pj);
       const el = this.subChips[k];
       put(el, pj.x, pj.y, subA * ramp(s, 3.15, 3.3));
+      this.side(el, pj.x, k % 2 === 0 ? 'left' : 'right');
       if (el) { const tx = ramp(s, 3.3, 3.45) * (1 - ramp(s, 4.0, 4.15)); const t = el.querySelector<HTMLElement>('[data-text]'); if (t && t.dataset.v !== tx.toFixed(1)) { t.dataset.v = tx.toFixed(1); t.style.opacity = tx.toFixed(2); t.style.maxHeight = tx > 0.05 ? '6rem' : '0px'; } }
       const tp = this.subTop[k];
       if (tp && this.bestChips[k]) {
@@ -724,7 +792,9 @@ export class StoryController {
     // declined
     if (this.decl) {
       this.proj(dPos, pj);
-      put(this.$('[data-chip="declined"]'), pj.x, pj.y, dAlpha * ramp(s, 5.6, 5.8));
+      const dEl = this.$('[data-chip="declined"]');
+      put(dEl, pj.x, pj.y, dAlpha * ramp(s, 5.6, 5.8));
+      this.side(dEl, pj.x, 'left');
     } else put(this.$('[data-chip="declined"]'), 0, 0, 0);
 
     // cards
@@ -785,8 +855,10 @@ export class StoryController {
     // atlas
     const win = smooth(s, 8.15, 8.5) * (1 - smooth(s, 9.05, 9.4));
     const ready = this.atlasState === 'ready';
-    fade(this.$('[data-atlas-still]'), ready ? 0 : win);
-    fade(this.$('[data-atlas-tag]'), win);
+    this.tmp.set(0, 0, 0);
+    this.proj(this.tmp, pj);
+    put(this.$('[data-atlas-still]'), pj.x, pj.y, ready ? 0 : win);
+    put(this.$('[data-atlas-tag]'), pj.x, pj.y + this.h * 0.2, win);
     void atlasA;
   }
 
@@ -799,6 +871,7 @@ export class StoryController {
         g.visible = false;
         this.scene.add(g);
         this.atlasState = 'ready';
+        this.atlasTheme();
         this.o.root.dataset.atlas = 'ready';
       })
       .catch(() => { this.atlasState = 'error'; this.o.root.dataset.atlas = 'error'; });
