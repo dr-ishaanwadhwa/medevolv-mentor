@@ -9,6 +9,28 @@ import { NAV, isActive } from './nav';
 import { Wordmark } from './Logo';
 import { ThemeToggle } from './ThemeToggle';
 
+const FOOTER_LINKS = [
+  { href: '/credits', label: 'Credits' },
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/terms', label: 'Terms' },
+];
+
+function FooterLinks({ className }: { className?: string }) {
+  return (
+    <nav aria-label="About" className={className}>
+      {FOOTER_LINKS.map((l) => (
+        <Link
+          key={l.href}
+          href={l.href}
+          className="py-1 text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
+        >
+          {l.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? '/';
   return (
@@ -49,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <p className="text-xs leading-relaxed text-muted">
             A study aid, not medical advice. Answers come only from the indexed textbooks.
           </p>
+          <FooterLinks className="flex flex-wrap gap-x-3 gap-y-1" />
           <div className="flex items-center justify-between">
             <span className="label-mono">Theme</span>
             <ThemeToggle />
@@ -75,6 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main id="main" className="pb-tabbar min-h-[calc(100dvh-var(--topbar-h))] md:min-h-dvh">
         {children}
+        <FooterLinks className="page flex flex-wrap gap-x-4 gap-y-1 pb-4 pt-8 md:hidden" />
       </main>
 
       {/* Mobile bottom tab bar */}
