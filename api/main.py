@@ -28,6 +28,27 @@ from rag import atlas, concepts, config, ontology_facts, trace
 from rag.answer import answer_multihop
 
 app = FastAPI(title="MedEvolv Mentor API", version="2.0.0-m1")
+
+
+def _warm() -> None:
+    """Load the clinical graph, embedder and vector index once, off the request path (the first question after a
+    restart otherwise waits ~25 s). Best effort: a failure here only means the first request pays the cost."""
+    import os
+    if os.getenv("API_WARMUP", "1") != "1":
+        return
+    try:
+        from rag import graph, retrieve
+        graph.link_entities("pheochromocytoma with headache")
+        retrieve.search("pheochromocytoma preoperative alpha blockade", k=2)
+        concepts.search_concepts("pheo", limit=1)
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+def _startup_warm() -> None:
+    import threading
+    threading.Thread(target=_warm, daemon=True, name="warmup").start()
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
                    allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"])
 
