@@ -90,6 +90,7 @@ export function ChatView() {
   const bottom = useRef<HTMLDivElement>(null);
   const lastId = turns[turns.length - 1]?.id;
   const lastHasAnswer = !!turns[turns.length - 1]?.answer;
+  const lastDone = turns[turns.length - 1]?.phase === 'done';
 
   // new question: bring the thread to the bottom; answer arrival: show the top of the answer
   useEffect(() => {
@@ -100,7 +101,7 @@ export function ChatView() {
     // after layout settles; instant, because a smooth scroll still heading to the bottom would swallow a smooth one
     const t = window.setTimeout(() => document.getElementById(`ans-${lastId}`)?.scrollIntoView({ behavior: 'auto', block: 'start' }), 60);
     return () => window.clearTimeout(t);
-  }, [lastId, lastHasAnswer]);
+  }, [lastId, lastHasAnswer, lastDone]);   // again on done: the step trace above collapses and shifts the answer up
 
   const srcTurn = useMemo(() => turns.find((t) => t.id === src?.turnId), [turns, src]);
 
