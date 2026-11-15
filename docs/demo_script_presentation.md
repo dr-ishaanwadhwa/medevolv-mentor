@@ -4,7 +4,8 @@ Slot: officially 5:00. In practice the panel often lets presentations run to ~15
 **always land the 5-minute core first** (so a hard cut at 5:00 still leaves a complete story), then pull extension
 modules (section below) in order while they keep listening. Stop at any module boundary.
 One presenter drives; everything happens in the browser.
-Live URL: **https://v2.130-210-60-153.sslip.io**. Streamlit (the minimum requirement) stays live at mentor.medevolv.in as the backup.
+Live URL: **https://mentor.medevolv.in** (v2, since 16 Nov). Streamlit (the minimum requirement) is the backup at **https://atlas.medevolv.in**.
+The static 3D atlas moved to https://3d.130-210-60-153.sslip.io (both apps' 3D links point there).
 
 Timings below were measured on the live v2 host on 16 Nov (warm server):
 - Comparison question: 4.0–4.1 s, decompose route, 4–5 citations.
@@ -20,7 +21,20 @@ Timings below were measured on the live v2 host on 16 Nov (warm server):
 2. **Warm the server:** ask one question on the Ask tab. The first question after a restart takes ~11 s; after that ~3–4 s. Then press *Clear chat*.
 3. **Warm the 3D view:** open the optic-chiasm tab once, so the models are cached in the browser.
 4. Set browser zoom to 125% so the back row can read it. Light theme reads best on projectors.
-5. Copy the comparison question to the clipboard: `Compare the mechanism of action of penicillins and aminoglycosides.`
+5. No pasting needed: every core question is a one-tap demo card on the Ask page, and after the first answer the same
+   questions stay pinned as a **Try** row above the question box (Compare · Clinical vignette · Clinical case · Anatomy ·
+   Watch it decline · Watch it refuse).
+6. **Do not redeploy on the day.** The first question after an API restart took ~20 s in the dry run; warm questions take 3–6 s.
+7. The 3D view downloads 32 MB of models on first open (~6 s on good Wi-Fi, much longer on venue Wi-Fi). Step 3 caches
+   them in the browser; use the same laptop and browser profile on stage, or a phone hotspot if the Wi-Fi is weak.
+
+## Dry run (16 Nov, live site, built-in browser)
+- **Core beats:** compare 5.5–6.0 s click to finished answer; decline 0.2 s; refusal 0.1 s; Why verdict within 5 s.
+- **Concept page and 3D:** they render. 3D timing could not be measured, because the test browser was in the background.
+- **Fixed after the dry run:**
+  - the answer now opens at its top, instead of scrolled to the bottom;
+  - demo prompts stay one tap away after the first answer;
+  - the microbiology book is named correctly on /how.
 
 ## Run of show
 
@@ -35,7 +49,7 @@ Timings below were measured on the live v2 host on 16 Nov (warm server):
 - **Data question?** One line: "Private research copies for this assignment; nothing from the books is published or committed."
 
 ### 0:50–1:50 · Grounded answer + the enhancement (tab: Ask)
-1. Paste the comparison question and press Enter.
+1. Tap the **Compare · split into parts** card.
 2. While it streams, point at the trace:
    > "It recognised two topics and split the question. That's our enhancement: query decomposition."
 3. When the answer lands, tap citation **[1]**. The drawer shows book · chapter · pages and the passage.
@@ -44,9 +58,9 @@ Timings below were measured on the live v2 host on 16 Nov (warm server):
    > "This exact question was our first failure. One embedding of a two-topic question retrieved 5 of 6 passages about aminoglycosides only. Splitting it fixed retrieval: both drug classes are now cited."
 
 ### 1:50–2:20 · Unsupported and unsafe (tab: Ask)
-1. Tap the **cricket** demo card. It declines in under a second.
+1. Tap **Watch it decline** in the Try row. It declines in under a second.
    > "Not in the books, so it won't guess."
-2. Type `My mother has TB, what dose of rifampicin should she take?`. It refuses and redirects to a doctor.
+2. Tap **Watch it refuse** ("My mother has TB, what dose of rifampicin…"). It is refused before any search and suggests what to ask instead.
    > "Study aid, not medical advice."
 
 ### 2:20–3:20 · Why was I wrong? (tab: `/why`)
@@ -87,7 +101,7 @@ Core 5:00, plus E1–E4 ≈ 9:30, plus E5–E8 ≈ 13:15, leaving ~1:45 for Q&A 
 
 ## Prepared answers (≤20 s each)
 - **"Why not just ChatGPT?"** It can't show the page, and it doesn't decline. Ours does both, and the citation check is code, not a prompt.
-- **"Where's the Streamlit UI?"** Streamlit was the minimum requirement and is live as our first version (mentor.medevolv.in). v2 is the same RAG engine behind a faster web front end.
+- **"Where's the Streamlit UI?"** Streamlit was the minimum requirement and is still live as our first version (atlas.medevolv.in). v2 is the same RAG engine behind a faster web front end.
 - **"What still fails?"**
   - Hard clinical vignettes. In an 18-case clinician-style review, 12 had a major issue.
   - So we demo study questions, and selling waits on a clinician review.
@@ -96,6 +110,6 @@ Core 5:00, plus E1–E4 ≈ 9:30, plus E5–E8 ≈ 13:15, leaving ~1:45 for Q&A 
 - **"Latency?"** About 3 s median answer time on the 39-question set (p95 4.6 s), and the steps stream live while it works.
 
 ## If something breaks on stage
-- **An answer hangs past 15 s:** press Stop, then click the cricket card (it is instant) and continue. Mention that the trace shows each step.
-- **v2 is down:** switch to mentor.medevolv.in and run the same three questions there (same engine).
+- **An answer hangs past 15 s:** press Stop, then tap *Watch it decline* (it is instant) and continue. Mention that the trace shows each step.
+- **v2 is down:** switch to https://atlas.medevolv.in (Streamlit) and run the same three questions there (same engine).
 - **The 3D view is slow:** skip it and say "3D atlas, linked from every anatomy concept" over the concept-page graph.
