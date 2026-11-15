@@ -1,6 +1,9 @@
 """MedEvolv Mentor v2 gateway.   uvicorn api.main:app --port 8000
 
 POST /api/chat/stream      SSE: step* -> answer -> spatial -> done   (error ends the stream)
+POST /api/why/stream       SSE: step* -> verdict -> done             (error ends the stream)
+GET  /api/concepts/{label_or_id}   concept page (404 JSON when unknown)
+POST /api/answers, GET /api/answers/{id}   save / fetch a shared answer;  POST /api/feedback
 GET  /api/spatial/resolve  ?fma=FMA... | ?label=Name   concept + atlas link(s) + pointer citations + related concepts
 GET  /api/concepts/search  ?q=prefix
 GET  /api/health
@@ -17,9 +20,10 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from api import spatial
-from api.schemas import (AnswerEvent, ChatRequest, ConceptHit, DoneEvent, ErrorEvent, HealthResponse,
-                         SpatialEvent, SpatialResolveResponse, StepEvent)
+from api import concept_page, spatial, store, why
+from api.schemas import (AnswerEvent, AnswerRecord, AnswerSave, AnswerSaved, ChatRequest, ConceptHit, ConceptPage, DoneEvent,
+                         ErrorEvent, FeedbackOk, FeedbackRequest, HealthResponse, NotFound, SpatialEvent,
+                         SpatialResolveResponse, StepEvent, WhyRequest)
 from rag import atlas, concepts, config, ontology_facts, trace
 from rag.answer import answer_multihop
 
@@ -89,6 +93,48 @@ async def chat_stream(req: ChatRequest):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+async def why_events(req: WhyRequest):
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    t0 = time.perf_counter()
+
+    def put(kind, payload):
+        loop.call_soon_threadsafe(q.put_nowait, (kind, payload))
+
+    def work():
+        trace.start(lambda s: put("step", s))
+        try:
+            put("result", why.run(req))
+        except Exception as e:                      # noqa: BLE001 - reported to the client as event: error
+            put("error", e)
+        finally:
+            trace.stop()
+
+    fut = loop.run_in_executor(None, work)
+    try:
+        while True:
+            kind, payload = await q.get()
+            if kind == "step":
+                yield sse("step", _step_event(payload))
+            elif kind == "error":
+                yield sse("error", ErrorEvent(message="The question could not be judged.", error_type=type(payload).__name__))
+                return
+            else:
+                break
+        yield sse("verdict", payload)
+        yield sse("done", DoneEvent(ms=round((time.perf_counter() - t0) * 1000, 1)))
+    finally:
+        await asyncio.shield(fut)
+
+
+@app.post("/api/why/stream")
+async def why_stream(req: WhyRequest):
+    if req.chosen >= len(req.options):
+        raise HTTPException(422, "chosen must be an index into options")
+    return StreamingResponse(why_events(req), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/spatial/resolve", response_model=SpatialResolveResponse)
 async def spatial_resolve(fma: str | None = Query(None, min_length=1), label: str | None = Query(None, min_length=1)):
     if bool(fma) == bool(label):
@@ -102,6 +148,36 @@ async def spatial_resolve(fma: str | None = Query(None, min_length=1), label: st
 @app.get("/api/concepts/search", response_model=list[ConceptHit])
 async def concepts_search(q: str = Query("", max_length=100), limit: int = Query(20, ge=1, le=50)):
     return await asyncio.to_thread(concepts.search_concepts, q, limit)
+
+
+@app.get("/api/concepts/{label_or_id:path}", response_model=ConceptPage, responses={404: {"model": NotFound}})
+async def concept_get(label_or_id: str):
+    page = await asyncio.to_thread(concept_page.build, label_or_id)
+    if page is None:
+        raise HTTPException(404, "Unknown concept")
+    return page
+
+
+@app.post("/api/answers", response_model=AnswerSaved)
+async def answers_save(req: AnswerSave):
+    try:
+        return AnswerSaved(id=await asyncio.to_thread(store.save_answer, req.kind, req.question, req.payload))
+    except store.PayloadTooLarge as e:
+        raise HTTPException(413, str(e))
+
+
+@app.get("/api/answers/{answer_id}", response_model=AnswerRecord, responses={404: {"model": NotFound}})
+async def answers_get(answer_id: str):
+    rec = await asyncio.to_thread(store.get_answer, answer_id)
+    if rec is None:
+        raise HTTPException(404, "Unknown answer")
+    return rec
+
+
+@app.post("/api/feedback", response_model=FeedbackOk)
+async def feedback(req: FeedbackRequest):
+    await asyncio.to_thread(store.add_feedback, req.answer_id, req.question, req.kind, req.note)
+    return FeedbackOk()
 
 
 @app.get("/api/health", response_model=HealthResponse)

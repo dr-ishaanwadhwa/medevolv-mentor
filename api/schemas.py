@@ -1,6 +1,7 @@
 """Wire contracts for the API. Citations are pointers (+ one short excerpt), never passage text.
 
 Server-Sent Events from POST /api/chat/stream, in order: step (0..n), answer, spatial, done  |  error (ends the stream).
+POST /api/why/stream: step (0..n), verdict, done  |  error. See api/README.md.
 """
 from __future__ import annotations
 
@@ -114,3 +115,138 @@ class HealthResponse(BaseModel):
     llm_backend: str
     atlas_enabled: bool
     ontology_loaded: bool
+
+
+# ---------------------------------------------------------------- v2 additions (W1): why / concept page / answers / feedback
+
+class WhyRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=3000)
+    options: list[str] = Field(min_length=2, max_length=6)
+    chosen: int = Field(ge=0)
+
+
+class VerdictEvent(BaseModel):
+    """SSE `verdict` from POST /api/why/stream. `status="insufficient"`: the books do not settle it (correct_option is null)."""
+    status: Literal["verdict", "insufficient"]
+    correct_option: int | None = None
+    chosen_wrong_because: str = ""
+    explanation: str = ""                       # markdown, [n] markers index into `citations`
+    citations: list[AnswerCitation] = []
+    viva_questions: list[str] = []              # exactly 3 when status == "verdict"
+
+
+class ConceptLink(BaseModel):
+    id: str
+    label: str
+    type: str
+    predicate: str | None = None
+    tier: str                                   # certified | derived | suggested | navigation
+
+
+class ConceptSection(BaseModel):
+    section_id: str
+    book_id: str
+    title: str = ""
+    path: str = ""
+    primary: bool = False                       # the book's own section for this concept (heading names it)
+    tier: str = "navigation"
+
+
+class ConceptHub(BaseModel):
+    hub_id: str
+    label: str
+    type: str
+    tier: str
+
+
+class SeeAlso(BaseModel):
+    id: str | None = None                       # null when the co-mentioned phrase is not an ontology concept
+    label: str
+    score: float
+    books: list[str] = []
+    section_id: str = ""
+    tier: Literal["suggested"] = "suggested"
+
+
+class BodhiRef(BaseModel):
+    bodhi_id: str
+    name: str
+    type: str = ""
+    relation: str
+    tier: str
+
+
+class ConceptAtlas(BaseModel):
+    link: str | None = None                     # None: unlinked, or ATLAS_URL unset
+    structures: list[dict] = []                 # [{label, atlas_name, url}] a condition involves; [] when none
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    type: str
+    center: bool = False
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    predicate: str
+    tier: str
+
+
+class ConceptGraph(BaseModel):
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+
+
+class ConceptPage(BaseModel):
+    id: str
+    label: str
+    type: str
+    aliases: list[str] = []
+    books: list[str] = []
+    degree: int = 0
+    sections: list[ConceptSection] = []
+    links_out: list[ConceptLink] = []
+    links_in: list[ConceptLink] = []
+    links_out_total: int = 0
+    links_in_total: int = 0
+    hubs: list[ConceptHub] = []
+    see_also: list[SeeAlso] = []
+    bodhi: list[BodhiRef] = []
+    atlas: ConceptAtlas = ConceptAtlas()
+    graph: ConceptGraph = ConceptGraph()
+
+
+class NotFound(BaseModel):
+    detail: str
+
+
+class AnswerSave(BaseModel):
+    kind: Literal["chat", "why"]
+    question: str = Field(max_length=3000)
+    payload: dict
+
+
+class AnswerSaved(BaseModel):
+    id: str
+
+
+class AnswerRecord(BaseModel):
+    id: str
+    kind: Literal["chat", "why"]
+    question: str
+    payload: dict
+    created_at: float
+
+
+class FeedbackRequest(BaseModel):
+    answer_id: str | None = Field(default=None, max_length=32)
+    question: str | None = Field(default=None, max_length=3000)
+    kind: Literal["wrong_citation", "unhelpful", "other"]
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class FeedbackOk(BaseModel):
+    ok: Literal[True] = True
