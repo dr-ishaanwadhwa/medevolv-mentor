@@ -8,9 +8,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test:unit": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@dagrejs/dagre": "1.1.4",
     "clsx": "^2.1.1",
     "d3-force": "3.0.0",
     "lucide-react": "^1.31.0",
@@ -31,6 +33,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "2.1.8"
   }
 }
