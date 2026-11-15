@@ -92,7 +92,7 @@ def blocks(body: str) -> list[tuple[str, list[str]]]:
     return [(h, ps) for h, ps in out if not h.lower().startswith("in the clinic")]
 
 
-def passages(min_words: int = MIN_WORDS) -> list[dict]:
+def passages(min_words: int = MIN_WORDS, keep_text: bool = False) -> list[dict]:
     """Heading-scoped passages: {section_id, region, heading_path, words, paragraphs_removed, cues}. No text is kept."""
     out = []
     for path in sorted(SECTIONS.glob("*.md")):
@@ -113,7 +113,8 @@ def passages(min_words: int = MIN_WORDS) -> list[dict]:
             hits = {name: bool(rx.search(text)) for name, rx in CUES.items()}
             out.append({"section_id": sid, "region": region, "heading_path": sp[1:] + [cur[0][0]] if cur[0][0] else sp[1:],
                         "words": len(text.split()), "chars": len(text), "cues": [k for k, v in hits.items() if v],
-                        "removed_label_paragraphs": removed})
+                        "removed_label_paragraphs": removed,
+                        **({"text": text, "path": str(path.relative_to(ROOT) if path.is_absolute() else path)} if keep_text else {})})
             cur = []
 
         for h, paras in blocks(body):
@@ -250,88 +251,9 @@ PROPOSED_SCHEMA = {
     "eval/": ["gold_triples for the 14-question smoke set (about 40 triples by hand) and gold_sections"],
 }
 
-# ---------- guard rules (PROPOSED reconciler gate) ----------
-VESSEL_NERVE = {"artery", "vein", "nerve", "lymphatic"}
-KIND_RX = [
-    ("nerve", re.compile(r"\bnerves?\b|\bplexus\b|\bganglion\b|\bganglia\b|\broots?\b|\bcords?\b|\bdivisions?\b|\bramus\b|\bramis?\b", re.I)),
-    ("lymphatic", re.compile(r"\blymph|thoracic duct\b", re.I)),
-    ("vein", re.compile(r"\bveins?\b|\bvenous\b|\bvena cava\b|\bsinus(es)? of the dura|\bdural venous sinus", re.I)),
-    ("artery", re.compile(r"\barter(y|ies|ial)\b|\baorta\b|\baortic\b|\bcoronary\b|\bcarotid\b|\btrunk\b|\barch\b", re.I)),
-    ("muscle", re.compile(r"\bmuscles?\b|\bmusculus\b|\bdiaphragm\b|\bcrus\b", re.I)),
-    ("bone", re.compile(r"\bbones?\b|\bvertebra|\bfemur\b|\bhumerus\b|\bsternum\b|\bribs?\b|\bsacrum\b|\bskull\b", re.I)),
-    ("ligament", re.compile(r"\bligaments?\b|\bretinaculum\b|\bmembrane\b", re.I)),
-    ("system", re.compile(r"\bsystem\b", re.I)),
-    ("sheath", re.compile(r"\bsheath\b", re.I)),
-    ("space", re.compile(r"\bcanal\b|\bspace\b|\bfossa\b|\bforamen\b|\bfissure\b|\btriangle\b|\bcavity\b|\bhiatus\b|\bring\b", re.I)),
-    ("region", re.compile(r"\bregion\b|\bwall\b|\bpelvis\b|\bperineum\b|\babdomen\b|\bthorax\b|\bneck\b", re.I)),
-]
-_GENERIC = {"the", "of", "and", "a", "an", "left", "right", "anterior", "posterior", "superior", "inferior", "medial", "lateral"}
-
-
-def infer_kind(label: str) -> str:
-    """Fallback only; the extractor is asked for structure_kind. Order matters: nerve before artery ('nerve to ...')."""
-    for kind, rx in KIND_RX:
-        if rx.search(label):
-            return kind
-    return "organ"
-
-
-def _words(label: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z]+", label.lower()) if w not in _GENERIC and len(w) > 2}
-
-
-def is_segment_of(sub_label: str, obj_label: str) -> bool:
-    """'Ascending aorta' is a segment of 'Aorta': every content word of the parent appears in the child's name, and the
-    child adds a qualifier. 'Coronary artery' is not a segment of 'Ascending aorta'."""
-    o, s = _words(obj_label), _words(sub_label)
-    o_core = {re.sub(r"(ies|ery|s)$", "", w) for w in o}
-    s_core = {re.sub(r"(ies|ery|s)$", "", w) for w in s}
-    return bool(o_core) and o_core <= s_core and len(s_core) > len(o_core)
-
-
-def check_anatomy_kinds(pred: str, s_kind: str, o_kind: str, s_label: str = "", o_label: str = "") -> tuple[str, str]:
-    """('ok' | 'drop' | 'review', reason). review = send to a human/LLM adjudication queue with a suggested predicate.
-
-    PART_OF   constitutive: the subject is a component or segment of the object and is not a distinct vessel/nerve in its
-              own right (left ventricle of the heart, ascending aorta of the aorta, heart of the cardiovascular system).
-    BRANCH_OF derivational: the subject vessel/nerve arises from the object (coronary arteries from the aorta, ulnar nerve
-              from the medial cord). A branch is a different named structure that leaves the parent; it is NOT part of it.
-    """
-    if s_kind == o_kind == "" or not pred:
-        return "drop", "missing kind"
-    if pred == "BRANCH_OF":
-        if s_kind not in VESSEL_NERVE or o_kind not in VESSEL_NERVE:
-            return "drop", "only vessels and nerves have branches (organs, muscles and systems do not branch)"
-        if s_kind != o_kind:
-            return "drop", f"{s_kind} cannot be a branch of {o_kind}: branches stay within one family (artery-artery, vein-vein, nerve-nerve)"
-        return "ok", "same-family branch"
-    if pred == "PART_OF":
-        if s_kind in VESSEL_NERVE and o_kind in VESSEL_NERVE and s_kind == o_kind:
-            if is_segment_of(s_label, o_label):
-                return "ok", "named segment of the same vessel or nerve"
-            return "drop", "same-family vessel/nerve that is not a named segment is a branch, not a part: BRANCH_OF if the quote says it arises from the parent"
-        if s_kind in VESSEL_NERVE and o_kind in {"organ"}:
-            return "review", "a vessel or nerve is not part of an organ it supplies; use SUPPLIED_BY / INNERVATED_BY / CONTAINS"
-        if o_kind == "system":
-            return ("ok", "organ or vessel in its system") if s_kind in {"organ", "artery", "vein", "nerve", "lymphatic", "muscle", "bone", "ligament"} \
-                else ("review", "unusual member of a system")
-        if s_kind == "system":
-            return "drop", "a system is not part of a structure (use the reverse)"
-        return "ok", "component or segment"
-    rule = PROPOSED_PREDICATES.get(pred)
-    if rule is None:
-        return "drop", "unknown predicate"
-    s_ok, o_ok = rule[0], rule[1]
-    if s_kind not in s_ok:
-        return "drop", f"{pred} subject must be one of {sorted(s_ok)}, got {s_kind}"
-    if o_kind not in o_ok:
-        return "drop", f"{pred} object must be one of {sorted(o_ok)}, got {o_kind}"
-    return "ok", "kind rule satisfied"
-
-
-def guard_triple(pred: str, s_label: str, o_label: str, s_kind: str | None = None, o_kind: str | None = None) -> tuple[str, str]:
-    """check_anatomy_kinds with kinds inferred from names when the extractor did not give them."""
-    return check_anatomy_kinds(pred, s_kind or infer_kind(s_label), o_kind or infer_kind(o_label), s_label, o_label)
+# ---------- guard rules: implemented in ontology/anatomy.py (G1-G9), re-exported here for the tests ----------
+from ontology.anatomy import (VESSEL_NERVE, KIND_RX, infer_kind, is_segment_of,  # noqa: E402,F401
+                              check_anatomy_kinds, guard_triple)
 
 
 def main() -> None:

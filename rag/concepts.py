@@ -40,6 +40,14 @@ INVERSE = {
     "DIFFERENTIAL_OF": "has differential",
     "INVOLVES_STRUCTURE": "involved in",         # anatomical structure -> condition affecting it (Gray's)
     "is_a": "has subtype",
+    # normal-anatomy relations (Gray's, ontology/anatomy.py): concept pages only, never answers
+    "INNERVATED_BY": "innervates",
+    "SUPPLIED_BY": "supplies",
+    "DRAINED_BY": "drains",
+    "BOUNDED_BY": "bounds",
+    "CONTAINS": "contained in",
+    "BRANCH_OF": "has branch",
+    "part_of": "has part",
 }
 
 
@@ -68,7 +76,7 @@ def _index() -> dict:
         return nodes.setdefault(nid, {"id": nid, "type": typ, "outgoing": defaultdict(list),
                                       "backlinks": defaultdict(list), "books": set(), "sections": set(), "degree": 0})
 
-    for f in ontology_facts.facts():
+    for f in ontology_facts.all_facts():
         subj = node(f["subject_id"], f["subject_label"], f["subject_type"])
         obj = node(f["object_id"], f["object_label"], f["object_type"])
         subj["outgoing"][f["predicate"]].append(_link(f, "object", f["predicate"], "certified"))

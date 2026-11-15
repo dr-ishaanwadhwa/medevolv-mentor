@@ -9,6 +9,7 @@ import hashlib
 import re
 from typing import Any
 
+from ontology.anatomy import ANATOMY_PREDICATES, gate_anatomy_item
 from ontology.normalizer import clean_medical_text
 from ontology.registry import get_registry
 from ontology.schema import (
@@ -39,6 +40,11 @@ TYPE_RULES: dict[R, tuple[set, set]] = {
     R.DIFFERENTIAL_OF: (_COND_P, _COND_P),
     R.INVOLVES_STRUCTURE: (_COND_P, {T.AnatomicalStructure}),   # one way only: structure pages read it backwards
 }
+# Normal-anatomy relations (ontology/anatomy.py): structure -> structure, one direction. PART_OF may also end at a body system.
+_ANAT = {T.AnatomicalStructure}
+for _r in (R.INNERVATED_BY, R.SUPPLIED_BY, R.DRAINED_BY, R.BOUNDED_BY, R.CONTAINS, R.BRANCH_OF):
+    TYPE_RULES[_r] = (_ANAT, _ANAT)
+TYPE_RULES[R.PART_OF] = (_ANAT | {T.OrganSystem}, _ANAT | {T.OrganSystem})
 
 
 def check_direction(pred, s_type, o_type) -> str:
@@ -246,6 +252,17 @@ def reconcile_section_facts(
                 "subject_name": item.object_name, "subject_type": item.object_type,
                 "object_name": item.subject_name, "object_type": item.subject_type})
 
+        anatomy_ok = True
+        if item.predicate in ANATOMY_PREDICATES:           # guard rules G1-G9 (ontology/anatomy.py)
+            gate_a, why = gate_anatomy_item(item)
+            if gate_a == "drop":
+                stats["anatomy_dropped"] = stats.get("anatomy_dropped", 0) + 1
+                stats[f"anatomy_drop:{why[:40]}"] = stats.get(f"anatomy_drop:{why[:40]}", 0) + 1
+                continue
+            anatomy_ok = gate_a == "ok"
+            if not anatomy_ok:
+                stats["anatomy_candidate"] = stats.get("anatomy_candidate", 0) + 1
+
         # Reconcile subject and object with canonical registry (BODHI SNOMED/INN or minted URI)
         gate, line = gate_line_of_therapy(item.predicate, item.line_of_therapy, item.verbatim_quote)
         if gate == "drop":
@@ -289,6 +306,9 @@ def reconcile_section_facts(
             timing_phase=item.timing_phase,
             rationale=item.rationale,
             population=population,
+            structure_kind=item.structure_kind,
+            object_structure_kind=item.object_structure_kind,
+            spinal_levels=item.spinal_levels,
         )
 
         provenance = ClinicalProvenance(
@@ -310,7 +330,7 @@ def reconcile_section_facts(
             object_label=obj_label,
             object_type=item.object_type,
             confidence=item.confidence,
-            status="CERTIFIED" if verified else "CANDIDATE",
+            status="CERTIFIED" if verified and anatomy_ok else "CANDIDATE",
             clinical_facets=facets,
             provenance=provenance,
             nl_fact=item.nl_fact.strip(),

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EntityType(str, Enum):
@@ -40,6 +40,14 @@ class ClinicalRelation(str, Enum):
     CAUSES_ADVERSE_EFFECT = "CAUSES_ADVERSE_EFFECT"
     DIFFERENTIAL_OF = "DIFFERENTIAL_OF"
     INVOLVES_STRUCTURE = "INVOLVES_STRUCTURE"     # condition/finding -> the anatomical structure it affects
+    # Normal-anatomy relations between two AnatomicalStructure (Gray's, ontology/anatomy.py). Guard rules G1-G9 live in
+    # ontology/anatomy.py; they are kept OUT of answers (rag/ontology_facts.ANATOMY_PREDICATES) and shown on concept pages.
+    INNERVATED_BY = "INNERVATED_BY"   # structure -> nerve that supplies it
+    SUPPLIED_BY = "SUPPLIED_BY"       # structure -> artery that supplies it
+    DRAINED_BY = "DRAINED_BY"         # structure -> vein / lymphatic that drains it
+    BOUNDED_BY = "BOUNDED_BY"         # space / region -> structure forming its wall, roof, floor
+    CONTAINS = "CONTAINS"             # space / region / sheath -> structure inside or passing through it
+    BRANCH_OF = "BRANCH_OF"           # vessel / nerve -> parent vessel / nerve of the same family it arises from
 
 
 class LineOfTherapy(str, Enum):
@@ -68,6 +76,10 @@ class ClinicalFacet(BaseModel):
     rationale: str | None = Field(default=None, description="Clinical mechanism or pharmacological rationale")
     population: str | None = Field(default=None, description="Who a contraindication applies to, read after 'when', "
                                    "e.g. 'the patient is pregnant' (ontology/reconciler.py qualify_contraindication)")
+    # anatomy relations only (ontology/anatomy.py): kinds come from the extractor (guard rule G9)
+    structure_kind: str | None = Field(default=None, description="kind of the subject structure: muscle, nerve, artery, ...")
+    object_structure_kind: str | None = Field(default=None, description="kind of the object structure")
+    spinal_levels: str | None = Field(default=None, description="e.g. 'C3-C5' (optional, innervation facts)")
 
 
 class ClinicalProvenance(BaseModel):
@@ -89,12 +101,22 @@ class ExtractionItem(BaseModel):
     subject_name: str = Field(..., description="Canonical clinical entity name")
     subject_type: EntityType = Field(..., description="T-Box class of subject")
     predicate: ClinicalRelation = Field(..., description="Clinical predicate")
+
+    @field_validator("predicate", mode="before")
+    @classmethod
+    def _predicate_case(cls, v):
+        """The anatomy prompt writes PART_OF; the enum value is the older lower-case 'part_of'."""
+        return "part_of" if isinstance(v, str) and v.upper() == "PART_OF" else v
+
     object_name: str = Field(..., description="Canonical clinical entity name")
     object_type: EntityType = Field(..., description="T-Box class of object")
     line_of_therapy: LineOfTherapy | None = Field(default=None, description="If TREATED_BY, specify priority")
     contraindication_severity: ContraindicationSeverity | None = Field(default=None, description="If CONTRAINDICATES, specify severity")
     timing_phase: str | None = Field(default=None, description="Timing, phase, or clinical duration if applicable")
     rationale: str | None = Field(default=None, description="Clinical rationale or mechanism of action")
+    structure_kind: str | None = Field(default=None, description="anatomy relations: kind of the subject structure")
+    object_structure_kind: str | None = Field(default=None, description="anatomy relations: kind of the object structure")
+    spinal_levels: str | None = Field(default=None, description="anatomy relations: e.g. 'C3-C5'")
     verbatim_quote: str = Field(..., description="Exact verbatim sentence supporting this extraction")
     confidence: float = Field(ge=0.0, le=1.0, default=0.95)
     nl_fact: str = Field(..., description="Clear, concise natural language fact statement")

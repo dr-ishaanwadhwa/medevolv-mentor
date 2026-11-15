@@ -78,17 +78,40 @@ CHAPTER_GROUPS = [
 ]
 
 
-@functools.cache
-def facts() -> tuple[dict, ...]:
+# Normal-anatomy relations (Gray's, ontology/anatomy.py). They are certified like any other fact but are kept OUT of
+# answers: facts() hides them, so every answer-side query (graph_facts_for, hops, profiles) is unchanged. Concept pages
+# read them through all_facts(). To let one into answers later, add it deliberately in a query, not here.
+ANATOMY_PREDICATES = frozenset({"INNERVATED_BY", "SUPPLIED_BY", "DRAINED_BY", "BOUNDED_BY", "CONTAINS", "BRANCH_OF",
+                                "part_of"})
+
+
+def _certified(anatomy: bool) -> tuple[dict, ...]:
     if not PATH.exists():
         return ()
     out = []
     for line in PATH.read_text(encoding="utf-8").splitlines():
         if line.strip():
             f = json.loads(line)
-            if f.get("status") == "CERTIFIED":
+            if f.get("status") == "CERTIFIED" and (f["predicate"] in ANATOMY_PREDICATES) == anatomy:
                 out.append(f)
     return tuple(out)
+
+
+@functools.cache
+def facts() -> tuple[dict, ...]:
+    """Certified facts that may reach answers (anatomy relations excluded)."""
+    return _certified(False)
+
+
+@functools.cache
+def anatomy_facts() -> tuple[dict, ...]:
+    """Certified normal-anatomy relations: concept pages only."""
+    return _certified(True)
+
+
+def all_facts() -> tuple[dict, ...]:
+    """facts() plus anatomy_facts(), for concept pages (rag/concepts.py)."""
+    return tuple(facts()) + tuple(anatomy_facts())
 
 
 def available() -> bool:
