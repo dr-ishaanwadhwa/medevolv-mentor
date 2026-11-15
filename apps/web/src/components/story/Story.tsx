@@ -18,6 +18,7 @@ const EVALS: [string, string, number, number][] = [
 ];
 
 function hasWebGL(): boolean {
+  if (/[?&]nowebgl/.test(location.search)) return false; // test hook for the fallback
   try {
     const c = document.createElement('canvas');
     return !!(c.getContext('webgl2') || c.getContext('webgl'));
@@ -67,7 +68,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctl = useRef<StoryController | null>(null);
   const [active, setActive] = useState(0);
-  const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
+  const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches || /[?&]reduced/.test(location.search), []);
   const { story } = data;
   const books = story.books;
   const evidence = story.journey?.evidence ?? [];
@@ -179,7 +180,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
           <div className="st-atag" data-atlas-tag style={{ opacity: 0 }}><span>Optic chiasm · FMA62045</span><span className="st-nav-tag">Navigation only</span></div>
           <div className="st-cue" data-cue>Scroll<i /></div>
 
-          <a className="st-skip" href="/how?classic=1">Skip the story</a>
+          <a className="st-skip" href="/how?classic=1" aria-label="Skip the story"><span className="md:hidden">Skip</span><span className="hidden md:inline">Skip the story</span></a>
           <nav className="st-rail" aria-label="Story chapters">
             {CHAPTERS.map((c, k) => (
               <button key={c.id} type="button" className="st-dot" aria-label={`Chapter ${k + 1}: ${RAIL_LABELS[c.id]}`} aria-current={active === k ? 'step' : undefined} onClick={() => jump(k)}>

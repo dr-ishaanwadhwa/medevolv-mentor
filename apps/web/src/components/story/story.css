@@ -3,7 +3,7 @@
 .st-stage { position: fixed; z-index: 1; left: 0; right: 0; top: var(--topbar-h); bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); overflow: hidden; pointer-events: none; }
 @media (min-width: 768px) { .st-stage { left: var(--rail-w); bottom: 0; } }
 .st-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.st-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgb(var(--c-bg) / .96) 0%, rgb(var(--c-bg) / .82) 34%, rgb(var(--c-bg) / 0) 62%); }
+.st-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgb(var(--c-bg) / .97) 0%, rgb(var(--c-bg) / .9) 42%, rgb(var(--c-bg) / 0) 72%); }
 @media (min-width: 768px) { .st-scrim { background: linear-gradient(90deg, rgb(var(--c-bg) / .94) 0%, rgb(var(--c-bg) / .78) 26%, rgb(var(--c-bg) / 0) 48%); } }
 .st-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 62% 50%, transparent 55%, rgb(var(--c-bg) / .7) 100%); }
 
@@ -85,7 +85,7 @@
 .st-answer .cite-chip { pointer-events: none; }
 .st-answer-h { font: 600 .62rem var(--font-mono), monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--c-accent)); margin-bottom: .5rem; }
 @media (max-width: 1100px) and (min-width: 768px) { .st-answer { left: 24rem; width: calc(100% - 46rem); min-width: 14rem; font-size: .74rem; } }
-@media (max-width: 767px) { .st-answer { left: .75rem; right: .75rem; width: auto; min-width: 0; max-width: none; top: 7.6rem; transform: none; max-height: 27%; padding: .6rem .75rem; } .st-answer .md { font-size: .72rem; line-height: 1.45; } }
+@media (max-width: 767px) { .st-answer { left: .75rem; right: .75rem; width: auto; min-width: 0; max-width: none; top: 9rem; transform: none; max-height: 27%; padding: .6rem .75rem; } .st-answer .md { font-size: .72rem; line-height: 1.45; } }
 .st-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .st-line { stroke: rgb(var(--c-accent)); stroke-width: 1.6; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: 0; stroke-linecap: round; }
 

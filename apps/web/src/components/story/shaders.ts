@@ -7,6 +7,7 @@ uniform float uMix, uTime, uPx, uSize, uDim, uFocusAmt, uSearch, uDecl, uHideEv,
 uniform float uFocusW[7];
 uniform vec3 uPal[7];
 uniform vec3 uGrey;
+uniform float uFocusLo;
 varying vec3 vCol;
 varying float vA;
 void main() {
@@ -18,7 +19,7 @@ void main() {
   vec3 col = uPal[bi];
   float fw = uFocusW[bi];
   float b = uDim;
-  b = mix(b, mix(0.16, 1.35, fw), uFocusAmt);
+  b = mix(b, mix(uFocusLo, 1.35, fw), uFocusAmt);
   b = mix(b, mix(0.10, 1.9, aMask.x), uSearch);
   float dn = aMask.z * uDecl;
   b = mix(b, max(b, 1.5), dn);

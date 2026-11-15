@@ -157,7 +157,7 @@ export class StoryController {
         uDim: { value: 1 }, uFocusAmt: { value: 0 }, uSearch: { value: 0 }, uDecl: { value: 0 }, uHideEv: { value: 0 },
         uFade: { value: 1 }, uDrift: { value: o.reduced ? 0 : 1 }, uMinPx: { value: 1.6 * dpr }, uLight: { value: 0 }, uGain: { value: 0.3 },
         uFocusW: { value: this.focusW }, uPal: { value: Array.from({ length: 7 }, () => new THREE.Vector3()) },
-        uGrey: { value: new THREE.Vector3() },
+        uGrey: { value: new THREE.Vector3() }, uFocusLo: { value: 0.16 },
       },
     });
     const points = new THREE.Points(geo, this.pointsMat);
@@ -278,8 +278,8 @@ export class StoryController {
     this.camKeys = [
       { s: 0, p: V(0, 0.1, 4.2 * m), t: V(0, 0, 0) },
       { s: 1, p: V(0, 0.1, 3.9 * m), t: V(0, 0, 0) },
-      { s: 1.45, p: V(0, 0.15, 4.6 * m), t: V(0, 0, 0) },
-      { s: 2, p: V(0, 0.15, 4.6 * m), t: V(0, 0, 0) },
+      { s: 1.45, p: V(0, 0.15, 5.3 * m), t: V(0, 0, 0) },
+      { s: 2, p: V(0, 0.15, 5.3 * m), t: V(0, 0, 0) },
       { s: 2.5, p: V(0, 0.1, 3.9 * m), t: V(0, 0, 0) },
       { s: 4, p: V(0, 0.1, 3.9 * m), t: V(0, 0, 0) },
       { s: 4.9, p: C.clone().add(V(0.3, 0.1, 2.6 * m)), t: C.clone() },
@@ -380,6 +380,7 @@ export class StoryController {
     const L = dark ? 0 : 1;
     this.pointsMat.uniforms.uLight.value = L;
     this.pointsMat.uniforms.uGain.value = dark ? 0.85 : 1;
+    this.pointsMat.uniforms.uFocusLo.value = dark ? 0.16 : 0.34;
     this.actorMat.uniforms.uLight.value = L;
     this.shieldMat.uniforms.uCol.value.copy(accent);
     this.shieldMat.uniforms.uBad.value.copy(bad);
@@ -562,7 +563,7 @@ export class StoryController {
     }
     const ur = ramp(s, 2.5, 2.9);
     const hitP = new THREE.Vector3(0.1, -0.08, RING_Z + 0.015);
-    const RS = new THREE.Vector3(1.95, -0.65, 2.1), RB = new THREE.Vector3(1.75, -0.95, 1.55);
+    const RS = new THREE.Vector3(1.7, -0.6, 2.0), RB = new THREE.Vector3(1.05, -0.9, 1.5);
     const refPos = (u: number) => (u < 0.5 ? new THREE.Vector3().lerpVectors(RS, hitP, easeInOut(u * 2) ** 1.2) : new THREE.Vector3().lerpVectors(hitP, RB, easeOut((u - 0.5) * 2)).add(new THREE.Vector3(0, 0.12 * Math.sin((u - 0.5) * 2 * Math.PI), 0)));
     const rAlpha = ramp(s, 2.48, 2.56) * (1 - ramp(s, 3.2, 3.5));
     const rPos = refPos(ur);
@@ -578,7 +579,7 @@ export class StoryController {
       const su = this.shieldMat.uniforms;
       su.uAlpha.value = shAlpha * (dark ? 1 : 1.4);
       su.uPass.value = bump(uq, 0.5, 0.07) * smooth(s, 2.1, 2.4);
-      const ht = (s - 2.7) / 0.55;
+      const ht = (s - 2.7) / 0.28;
       su.uHitT.value = s > 2.7 && ht < 1.2 ? ht : -1;
       (su.uHit.value as THREE.Vector2).set(0.16, -0.18);
       this.ringMat.opacity = shAlpha * (0.8 + 0.2 * Math.sin(this.time * 2));
