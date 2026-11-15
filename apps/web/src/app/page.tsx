@@ -1,3 +1,5 @@
-export default function Page() {
-  return <div className="page py-10">Ask</div>;
+import { ChatView } from '@/components/chat/ChatView';
+
+export default function AskPage() {
+  return <ChatView />;
 }
