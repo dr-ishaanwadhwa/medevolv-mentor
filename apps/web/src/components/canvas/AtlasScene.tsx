@@ -8,6 +8,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { AlertTriangle } from 'lucide-react';
 import { SYSTEMS, resolveHighlight, type Atlas, type SystemId } from '@/lib/anatomy';
 import { useAtlasStore } from '@/lib/atlas-store';
+import { computeGoalPose } from '@/lib/atlas-camera';
+import type { PoseSnapshot } from '@/lib/atlas-reset';
 import { cn } from '@/lib/cn';
 import { PointerTap } from './pointer-tap';
 import { loadChunk } from './model-download';
@@ -23,6 +25,14 @@ export interface AtlasResolved {
   matched: string[];
   unmatched: string[];
   names: string[];
+}
+
+/** Imperative camera handle for the toolbar (Reset view / Undo). Filled by the scene once it is running. */
+export interface AtlasCameraApi {
+  getGoal: () => PoseSnapshot;
+  setGoal: (p: PoseSnapshot) => void;
+  /** true once the user has orbited, panned or zoomed since the last framing */
+  hasMoved: () => boolean;
 }
 
 export interface AtlasCanvasProps {
@@ -41,6 +51,8 @@ export interface AtlasCanvasProps {
   /** Small embed: load only the highlighted structures, no wheel zoom, vertical swipes scroll the page. */
   compact?: boolean;
   autoRotate?: boolean;
+  /** Receives the camera handle (null on unmount). */
+  cameraApiRef?: { current: AtlasCameraApi | null };
   className?: string;
 }
 
@@ -276,7 +288,6 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     if (!chunkIds.length) setReady(true);
 
     // ---- camera framing ----
-    const tmpBox = new T.Box3();
     const goalTarget = new T.Vector3(0, 0.85, 0);
     const goalPos = new T.Vector3(1.2, 1.1, 3.4);
     let tweening = false;
@@ -296,31 +307,24 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     };
 
     const frame3 = (idx: number[], fromDefaultDirection: boolean, instant = false) => {
-      tmpBox.makeEmpty();
       const useAll = idx.length === 0;
+      const boxes: T.Box3[] = [];
       parts.forEach((p, i) => {
         if (p.system === 'integumentary') return;
-        if (useAll ? wanted.has(i) : idx.includes(i)) tmpBox.union(bounds[i]);
+        if (useAll ? wanted.has(i) : idx.includes(i)) boxes.push(bounds[i]);
       });
-      if (tmpBox.isEmpty()) return;
-      const size = tmpBox.getSize(new T.Vector3());
-      const center = tmpBox.getCenter(new T.Vector3());
-      const tanHalf = Math.tan(T.MathUtils.degToRad(FOV / 2));
-      const aspect = Math.max(0.3, camera.aspect);
-      const W = el.clientWidth || 1;
-      const H = el.clientHeight || 1;
-      const freeW = Math.max(0.35, (W - (latest.current.inset?.right ?? 0)) / W);
-      const freeH = Math.max(0.35, (H - (latest.current.inset?.bottom ?? 0)) / H);
-      const fitH = size.y / (2 * tanHalf) / freeH;
-      const fitW = size.x / (2 * tanHalf * aspect) / freeW;
-      let dist = Math.max(fitH, fitW, size.z * 0.9) * (useAll ? 1.18 : 2.1) + size.z / 2;
-      dist = Math.max(dist, useAll ? 1 : 0.09);
-      const dir = fromDefaultDirection || userMoved === false
-        ? new T.Vector3(useAll ? 0.32 : 0.25, 0.08, 1)
-        : camera.position.clone().sub(controls.target);
-      dir.normalize();
-      goalTarget.copy(center);
-      goalPos.copy(center).addScaledVector(dir, dist);
+      const dir = fromDefaultDirection || userMoved === false ? undefined : camera.position.clone().sub(controls.target);
+      const goal = computeGoalPose(
+        boxes,
+        useAll,
+        latest.current.inset,
+        { width: el.clientWidth, height: el.clientHeight, aspect: camera.aspect, fov: FOV },
+        dir,
+      );
+      if (!goal) return;
+      const dist = goal.dist;
+      goalTarget.copy(goal.target);
+      goalPos.copy(goal.position);
       controls.maxDistance = Math.max(30, dist * 3);
       if (instant || reducedMotion()) {
         controls.target.copy(goalTarget);
@@ -330,6 +334,25 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       } else tweening = true;
       dirty = true;
     };
+
+    if (props.cameraApiRef) {
+      props.cameraApiRef.current = {
+        getGoal: () => ({ target: goalTarget.clone(), position: goalPos.clone() }),
+        setGoal: (p) => {
+          goalTarget.copy(p.target);
+          goalPos.copy(p.position);
+          userMoved = true;
+          if (reducedMotion()) {
+            controls.target.copy(goalTarget);
+            camera.position.copy(goalPos);
+            controls.update();
+            tweening = false;
+          } else tweening = true;
+          dirty = true;
+        },
+        hasMoved: () => userMoved,
+      };
+    }
 
     // ---- state application ----
     let hasSelection = false;
@@ -502,7 +525,8 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       if ((s.resetNonce ?? 0) !== appliedReset) {
         appliedReset = s.resetNonce ?? 0;
         userMoved = false;
-        frame3(partIdxRef.current, true);
+        // Reset frames the whole visible body, never the current selection (PRD 4.4 fix step 3).
+        frame3([], true);
       }
       if (tweening) {
         const k = 1 - Math.exp(-7 * dt);
@@ -526,6 +550,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
 
     return () => {
       disposed = true;
+      if (props.cameraApiRef) props.cameraApiRef.current = null;
       cancelAnimationFrame(frame);
       observer.disconnect();
       io.disconnect();

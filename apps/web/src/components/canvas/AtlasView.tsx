@@ -5,9 +5,12 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Focus, Layers, RotateCcw, Search, X } from 'lucide-react';
 import { SYSTEMS, searchStructures, SUGGESTED_STRUCTURES, conceptName, normalizeFma } from '@/lib/anatomy';
 import { useAtlasStore } from '@/lib/atlas-store';
+import { hasSomethingToUndo, resetIntent, withSelection, type ViewState } from '@/lib/atlas-reset';
+import { useUi } from '@/store/ui';
 import { cn } from '@/lib/cn';
 import { Button, Chip } from '@/components/ui';
 import AtlasCanvas, { type AtlasHit, type AtlasResolved } from './AtlasCanvas';
+import type { AtlasCameraApi } from './AtlasScene';
 import { SelectionPanel } from './SelectionPanel';
 
 export function AtlasView() {
@@ -50,11 +53,33 @@ export function AtlasView() {
 
   const setSelection = useCallback(
     (next: string[]) => {
-      const q = next.length ? `?select=${next.map(encodeURIComponent).join(',')}` : '';
+      // Replace only `select`; every other query param (e.g. ?sex=) is kept.
+      const q = withSelection(window.location.search, next);
       router.replace(`${pathname}${q}`, { scroll: false });
     },
     [router, pathname],
   );
+
+  const cameraApi = useRef<AtlasCameraApi | null>(null);
+  const toast = useUi((s) => s.toast);
+  const doReset = useCallback(() => {
+    if (!atlas) return; // RV-7: nothing to reset before the manifest has loaded
+    const prev: ViewState = { selection: ids, isolate, goal: cameraApi.current?.getGoal() ?? null };
+    const intent = resetIntent(prev);
+    const undoable = hasSomethingToUndo(prev, cameraApi.current?.hasMoved() ?? false);
+    setSelection(intent.selection);
+    reset(); // store: isolate off + bumps resetNonce; the scene then frames the whole visible body
+    if (!undoable) return; // nothing to undo, no toast
+    const undo = () => {
+      setSelection(intent.undo.selection);
+      setIsolate(intent.undo.isolate);
+      if (intent.undo.goal) cameraApi.current?.setGoal(intent.undo.goal);
+    };
+    // TODO(WS-K, Wave 2): store/ui.ts toast() has no `action` yet. When it lands, call
+    // toast('View reset', 5000, { label: 'Undo', onClick: undo }). Until then Undo is not reachable from the UI.
+    void undo;
+    toast('View reset', 5000);
+  }, [atlas, ids, isolate, reset, setIsolate, setSelection, toast]);
 
   const onSelect = useCallback((hit: AtlasHit) => setSelection([hit.fmaId]), [setSelection]);
   const hasSelection = ids.length > 0;
@@ -102,6 +127,7 @@ export function AtlasView() {
         highlight={ids}
         isolate={isolate}
         resetNonce={resetNonce}
+        cameraApiRef={cameraApi}
         visibleSystems={visible}
         inset={inset}
         onSelect={onSelect}
@@ -191,7 +217,14 @@ export function AtlasView() {
           >
             <Focus className="h-4 w-4" aria-hidden /> Isolate
           </Button>
-          <Button size="sm" variant="secondary" onClick={reset} className="shadow-card">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={doReset}
+            aria-disabled={!atlas || undefined}
+            title={atlas ? 'Back to the whole-body view. Layers stay as set.' : 'Atlas still loading'}
+            className="shadow-card"
+          >
             <RotateCcw className="h-4 w-4" aria-hidden /> Reset view
           </Button>
           <Button size="sm" variant={layersOpen ? 'primary' : 'secondary'} onClick={() => setLayersOpen((v) => !v)} aria-expanded={layersOpen} className="shadow-card">
