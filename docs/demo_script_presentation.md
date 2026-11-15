@@ -1,6 +1,9 @@
-# 5-minute presentation script: MedEvolv Mentor (v2 only)
+# Presentation script: MedEvolv Mentor (v2 only) — 5-minute core + extensions to 15
 
-Slot: 5:00 hard stop. About 1:00 problem, 3:00 demo, 1:00 Q&A. One presenter drives, everything happens in the browser.
+Slot: officially 5:00. In practice the panel often lets presentations run to ~15 min. Plan for both:
+**always land the 5-minute core first** (so a hard cut at 5:00 still leaves a complete story), then pull extension
+modules (section below) in order while they keep listening. Stop at any module boundary.
+One presenter drives; everything happens in the browser.
 Live URL: **https://v2.130-210-60-153.sslip.io**. Streamlit (the minimum requirement) stays live at mentor.medevolv.in as the backup.
 
 Timings below were measured on the live v2 host on 16 Nov (warm server):
@@ -63,6 +66,24 @@ Timings below were measured on the live v2 host on 16 Nov (warm server):
 > Those are our own test sets, not a clinical-safety claim."
 
 ### 4:10–5:00 · Q&A
+
+## Extension modules (if they give you more time)
+
+Take these in order; each is self-contained and ends cleanly. All questions were timed on the live v2 host on 16 Nov.
+Rule of thumb: if they're asking questions, answer them. Questions beat modules, because questions are what they score.
+
+| # | +Time | Module | Why it's next |
+|---|---|---|---|
+| E1 | 1:30 | **Clinical vignette (graph route):** paste the malaria demo card (Odisha, ring forms, banana-shaped gametocytes). It takes 4.5 s and gives 4 citations. Open *How this answer was made*: symptom linking to the clinical graph, the condition ranked, then per-hop retrieval. | Shows the third route (graph) and multi-hop retrieval, the deepest part of the 50% pipeline criterion |
+| E2 | 1:00 | **Anatomy + 3D chip:** click the *superior orbital fissure* card. It takes 1.5 s, cites Gray's, and shows a "View in 3D" chip tagged navigation-only. Click the chip and the atlas opens on that structure. | Ties Ask to 3D in one motion |
+| E3 | 1:00 | **Knowledge graph:** Explore, then *pheochromocytoma* (the richest page: 8 sections, 58 outgoing links). Show the tier tags (certified / derived / suggested). Click a graph node, then press Back. | Shows the quote-verified ontology (~25.9k facts) behind the answers |
+| E4 | 1:00 | **3D exploration:** on `/atlas`, tap any structure. The side panel lists where the books discuss it. Use *Isolate* and *Layers*. | The wow moment, if the room responds to it |
+| E5 | 0:45 | **Share + feedback:** *Share* on an answer copies an `/a/...` link (open it: a read-only card that keeps citation pointers, not textbook text). *Report a problem* sends a wrong-citation flag. | Shows it's a product, with a quality loop |
+| E6 | 0:30 | **Mobile:** open the URL on a phone (bottom tabs Ask · Why · Explore · 3D). | Students study on phones |
+| E7 | 1:30 | **Where it goes next** (talk, no clicks): direct-to-student is small; distribution through colleges or publishers is the route. The moat is the verification layer, not the model. Two gates before selling: content rights, and the clinician review getting to zero "major" (12/18 today). | Answers "is this a business?" without overclaiming. Source: docs/strategy_review_2026-11-14.md |
+| E8 | 1:00 | **Failure analysis, deeper:** docs/failure_cases.md, cases 3–4. A graph data gap ranked lung abscess over TB, and a treatment hop borrowed an unrelated passage; fixed by requiring the passage to name the condition. | The rubric asks for failures *and fixes*; the room likes honesty |
+
+Core 5:00, plus E1–E4 ≈ 9:30, plus E5–E8 ≈ 13:15, leaving ~1:45 for Q&A inside 15 minutes.
 
 ## Prepared answers (≤20 s each)
 - **"Why not just ChatGPT?"** It can't show the page, and it doesn't decline. Ours does both, and the citation check is code, not a prompt.
