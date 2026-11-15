@@ -30,6 +30,9 @@ export function AtlasView() {
     void loadManifest();
   }, [loadManifest]);
 
+  // Layers lists only the systems the loaded model actually has (the female model adds two, the male has neither).
+  const presentSystems = useMemo(() => new Set(atlas?.parts.map((p) => p.system) ?? []), [atlas]);
+
   const [resolved, setResolved] = useState<AtlasResolved | null>(null);
   const [active, setActive] = useState(0);
   const [layersOpen, setLayersOpen] = useState(false);
@@ -75,10 +78,7 @@ export function AtlasView() {
       setIsolate(intent.undo.isolate);
       if (intent.undo.goal) cameraApi.current?.setGoal(intent.undo.goal);
     };
-    // TODO(WS-K, Wave 2): store/ui.ts toast() has no `action` yet. When it lands, call
-    // toast('View reset', 5000, { label: 'Undo', onClick: undo }). Until then Undo is not reachable from the UI.
-    void undo;
-    toast('View reset', 5000);
+    toast('View reset', { ms: 5000, action: { label: 'Undo', onClick: undo } });
   }, [atlas, ids, isolate, reset, setIsolate, setSelection, toast]);
 
   const onSelect = useCallback((hit: AtlasHit) => setSelection([hit.fmaId]), [setSelection]);
@@ -241,7 +241,7 @@ export function AtlasView() {
               </button>
             </div>
             <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
-              {SYSTEMS.filter((s) => s.id !== 'integumentary').map((s) => {
+              {SYSTEMS.filter((s) => s.id !== 'integumentary' && presentSystems.has(s.id)).map((s) => {
                 const on = visible.includes(s.id);
                 return (
                   <button
