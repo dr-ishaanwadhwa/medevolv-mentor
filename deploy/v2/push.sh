@@ -8,7 +8,8 @@ HOST="$1"; KEY="${2:-$HOME/.ssh/eka_oci}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
 V2HOST="v2.${HOST//./-}.sslip.io"
 OUT="$(mktemp -d)/v2"; mkdir -p "$OUT"
-grep -q "^DEEPSEEK_API_KEY=." .env || { echo "Add DEEPSEEK_API_KEY=... to .env first"; exit 1; }
+ENV_FILE="${ENV_FILE:-.env}"   # a worktree has no .env: ENV_FILE=../med-rag/.env
+grep -q "^DEEPSEEK_API_KEY=." "$ENV_FILE" || { echo "Add DEEPSEEK_API_KEY=... to .env first"; exit 1; }
 
 # 1. web: standalone build (models are NOT bundled; Caddy serves /models from the atlas mount)
 NEXT_PUBLIC_MODELS_BASE=/models pnpm --dir apps/web build
@@ -23,7 +24,7 @@ rsync -a --exclude models apps/web/public/ "$OUT/web/apps/web/public/"
 rsync -a --exclude __pycache__ api rag "$OUT/"
 mkdir -p "$OUT/ontology" && : > "$OUT/ontology/__init__.py" && cp ontology/merge.py "$OUT/ontology/"
 cp deploy/v2/Dockerfile.api deploy/v2/Dockerfile.web deploy/v2/docker-compose.yml deploy/v2/Caddyfile.v2-block "$OUT/"
-{ grep -E '^(DEEPSEEK_API_KEY|ATLAS_URL)=' .env; echo "LLM_BACKEND=deepseek"; echo "EMBED_BACKEND=local"; } > "$OUT/.env"
+{ grep -E '^(DEEPSEEK_API_KEY|ATLAS_URL)=' "$ENV_FILE"; echo "LLM_BACKEND=deepseek"; echo "EMBED_BACKEND=local"; } > "$OUT/.env"
 chmod 600 "$OUT/.env"
 
 SSH="ssh -i $KEY -o StrictHostKeyChecking=accept-new"

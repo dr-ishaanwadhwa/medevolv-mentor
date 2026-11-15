@@ -150,8 +150,12 @@ def concept_citations(label: str, concept_id: str) -> list[Citation]:
     for r in rows:
         if r["section_id"] not in seen:
             seen.add(r["section_id"])
-            parts = [x for x in (r.get("path") or "").split(" › ") if x]
-            out.append(_pointer(r["book_id"], r["section_id"], parts[1] if len(parts) > 1 else r.get("title", "")))
+            path = r.get("path") or []
+            if isinstance(path, str):   # older data: "Book › Chapter › ..."; current data: ["Chapter", ...] (no book)
+                parts = [x for x in path.split(" › ") if x][1:]
+            else:
+                parts = [x for x in path if x]
+            out.append(_pointer(r["book_id"], r["section_id"], re_chapter(parts[0]) if parts else r.get("title", "")))
     return out[:MAX_CITATIONS]
 
 

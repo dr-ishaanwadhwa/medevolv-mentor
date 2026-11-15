@@ -191,3 +191,16 @@ def test_feedback(db):
     assert ok(kind="spam").status_code == 422 and ok().status_code == 422
     assert ok(kind="other", note="x" * 1001).status_code == 422
     assert ok(kind="other", note="x" * 1000).status_code == 200
+
+
+def test_spatial_resolve_handles_list_paths():
+    """mentions rows carry `path` as a list (chapter first); resolve once crashed on .split() for every concept."""
+    from pathlib import Path
+    import pytest
+    from fastapi.testclient import TestClient
+    from api.main import app
+    if not Path("data/graph").exists():
+        pytest.skip("no graph data")
+    r = TestClient(app).get("/api/spatial/resolve", params={"label": "Optic chiasm"})
+    assert r.status_code == 200
+    assert all(not c["chapter"][:1].isdigit() for c in r.json()["citations"])
