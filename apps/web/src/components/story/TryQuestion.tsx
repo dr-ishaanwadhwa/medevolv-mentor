@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { exploreStory, type StoryExploreResult } from '@/lib/api';
-import { Button } from '@/components/ui';
+import { Button, Tooltip } from '@/components/ui';
 import type { StoryBook } from './data';
 import { bookNick } from './data';
 import { bookColor } from './palette';
@@ -76,14 +76,16 @@ export default function TryQuestion({ live, books, dark, result, onResult }: {
             onChange={(e) => setQ(e.target.value)}
             disabled={busy}
           />
-          <Button type="submit" variant="primary" className="st-try-btn" disabled={busy || !q.trim()} aria-busy={busy || undefined}>
+          <Button type="submit" variant="primary" className="st-try-btn" disabled={busy || !q.trim()} aria-busy={busy || undefined} tip={busy ? { purpose: 'A search is already running.', effect: 'Results appear below.', disabled: 'Searching now. Results appear below.' } : 'story.try.search'}>
             {busy ? 'Searching…' : 'Search'}
           </Button>
         </div>
       </form>
       <div className="st-try-chips" aria-label="Example questions">
         {SUGGESTIONS.map((s) => (
-          <button key={s} type="button" className="st-try-chip" disabled={busy} onClick={() => void ask(s)}>{s}</button>
+          <Tooltip key={s} tip="story.try.example">
+            <button type="button" className="st-try-chip" disabled={busy} onClick={() => void ask(s)}>{s}</button>
+          </Tooltip>
         ))}
       </div>
       <div role="status" aria-live="polite" className={`st-try-status${status === 'error' ? ' st-try-status-err' : ''}`}>

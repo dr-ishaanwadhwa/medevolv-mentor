@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Search, X } from 'lucide-react';
-import { SkeletonLines } from '@/components/ui';
+import { SkeletonLines, Tooltip } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { conceptHref, searchConcepts, typeMeta, type ConceptHit } from './api';
 
@@ -135,6 +135,7 @@ export function ExploreView() {
           className="h-[52px] w-full rounded-2xl border border-border bg-surface pl-11 pr-11 text-base text-ink shadow-card outline-none placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
         {q && (
+          <Tooltip tip="explore.clear" iconOnly>
           <button
             type="button"
             aria-label="Clear search"
@@ -146,14 +147,15 @@ export function ExploreView() {
           >
             <X className="h-4 w-4" />
           </button>
+          </Tooltip>
         )}
       </div>
 
       {searching && types.length > 1 && (
         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter by type">
           {[['all', hits?.length ?? 0] as const, ...types].map(([t, n]) => (
+            <Tooltip key={t} tip="explore.filter">
             <button
-              key={t}
               type="button"
               aria-pressed={type === t}
               onClick={() => {
@@ -169,6 +171,7 @@ export function ExploreView() {
               {t === 'all' ? 'All' : typeMeta(t).label}
               <span className="font-mono text-[0.72rem] text-muted">{n}</span>
             </button>
+            </Tooltip>
           ))}
         </div>
       )}
@@ -196,7 +199,8 @@ export function ExploreView() {
             className={cn('card divide-y divide-border overflow-hidden transition-opacity', state === 'loading' && 'opacity-60')}
           >
             {shown.map((h, i) => (
-              <li key={h.id} id={`res-${i}`} role="option" aria-selected={i === cursor}>
+              <li key={h.id} id={`res-${i}`} role="option" aria-selected={i === cursor} data-tip-id="explore.result">
+                <Tooltip tip="explore.result">
                 <Link
                   href={conceptHref(h.id)}
                   onMouseEnter={() => setCursor(i)}
@@ -213,6 +217,7 @@ export function ExploreView() {
                   </span>
                   <ArrowRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
                 </Link>
+                </Tooltip>
               </li>
             ))}
           </ul>
@@ -226,13 +231,15 @@ export function ExploreView() {
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {SUGGESTED.map((s) => (
-              <Link key={s.id} href={conceptHref(s.id)} className="card group flex min-h-[88px] flex-col justify-between gap-2 p-4 transition-colors hover:border-accent/50 hover:bg-accent-soft/60">
+              <Tooltip key={s.id} tip="explore.suggested">
+              <Link href={conceptHref(s.id)} className="card group flex min-h-[88px] flex-col justify-between gap-2 p-4 transition-colors hover:border-accent/50 hover:bg-accent-soft/60">
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-semibold leading-snug">{s.label}</span>
                   <TypePill type={s.type} />
                 </div>
                 <span className="text-sm text-muted">{s.hint}</span>
               </Link>
+              </Tooltip>
             ))}
           </div>
         </section>

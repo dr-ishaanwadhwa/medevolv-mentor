@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronDown, Compass, Network } from 'lucide-react';
-import { Chip, LinkButton, Skeleton, SkeletonLines, Tag } from '@/components/ui';
+import { Chip, LinkButton, Skeleton, SkeletonLines, Tag, Tooltip } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { Concept3D } from './Concept3D';
 import { TypePill } from './ExploreView';
@@ -54,19 +54,21 @@ function LinkGroups({ links, tierTag }: { links: LinkRef[]; tierTag?: string }) 
             </div>
             <div className="flex flex-wrap gap-1.5">
               {list.map((l) => (
-                <Chip key={l.id} href={conceptHref(l.id)} className="text-[0.84rem]">
+                <Chip key={l.id} href={conceptHref(l.id)} className="text-[0.84rem]" tip="explore.link">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: typeMeta(l.type).color }} aria-hidden />
                   {l.label}
                 </Chip>
               ))}
               {items.length > LIMIT && (
-                <button
-                  type="button"
-                  onClick={() => setOpenAll((o) => ({ ...o, [pred]: !expanded }))}
-                  className="min-h-[36px] rounded-full px-3 text-sm text-accent hover:bg-accent-soft"
-                >
-                  {expanded ? 'Show fewer' : `+${items.length - LIMIT} more`}
-                </button>
+                <Tooltip tip="explore.more">
+                  <button
+                    type="button"
+                    onClick={() => setOpenAll((o) => ({ ...o, [pred]: !expanded }))}
+                    className="min-h-[36px] rounded-full px-3 text-sm text-accent hover:bg-accent-soft"
+                  >
+                    {expanded ? 'Show fewer' : `+${items.length - LIMIT} more`}
+                  </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -124,13 +126,15 @@ export function ConceptView({ id }: { id: string }) {
   const graphTypes = useMemo(() => [...new Set(page?.graph.nodes.map((n) => n.type) ?? [])], [page]);
 
   const backBtn = (
-    <button
-      type="button"
-      onClick={back}
-      className="-ml-2 mb-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-2 text-sm text-muted hover:bg-surface2 hover:text-ink"
-    >
-      <ArrowLeft className="h-4 w-4" aria-hidden /> Back
-    </button>
+    <Tooltip tip="explore.back">
+      <button
+        type="button"
+        onClick={back}
+        className="-ml-2 mb-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-2 text-sm text-muted hover:bg-surface2 hover:text-ink"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden /> Back
+      </button>
+    </Tooltip>
   );
 
   if (state === 'notfound' || state === 'error') {
@@ -147,11 +151,13 @@ export function ConceptView({ id }: { id: string }) {
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             {state === 'error' && (
-              <button type="button" onClick={() => setAttempt((a) => a + 1)} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-medium hover:bg-surface2">
-                Try again
-              </button>
+              <Tooltip tip="explore.retry">
+                <button type="button" onClick={() => setAttempt((a) => a + 1)} className="min-h-[44px] rounded-xl border border-border px-4 text-sm font-medium hover:bg-surface2">
+                  Try again
+                </button>
+              </Tooltip>
             )}
-            <LinkButton href="/explore" variant="primary">
+            <LinkButton href="/explore" variant="primary" tip="explore.search">
               Search concepts
             </LinkButton>
           </div>
@@ -240,9 +246,11 @@ export function ConceptView({ id }: { id: string }) {
                   ))}
                 </ul>
                 {page.sections.length > 6 && (
-                  <button type="button" onClick={() => setAllSections((v) => !v)} className="mt-2 min-h-[40px] rounded-lg px-1 text-sm text-accent hover:underline">
-                    {allSections ? 'Show fewer sections' : `Show all ${page.sections.length} sections`}
-                  </button>
+                  <Tooltip tip="explore.sections">
+                    <button type="button" onClick={() => setAllSections((v) => !v)} className="mt-2 min-h-[40px] rounded-lg px-1 text-sm text-accent hover:underline">
+                      {allSections ? 'Show fewer sections' : `Show all ${page.sections.length} sections`}
+                    </button>
+                  </Tooltip>
                 )}
               </>
             )}
@@ -264,7 +272,7 @@ export function ConceptView({ id }: { id: string }) {
             <Section id="hubs" title="Part of">
               <div className="flex flex-wrap gap-1.5">
                 {page.hubs.map((h) => (
-                  <Chip key={h.hub_id} href={`/explore?q=${encodeURIComponent(h.label)}`}>
+                  <Chip key={h.hub_id} href={`/explore?q=${encodeURIComponent(h.label)}`} tip="explore.hub">
                     {h.label}
                   </Chip>
                 ))}
@@ -274,6 +282,7 @@ export function ConceptView({ id }: { id: string }) {
 
           {page.see_also.length > 0 && (
             <Section id="see-also" title="See also" aside={<Tag>suggested</Tag>}>
+              <Tooltip tip="explore.seeAlso.toggle">
               <button
                 type="button"
                 aria-expanded={seeAlso}
@@ -286,11 +295,12 @@ export function ConceptView({ id }: { id: string }) {
                 </span>
                 <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted transition-transform', seeAlso && 'rotate-180')} aria-hidden />
               </button>
+              </Tooltip>
               {seeAlso && (
                 <ul className="mt-2 flex flex-wrap gap-1.5">
                   {page.see_also.map((s) => (
                     <li key={s.id ?? s.label}>
-                      {s.id ? <Chip href={conceptHref(s.id)}>{s.label}</Chip> : <Tag className="min-h-[34px] px-3 text-sm normal-case tracking-normal">{s.label}</Tag>}
+                      {s.id ? <Chip href={conceptHref(s.id)} tip="explore.seeAlso.item">{s.label}</Chip> : <Tag className="min-h-[34px] px-3 text-sm normal-case tracking-normal">{s.label}</Tag>}
                     </li>
                   ))}
                 </ul>
@@ -299,9 +309,11 @@ export function ConceptView({ id }: { id: string }) {
           )}
 
           <p className="mt-10 text-xs text-muted">
-            <Link href="/explore" className="underline underline-offset-2 hover:text-ink">
-              Search another concept
-            </Link>
+            <Tooltip tip="explore.search">
+              <Link href="/explore" className="underline underline-offset-2 hover:text-ink">
+                Search another concept
+              </Link>
+            </Tooltip>
           </p>
         </div>
       </div>

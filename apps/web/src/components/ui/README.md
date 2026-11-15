@@ -15,8 +15,18 @@ Fonts: `font-sans` (Instrument Sans), `font-mono` (IBM Plex Mono). Utility class
 | `<Markdown text onCite?>` | Safe markdown (raw HTML escaped, links scheme-checked). `[n]` becomes a clickable chip calling `onCite(n)`. |
 | `<Drawer open onClose title eyebrow? footer?>` | Right panel on desktop, bottom sheet on mobile. Esc closes, focus is trapped and restored. |
 | `<Skeleton className>` / `<SkeletonLines lines>` | Loading placeholders. |
-| `useUi().toast("text")` (`@/store/ui`) | Toast; `<Toaster/>` is mounted in the shell. |
+| `useUi().toast("text", { ms?, action? })` (`@/store/ui`) | Toast; `<Toaster/>` is mounted in the shell. `action: { label: "Undo", onClick }` adds an inline button (stays 6 s by default). The old `toast(text, ms)` form still works. |
+| `<Tooltip tip>` / `useTip(tip, { longPress? })` | Tooltip for any control. `tip` is a `TipId` from `@/lib/tips` or `{ purpose, effect, disabled? }`. Hover 500 ms, keyboard focus at once, Escape closes, persistent `aria-describedby` description, portal bubble, touch long-press only for icon-only `<button>`s (`iconOnly`). Wrap raw controls directly (`<Tooltip tip="x"><button/></Tooltip>`); kit controls take `tip` as a prop. |
+| `<CoachMark id text live?>` | One-time dismissible hint on touch devices for non-obvious controls. Placed by the feature's owner; pass `live={false}` while the feature flag is off. |
 
 Layout notes: the shell gives a left rail (>=768px) and a bottom tab bar (<768px). Pages render inside `<main>`; mobile
 bottom space is already reserved (`.pb-tabbar`). Use the `.h-page` class for a full-viewport-height canvas region (accounts for mobile top bar, tab bar, safe area).
 `/explore`, `/c`, `/atlas` are listed in the nav; `/c/*` highlights Explore.
+
+## Tooltips (R3)
+
+- Copy lives in `@/lib/tips/<feature>.ts` (`shell`, `why`, `explore`, `story`; `atlas`, `answer`, `landing` belong to their workstreams) and is merged in `@/lib/tips/index.ts`. Rules are in that file's header: do not repeat the label, state purpose and effect, plain words, about 20 words.
+- `Button`, `LinkButton`, `Chip` and `CitationChip` take an optional `tip`. A disabled `Button` whose tip has a `disabled` reason stays focusable (`aria-disabled`) so the reason can be read; its click is suppressed.
+- Remove native `title` where a tip exists.
+- `pnpm check` runs `scripts/check-tips.mjs`: it fails on a control without a tip that is not in `scripts/tips-baseline.json`. After removing gaps run `node scripts/check-tips.mjs --update` so the baseline shrinks.
+- `<Markdown citeTip={(n) => ...}>` gives the inline `[n]` chips a delegated tooltip with the real source pointer.

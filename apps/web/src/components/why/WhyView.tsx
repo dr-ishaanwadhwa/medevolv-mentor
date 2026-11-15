@@ -43,10 +43,10 @@ export function WhyView() {
             <div className="flex items-start justify-between gap-3">
               <div className="label-mono">Your question</div>
               <div className="-mr-2 -mt-2 flex">
-                <Button size="sm" variant="ghost" onClick={edit}>
+                <Button size="sm" variant="ghost" onClick={edit} tip="why.edit">
                   <Pencil className="h-4 w-4" /> Edit
                 </Button>
-                <Button size="sm" variant="ghost" onClick={reset}>
+                <Button size="sm" variant="ghost" onClick={reset} tip="why.new">
                   <RotateCcw className="h-4 w-4" /> New
                 </Button>
               </div>

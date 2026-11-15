@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { Tooltip } from './Tooltip';
 
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
 
@@ -81,6 +82,7 @@ export function Drawer({
             {eyebrow && <div className="label-mono mb-1">{eyebrow}</div>}
             <h2 className="text-lg font-semibold leading-snug">{title}</h2>
           </div>
+          <Tooltip tip="shell.drawer.close" iconOnly>
           <button
             type="button"
             data-autofocus
@@ -90,6 +92,7 @@ export function Drawer({
           >
             <X className="h-5 w-5" />
           </button>
+          </Tooltip>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
         {footer && <div className="border-t border-border px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">{footer}</div>}

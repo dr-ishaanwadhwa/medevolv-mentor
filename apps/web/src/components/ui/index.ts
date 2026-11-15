@@ -6,3 +6,5 @@ export { CitationChip } from './CitationChip';
 export { Markdown, renderMarkdown } from './Markdown';
 export { Drawer } from './Drawer';
 export { Toaster } from './Toast';
+export { Tooltip, useTip } from './Tooltip';
+export { CoachMark } from './CoachMark';

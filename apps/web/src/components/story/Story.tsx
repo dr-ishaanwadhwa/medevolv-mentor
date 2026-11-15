@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LinkButton } from '@/components/ui';
+import { LinkButton, Tooltip } from '@/components/ui';
 import { renderMarkdown } from '@/components/ui/Markdown';
 import HowClassic from '@/app/how/HowClassic';
 import { CHAPTERS, RAIL_LABELS } from './narration';
@@ -189,12 +189,16 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
           <div className="st-abs" data-atlas-tag><div className="st-atag"><span>Optic chiasm · FMA62045</span><span className="st-nav-tag">Navigation only</span></div></div>
           <div className="st-cue" data-cue>Scroll<i /></div>
 
-          <a className="st-skip" href="/how?classic=1" aria-label="Skip the story"><span className="md:hidden">Skip</span><span className="hidden md:inline">Skip the story</span></a>
+          <Tooltip tip="story.skip">
+            <a className="st-skip" href="/how?classic=1" aria-label="Skip the story"><span className="md:hidden">Skip</span><span className="hidden md:inline">Skip the story</span></a>
+          </Tooltip>
           <nav className="st-rail" aria-label="Story chapters">
             {CHAPTERS.map((c, k) => (
-              <button key={c.id} type="button" className="st-dot" aria-label={`Chapter ${k + 1}: ${RAIL_LABELS[c.id]}`} aria-current={active === k ? 'step' : undefined} onClick={() => jump(k)}>
-                <i /><span>{RAIL_LABELS[c.id]}</span>
-              </button>
+              <Tooltip key={c.id} tip={{ purpose: `Chapter ${k + 1} of ${CHAPTERS.length}: ${RAIL_LABELS[c.id]}.`, effect: 'Scrolls the story to it.' }}>
+                <button type="button" className="st-dot" aria-label={`Chapter ${k + 1}: ${RAIL_LABELS[c.id]}`} aria-current={active === k ? 'step' : undefined} onClick={() => jump(k)}>
+                  <i /><span>{RAIL_LABELS[c.id]}</span>
+                </button>
+              </Tooltip>
             ))}
           </nav>
         </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 export function ThemeToggle({ className }: { className?: string }) {
   const [dark, setDark] = useState<boolean | null>(null);
@@ -21,6 +22,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   };
 
   return (
+    <Tooltip tip={dark ? 'shell.theme.toLight' : 'shell.theme.toDark'} iconOnly>
     <button
       type="button"
       onClick={toggle}
@@ -29,5 +31,6 @@ export function ThemeToggle({ className }: { className?: string }) {
     >
       {dark === null ? <span className="h-[18px] w-[18px]" /> : dark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
     </button>
+    </Tooltip>
   );
 }

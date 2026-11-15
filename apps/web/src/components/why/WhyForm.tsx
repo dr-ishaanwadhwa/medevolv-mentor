@@ -1,10 +1,49 @@
 'use client';
 
 import { Plus, Sparkles, X } from 'lucide-react';
-import { Button } from '@/components/ui';
+import type { HTMLAttributes } from 'react';
+import { Button, Tooltip, useTip } from '@/components/ui';
 import { LETTERS } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { useWhy } from '@/store/why';
+
+/** The "I picked this" radio. The input is visually hidden, so hover lives on the label and focus on the input. */
+function PickRadio({ picked, letter, onPick }: { picked: boolean; letter: string; onPick: () => void }) {
+  const t = useTip('why.pick');
+  const b = t.bind({}) as HTMLAttributes<HTMLElement>;
+  return (
+    <>
+      <label
+        ref={t.ref}
+        onPointerEnter={b.onPointerEnter}
+        onPointerLeave={b.onPointerLeave}
+        className="grid h-11 min-w-[44px] cursor-pointer place-items-center"
+      >
+        <input
+          type="radio"
+          name="picked"
+          data-tip-id="why.pick"
+          checked={picked}
+          onChange={onPick}
+          onFocus={b.onFocus}
+          onBlur={b.onBlur}
+          aria-describedby={b['aria-describedby']}
+          aria-label={`I picked option ${letter}`}
+          className="peer sr-only"
+        />
+        <span
+          className={cn(
+            'grid h-7 w-7 place-items-center rounded-full border font-mono text-xs font-semibold transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent',
+            picked ? 'border-accent bg-accent text-accent-ink' : 'border-border bg-surface text-muted',
+          )}
+        >
+          {letter}
+        </span>
+      </label>
+      {t.node}
+    </>
+  );
+}
 
 export function WhyForm() {
   const { form, setForm, setOption, addOption, removeOption, prefill, submit } = useWhy();
@@ -30,7 +69,7 @@ export function WhyForm() {
           <label htmlFor="why-q" className="label-mono">
             The question
           </label>
-          <Button size="sm" variant="ghost" onClick={prefill} className="-mr-2">
+          <Button size="sm" variant="ghost" onClick={prefill} className="-mr-2" tip="why.example">
             <Sparkles className="h-4 w-4" /> Try an example
           </Button>
         </div>
@@ -58,24 +97,7 @@ export function WhyForm() {
                   picked ? 'border-accent bg-accent-soft/50' : 'border-border',
                 )}
               >
-                <label className="grid h-11 min-w-[44px] cursor-pointer place-items-center" title="I picked this">
-                  <input
-                    type="radio"
-                    name="picked"
-                    checked={picked}
-                    onChange={() => setForm({ chosen: i })}
-                    aria-label={`I picked option ${LETTERS[i]}`}
-                    className="peer sr-only"
-                  />
-                  <span
-                    className={cn(
-                      'grid h-7 w-7 place-items-center rounded-full border font-mono text-xs font-semibold transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent',
-                      picked ? 'border-accent bg-accent text-accent-ink' : 'border-border bg-surface text-muted',
-                    )}
-                  >
-                    {LETTERS[i]}
-                  </span>
-                </label>
+                <PickRadio picked={picked} letter={LETTERS[i]} onPick={() => setForm({ chosen: i })} />
                 <input
                   value={o}
                   onChange={(e) => setOption(i, e.target.value)}
@@ -86,28 +108,30 @@ export function WhyForm() {
                 />
                 {picked && <span className="hidden shrink-0 font-mono text-[0.68rem] uppercase tracking-wider text-accent sm:inline">I picked</span>}
                 {form.options.length > 2 && (
-                  <button
-                    type="button"
-                    onClick={() => removeOption(i)}
-                    aria-label={`Remove option ${LETTERS[i]}`}
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface2 hover:text-bad"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <Tooltip tip="why.remove" iconOnly>
+                    <button
+                      type="button"
+                      onClick={() => removeOption(i)}
+                      aria-label={`Remove option ${LETTERS[i]}`}
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface2 hover:text-bad"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             );
           })}
         </div>
         {form.options.length < 6 && (
-          <Button size="sm" variant="ghost" onClick={addOption} className="mt-2 -ml-2">
+          <Button size="sm" variant="ghost" onClick={addOption} className="mt-2 -ml-2" tip="why.addOption">
             <Plus className="h-4 w-4" /> Add option
           </Button>
         )}
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="primary" size="lg" disabled={!valid}>
+        <Button type="submit" variant="primary" size="lg" disabled={!valid} tip="why.submit">
           Why was I wrong?
         </Button>
         {missing && <span className="text-sm text-muted">{missing}</span>}

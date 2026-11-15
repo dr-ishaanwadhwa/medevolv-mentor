@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowUpRight, Compass, Lightbulb, MessageCircleQuestion } from 'lucide-react';
-import { Chip, Markdown, StatusPill } from '@/components/ui';
+import { Chip, Markdown, StatusPill, Tooltip } from '@/components/ui';
 import { FeedbackButton, ShareButton } from '@/components/chat/Actions';
 import { SourceList } from '@/components/chat/SourceList';
 import { saveAnswer, type VerdictEvent } from '@/lib/api';
@@ -42,10 +42,10 @@ export function VerdictCard({
           </ul>
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
-              <Chip href={askHref(sub.question, false)}>
+              <Chip href={askHref(sub.question, false)} tip="why.verdict.ask">
                 <MessageCircleQuestion className="h-4 w-4" /> Ask it as a concept question
               </Chip>
-              <Chip href={exploreHref(sub.question)}>
+              <Chip href={exploreHref(sub.question)} tip="why.verdict.explore">
                 <Compass className="h-4 w-4" /> Explore related topics
               </Chip>
             </div>
@@ -95,13 +95,15 @@ export function VerdictCard({
           <ul className="grid gap-2">
             {v.viva_questions.map((q) => (
               <li key={q}>
-                <Link
-                  href={readOnly ? askHref(q, false) : askHref(q)}
-                  className="group flex min-h-[44px] items-start justify-between gap-3 rounded-xl border border-border bg-bg p-3.5 text-[0.93rem] leading-snug transition-colors hover:border-accent/50 hover:bg-accent-soft/40"
-                >
-                  <span>{q}</span>
-                  <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-muted group-hover:text-accent" aria-hidden />
-                </Link>
+                <Tooltip tip="why.verdict.viva">
+                  <Link
+                    href={readOnly ? askHref(q, false) : askHref(q)}
+                    className="group flex min-h-[44px] items-start justify-between gap-3 rounded-xl border border-border bg-bg p-3.5 text-[0.93rem] leading-snug transition-colors hover:border-accent/50 hover:bg-accent-soft/40"
+                  >
+                    <span>{q}</span>
+                    <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-muted group-hover:text-accent" aria-hidden />
+                  </Link>
+                </Tooltip>
               </li>
             ))}
           </ul>
@@ -109,7 +111,7 @@ export function VerdictCard({
       )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Chip href={exploreHref(sub.options[correct] ?? sub.question)}>
+        <Chip href={exploreHref(sub.options[correct] ?? sub.question)} tip="why.verdict.explain">
           <Compass className="h-4 w-4 text-accent" /> Explain the concept
         </Chip>
         {!readOnly && (

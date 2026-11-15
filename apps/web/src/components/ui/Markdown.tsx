@@ -1,8 +1,10 @@
 'use client';
 
-import { useMemo, type MouseEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type PointerEvent } from 'react';
 import { Marked } from 'marked';
 import { cn } from '@/lib/cn';
+import { Bubble } from './Tooltip';
+import { createTriggerController, tipStore, type TriggerController } from './tooltip-logic';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -46,25 +48,116 @@ export function renderMarkdown(text: string): string {
   return md.parse(text, { async: false }) as string;
 }
 
-/** Safe markdown. Inline [n] markers become chips; clicks call `onCite(n)`. */
+/**
+ * Safe markdown. Inline [n] markers become chips; clicks call `onCite(n)`.
+ *
+ * The chips are HTML strings, so they get a delegated tooltip: one set of listeners on the container
+ * reads `data-cite` and shows `citeTip(n)` (for example "Source 2: Harrison 22e, ch 12, p 345. Opens the source.").
+ * Each chip also gets a hidden description for aria-describedby. Without `citeTip` the text is generic.
+ */
 export function Markdown({
   text,
   onCite,
   className,
   small,
+  citeTip,
 }: {
   text: string;
   onCite?: (n: number) => void;
   className?: string;
   small?: boolean;
+  citeTip?: (n: number) => string | null | undefined;
 }) {
   const html = useMemo(() => renderMarkdown(text), [text]);
+  const uid = useId().replace(/:/g, '');
+  const root = useRef<HTMLDivElement>(null);
+  const anchors = useRef(new Map<string, { el: HTMLElement; text: string; ctrl: TriggerController }>());
+  const openId = useSyncExternalStoreOpen();
+  const [, bump] = useState(0);
+
+  const describe = (n: number) => citeTip?.(n) || `Source ${n}. Opens the source.`;
+
+  // Give every generated chip a key, a persistent description and an aria-describedby.
+  useLayoutEffect(() => {
+    const host = root.current;
+    if (!host) return;
+    const map = anchors.current;
+    map.forEach((a) => a.ctrl.dispose());
+    map.clear();
+    host.querySelectorAll<HTMLElement>('[data-cite]').forEach((el, i) => {
+      const n = Number(el.dataset.cite);
+      const key = `tip${uid}c${i}`;
+      const desc = document.createElement('span');
+      desc.id = `${key}-d`;
+      desc.className = 'sr-only';
+      desc.textContent = describe(n);
+      el.after(desc);
+      el.setAttribute('aria-describedby', desc.id);
+      el.dataset.tipKey = key;
+      map.set(key, { el, text: desc.textContent, ctrl: createTriggerController(key, { longPress: true }) });
+    });
+    bump((x) => x + 1);
+    return () => {
+      map.forEach((a) => a.ctrl.dispose());
+      map.clear();
+      host.querySelectorAll('span.sr-only[id^="tip"]').forEach((d) => d.remove());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- describe is derived from citeTip
+  }, [html, citeTip, uid]);
+
+  const find = (target: EventTarget | null) => {
+    const el = (target as HTMLElement | null)?.closest?.<HTMLElement>('[data-tip-key]');
+    return el ? anchors.current.get(el.dataset.tipKey!) : undefined;
+  };
+
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-cite]');
     if (el && onCite) onCite(Number(el.dataset.cite));
   };
+  const touch = (e: PointerEvent) => e.pointerType === 'touch';
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') tipStore.close();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const open = openId ? anchors.current.get(openId) : undefined;
   return (
-    // eslint-disable-next-line react/no-danger -- html is produced by marked with raw HTML escaped
-    <div className={cn('md', small && 'md-sm', className)} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
+    <>
+      <div
+        ref={root}
+        className={cn('md', small && 'md-sm', className)}
+        onClickCapture={(e) => {
+          if (find(e.target)?.ctrl.consumeSuppressedClick()) e.stopPropagation();
+        }}
+        onClick={onClick}
+        onPointerOver={(e) => !touch(e) && find(e.target)?.ctrl.hoverEnter()}
+        onPointerOut={(e) => !touch(e) && find(e.target)?.ctrl.hoverLeave()}
+        onFocus={(e) => {
+          let visible = true;
+          try {
+            visible = (e.target as HTMLElement).matches(':focus-visible');
+          } catch {
+            /* treat as keyboard focus */
+          }
+          find(e.target)?.ctrl.focus(visible);
+        }}
+        onBlur={(e) => find(e.target)?.ctrl.blur()}
+        onPointerDown={(e) => touch(e) && find(e.target)?.ctrl.touchDown(e.clientX, e.clientY)}
+        onPointerMove={(e) => touch(e) && find(e.target)?.ctrl.touchMove(e.clientX, e.clientY)}
+        onPointerUp={(e) => touch(e) && find(e.target)?.ctrl.touchUp()}
+        onPointerCancel={(e) => find(e.target)?.ctrl.touchCancel()}
+        // eslint-disable-next-line react/no-danger -- html is produced by marked with raw HTML escaped
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {open && <Bubble trigger={open.el} text={open.text} controller={open.ctrl} />}
+    </>
   );
+}
+
+function useSyncExternalStoreOpen() {
+  return useSyncExternalStore(tipStore.subscribe, tipStore.get, () => null);
 }
