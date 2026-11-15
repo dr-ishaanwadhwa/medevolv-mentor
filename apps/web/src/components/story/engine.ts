@@ -12,7 +12,11 @@ export class ScrollEngine {
     const top = stageR.top; // sticky offset (topbar height)
     const sy = window.scrollY;
     this.starts = this.sections.map((el) => el.getBoundingClientRect().top + sy - top);
-    this.spans = this.sections.map((el) => Math.max(1, el.offsetHeight - stageR.height));
+    // A chapter runs until the next one starts (no dead tail where p is pinned at 1 and no panel shows);
+    // only the last chapter ends a viewport early, where the sticky stage stops.
+    const n = this.sections.length;
+    this.spans = this.sections.map((el, i) =>
+      Math.max(1, i < n - 1 ? this.starts[i + 1] - this.starts[i] : el.offsetHeight - stageR.height));
   }
   /** Raw (unsmoothed) story coordinate for the current scroll. */
   target(): number {
