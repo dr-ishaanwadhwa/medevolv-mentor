@@ -45,10 +45,32 @@ export async function loadStory(mobile: boolean, signal?: AbortSignal): Promise<
     }),
   ]);
   const N = sj.n;
-  if (buf.byteLength < N * 25) throw new Error('library.bin is incomplete');
-  const galaxyAll = new Float32Array(buf, 0, N * 3);
-  const clusterAll = new Float32Array(buf, N * 12, N * 3);
-  const bookAll = new Uint8Array(buf, N * 24, N);
+  let galaxyAll: Float32Array;
+  let clusterAll: Float32Array;
+  let bookAll: Uint8Array;
+  const magic = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
+  if (magic.length === 4 && String.fromCharCode(...magic) === 'LIB2') {
+    // LIB2: 16-byte header (magic, uint32 N, float32 scale), Int16 galaxy, Int16 cluster, Uint8 book
+    if (buf.byteLength < 16 + N * 25) throw new Error('library.bin is incomplete');
+    const dv = new DataView(buf);
+    const scale = dv.getFloat32(8, true);
+    const k = scale / 32767;
+    const gq = new Int16Array(buf, 16, N * 3);
+    const cq = new Int16Array(buf, 16 + N * 6, N * 3);
+    galaxyAll = new Float32Array(N * 3);
+    clusterAll = new Float32Array(N * 3);
+    for (let j = 0; j < N * 3; j++) {
+      galaxyAll[j] = gq[j] * k;
+      clusterAll[j] = cq[j] * k;
+    }
+    bookAll = new Uint8Array(buf, 16 + N * 12, N);
+  } else {
+    // legacy: Float32 galaxy, Float32 cluster, Uint8 book
+    if (buf.byteLength < N * 25) throw new Error('library.bin is incomplete');
+    galaxyAll = new Float32Array(buf, 0, N * 3);
+    clusterAll = new Float32Array(buf, N * 12, N * 3);
+    bookAll = new Uint8Array(buf, N * 24, N);
+  }
 
   const near = sj.journey?.near ?? [];
   const evidence = sj.journey?.evidence ?? [];

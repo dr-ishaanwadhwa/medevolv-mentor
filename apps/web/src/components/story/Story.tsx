@@ -18,7 +18,6 @@ const EVALS: [string, string, number, number][] = [
 ];
 
 function hasWebGL(): boolean {
-  if (/[?&]nowebgl/.test(location.search)) return false; // test hook for the fallback
   try {
     const c = document.createElement('canvas');
     return !!(c.getContext('webgl2') || c.getContext('webgl'));
@@ -68,7 +67,7 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctl = useRef<StoryController | null>(null);
   const [active, setActive] = useState(0);
-  const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches || /[?&]reduced/.test(location.search), []);
+  const reduced = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
   const { story } = data;
   const books = story.books;
   const evidence = story.journey?.evidence ?? [];
