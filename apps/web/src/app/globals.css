@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens: same palette as the Streamlit app (med-rag/app.py). Channels so Tailwind can apply alpha. */
+:root {
+  --c-bg: 244 247 247;
+  --c-surface: 255 255 255;
+  --c-surface2: 238 243 244;
+  --c-ink: 21 35 42;
+  --c-muted: 90 107 114;
+  --c-border: 215 224 226;
+  --c-accent: 15 107 116;
+  --c-accent-soft: 226 240 241;
+  --c-accent-ink: 255 255 255;
+  --c-good: 29 122 70;
+  --c-good-soft: 227 243 234;
+  --c-warn: 154 98 0;
+  --c-warn-soft: 251 240 219;
+  --c-bad: 176 50 58;
+  --c-bad-soft: 248 227 228;
+  --rail-w: 232px;
+  --tabbar-h: 3.5rem;
+  --topbar-h: 3rem;
+  color-scheme: light;
+}
+:root.dark {
+  --c-bg: 13 24 29;
+  --c-surface: 20 35 42;
+  --c-surface2: 26 45 53;
+  --c-ink: 230 238 240;
+  --c-muted: 159 178 184;
+  --c-border: 43 61 67;
+  --c-accent: 79 179 189;
+  --c-accent-soft: 23 52 58;
+  --c-accent-ink: 8 38 43;
+  --c-good: 111 211 155;
+  --c-good-soft: 23 51 36;
+  --c-warn: 232 178 90;
+  --c-warn-soft: 58 45 18;
+  --c-bad: 240 138 144;
+  --c-bad-soft: 61 26 29;
+  color-scheme: dark;
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+    overflow-wrap: anywhere;
+  }
+  h1, h2, h3 { letter-spacing: -0.01em; }
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-accent));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection { background: rgb(var(--c-accent) / 0.22); }
+  textarea, input { font: inherit; }
+}
+
+@layer components {
+  .label-mono { @apply font-mono text-[0.72rem] font-medium uppercase tracking-[0.08em] text-muted; }
+  .card { @apply rounded-card border border-border bg-surface shadow-card; }
+  .page { @apply mx-auto w-full max-w-3xl px-4 sm:px-6; }
+
+  /* inline [n] markers produced by the Markdown renderer */
+  .cite-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 1.35rem; height: 1.35rem; padding: 0 .3rem; margin: 0 .1rem;
+    vertical-align: baseline; transform: translateY(-.08em);
+    font: 600 .72rem var(--font-mono), ui-monospace, monospace;
+    color: rgb(var(--c-accent)); background: rgb(var(--c-accent-soft));
+    border: 1px solid rgb(var(--c-accent) / .3); border-radius: 999px; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .cite-chip:hover { background: rgb(var(--c-accent)); color: rgb(var(--c-accent-ink)); }
+  .cite-chip.uncited { color: rgb(var(--c-muted)); background: rgb(var(--c-surface2)); border-color: rgb(var(--c-border)); }
+
+  /* rendered markdown */
+  .md { line-height: 1.65; font-size: 1rem; }
+  .md > * + * { margin-top: .75em; }
+  .md p { margin: 0; }
+  .md p + p { margin-top: .75em; }
+  .md ul, .md ol { padding-left: 1.3rem; margin: .5em 0 0; }
+  .md ul { list-style: disc; } .md ol { list-style: decimal; }
+  .md li { margin: .25em 0; padding-left: .15rem; }
+  .md li::marker { color: rgb(var(--c-accent)); }
+  .md strong { font-weight: 650; }
+  .md h1, .md h2, .md h3, .md h4 { font-weight: 650; line-height: 1.3; margin-top: 1.1em; }
+  .md h1 { font-size: 1.2rem; } .md h2 { font-size: 1.1rem; } .md h3, .md h4 { font-size: 1rem; }
+  .md code { font-family: var(--font-mono), monospace; font-size: .85em; background: rgb(var(--c-accent-soft)); padding: .05rem .35rem; border-radius: 4px; }
+  .md pre { overflow-x: auto; background: rgb(var(--c-surface2)); padding: .75rem; border-radius: 10px; }
+  .md pre code { background: none; padding: 0; }
+  .md blockquote { border-left: 3px solid rgb(var(--c-accent) / .5); padding-left: .85rem; color: rgb(var(--c-muted)); }
+  .md a { color: rgb(var(--c-accent)); text-decoration: underline; text-underline-offset: 3px; }
+  .md table { display: block; overflow-x: auto; border-collapse: collapse; font-size: .92rem; }
+  .md th, .md td { border: 1px solid rgb(var(--c-border)); padding: .35rem .6rem; text-align: left; }
+  .md hr { border: 0; border-top: 1px solid rgb(var(--c-border)); }
+  .md-sm { font-size: .92rem; line-height: 1.55; }
+}
+
+.skeleton { position: relative; overflow: hidden; background: rgb(var(--c-surface2)); border-radius: 8px; }
+.skeleton::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(var(--c-ink) / .06), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+.pb-tabbar { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); }
+/* full-viewport-height region inside the shell (below the mobile top bar, above the tab bar) */
+.h-page { height: calc(100dvh - var(--topbar-h) - var(--tabbar-h) - env(safe-area-inset-bottom)); }
+@media (min-width: 768px) { :root { --topbar-h: 0rem; --tabbar-h: 0rem; } .pb-tabbar { padding-bottom: 0; } .h-page { height: 100dvh; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
