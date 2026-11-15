@@ -1,6 +1,10 @@
 # MedEvolv Mentor: demo script (17 Nov 2026, about 11 minutes plus questions)
 
-Live app: https://mentor.medevolv.in (backup: https://130-210-60-153.sslip.io)
+> **Fallback script, not the main one.** Since 16 Nov 2026 the presentation runs on the v2 web app at
+> https://mentor.medevolv.in using `docs/demo_script_presentation.md`. This file is the FALLBACK script for the
+> Streamlit app, which now lives at https://atlas.medevolv.in.
+
+Live app: https://atlas.medevolv.in (backup: https://130-210-60-153.sslip.io)
 
 Every question below was run through `answer_multihop` against the local code and index on 13 Nov, twice each.
 The Explore click paths were also clicked through on the live site. Routes, statuses, cited books and latencies
@@ -387,7 +391,7 @@ claim. Splitting the question fixed the first; moving to DeepSeek fixed the seco
 - [ ] Check the DeepSeek balance on the DeepSeek console. A full run of this script costs about $0.02. Top up if the balance
   is below $2.
 - [ ] Check the Oracle VM is running, and check the trial credit has not run out (the VM stops when it does).
-- [ ] Open https://mentor.medevolv.in in both tabs. Confirm the lock icon (HTTPS certificate valid).
+- [ ] Open https://atlas.medevolv.in in both tabs. Confirm the lock icon (HTTPS certificate valid).
 - [ ] Warm up the site with a real question (for example the step 3 anatomy question). The first question after a restart
   takes about 12 s while the embedding model loads. Then run the step 1 vignette once so the whole path is warm, and
   click "Clear chat".
