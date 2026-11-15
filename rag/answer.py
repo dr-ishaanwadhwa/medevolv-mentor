@@ -179,6 +179,11 @@ def _cited(text: str, pattern: str, n: int) -> list[int]:
     return sorted({int(x) for x in nums if 1 <= int(x) <= n})
 
 
+def _drug_check(question: str, text: str, plan) -> str:
+    from rag.drug_check import check
+    return check(question, text, plan)
+
+
 def answer_multihop(question: str) -> Answer:
     from rag.hops import cross_check, plan as make_plan
 
@@ -188,6 +193,9 @@ def answer_multihop(question: str) -> Answer:
     if p.route == "single":                       # nothing to hop over: identical to the baseline
         a = answer(question, _guarded=True)
         a.plan = p
+        if config.DRUG_CHECK and a.status == "answered":
+            a.text = _drug_check(question, a.text, p)
+            a.cited = _cited(a.text, r"\[([\d,\s]+)\]", len(a.hits))
         return a
     if not p.evidence and not p.graph_facts:
         trace.record("refuse", "Declined: no usable evidence", "Neither the graph nor the books had anything relevant.",
@@ -214,6 +222,8 @@ def answer_multihop(question: str) -> Answer:
         trace.record("refuse", "Declined: evidence insufficient", "The model found the evidence does not answer it.",
                      status="stop")
         return Answer(NOT_IN_SOURCES, hits=p.evidence, status="insufficient", plan=p)
+    if config.DRUG_CHECK:                          # same Answer fields; cited lists below follow the checked text
+        text = _drug_check(question, text, p)
     res = Answer(text, hits=p.evidence, plan=p,
                  cited=_cited(text, r"\[([\d,\s]+)\]", len(p.evidence)),
                  graph_cited=_cited(text, r"\[(G\d+(?:\s*,\s*G?\d+)*)\]", len(p.graph_facts)),

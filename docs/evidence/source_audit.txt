@@ -1,0 +1,2 @@
+assumption rows: 24; with URL or explicit label: 24
+summary rows mentioning unsourced/assumption: 4

@@ -25,6 +25,7 @@ STAGES = {   # stage -> (icon, plain-language label) used by the UI
     "llm": ("🤖", "Language model"),
     "cite": ("🔎", "Citation check"),
     "crosscheck": ("✅", "Graph cross-check"),
+    "safety": ("🩺", "Patient safety check"),
     "refuse": ("⛔", "Declined"),
 }
 

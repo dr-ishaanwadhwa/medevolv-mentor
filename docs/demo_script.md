@@ -57,47 +57,44 @@ If you are running long, drop step 3 (anatomy) and the third refusal in step 5. 
 
 ---
 
-## Step 1: Clinical vignette, case route, three axes (2:00)
+## Step 1: Clinical vignette, case route (2:00)
 
-**Paste into the chat box (64 words):**
+**Paste into the chat box:**
 
 ```
-A 62-year-old man presents 2 hours after onset of crushing chest pain. BP is 82/50 mmHg, JVP is raised, lung fields are clear. ECG shows ST elevation in II, III and aVF with 1 mm ST elevation in V4R. What is the likely diagnosis and its cause, how should he be stabilised now, and which commonly used anti-anginal drugs must be avoided and why?
+A 38-year-old woman has episodic headaches, palpitations and drenching sweats. During an attack her BP is 240/130 mmHg. CT shows a 4 cm right adrenal mass and plasma free metanephrines are markedly raised. She is scheduled for adrenalectomy. How would you treat a hypertensive crisis now, and in what order must drugs be started before surgery?
 ```
 
 **Point at, in order:**
 
-1. The live status box while it works. The steps tick off one by one, so the wait is part of the demo.
-2. The two pills above the answer: "Grounded answer" and "Long case · focused look-ups".
-3. The answer has three bold headings, one per axis: Etiology and differential, Emergency stabilization, Definitive
-   pharmacology and contraindications.
-4. The "Avoid:" line at the bottom. It names nitrates (right ventricular infarct, hypotension), beta blockers at this
-   blood pressure, and flecainide. Each carries a citation.
-5. Open "How this answer was made" (about 15 steps). Show these rows: "3 clinical axis/axes, 5 look-ups · likely
-   Inferior ST-elevation myocardial infarction with right ventricular involvement", then the six vector searches,
-   then "Textbook ontology lookup" (certified facts added), then "Citation check" (for example "9 of 9 textbook
-   passages cited, 4 of 4 graph facts cited").
-6. Open "Sources": passages from Harrison and Davidson every time, Tripathi on about half of the runs; the graph facts
-   tagged "WARNING (textbook ontology)" with their book and page.
+1. The live status box while it works (about 6 s warm): the steps tick off one by one.
+2. The pills above the answer: "Grounded answer" and "Long case · focused look-ups".
+3. The bold sections (usually stabilization and pharmacology; this case asks about treatment, so etiology is often
+   skipped. Say so: the model only opens the axes the question needs).
+4. The key teaching point, in every run: **alpha-blockade first** (phenoxybenzamine for 1-2 weeks, prazosin as an
+   alternative), a beta-blocker only afterwards for tachycardia, because unopposed alpha vasoconstriction causes
+   paradoxical hypertension. Cited to Davidson and Harrison; Tripathi for phenoxybenzamine dosing.
+5. The "Avoid:" line: beta-blocker first, plus furosemide (volume contraction), which the knowledge graph adds.
+6. Where the books stop: every run says the textbooks give no out-of-theatre dosing protocol for a 240/130 crisis.
+   That is the "declines when unsure" behaviour, live.
+7. Open "How this answer was made" and "Sources" as before.
 
-**Talking point (one line):** A long case is too blurry for one search, so the model splits it into the three things a
-clinician reasons about, searches each separately, and every line of the answer points back to a page.
+**Talking point (one line):** It reads the patient, not just the disease. The classic exam trap here is starting a
+beta-blocker first, and the tool gets the order and the reason right, with every line pointing back to a page.
 
-**Why it works reliably:** 64 words puts it over the 35-word threshold, so it always takes the case route. Six runs: all
-`case`, all `answered`, all three axes, 2 certified warnings, 7 to 9 textbook passages cited.
+**Why this case:** chosen on 14 Nov from all 18 hard cases (3 runs each) by an adversarial clinical review plus a
+demo-suitability review. It is the only case rated "no issues" in 3 of 3 runs (latency 5.8-6.5 s, consistency 9/10).
+The previous step 1 (right ventricular MI in shock) was dropped: reviewers found it mixed general MI drug lists
+(beta blockers, morphine) into advice for a hypotensive patient.
 
-**If asked "is that case in your test set?":** yes, it is one of the 15 hard cases in `eval/hard_cases.jsonl`, chosen
-because it has a known trap (nitrates in right ventricular infarction). Say so before they ask.
-
-**Fallback if slow (over 15 s) or it errors:** keep talking through the status box; the call is a single DeepSeek
-request after the searches. If it fails outright, paste the diabetic ketoacidosis case instead (3 warnings, all runs
-`case`, 5 books cited):
+**Fallback / second case for the three-axis split:** severe falciparum malaria (best showcase, all three axes, avoids
+the steroid trap in every run; one run in three had a minor off-topic error):
 
 ```
-A 19-year-old with type 1 diabetes presents with vomiting, abdominal pain and deep sighing breathing. Glucose 32 mmol/L, pH 7.08, bicarbonate 7 mmol/L, anion gap 26, serum ketones strongly positive, potassium 3.0 mmol/L. Explain the metabolic derangement and give the correct order of initial management, including when insulin can safely be started.
+A 32-year-old man returned from a trip to sub-Saharan Africa 10 days ago with high fever and rigors. He is now drowsy (GCS 10), jaundiced and hypoglycaemic; blood film shows 8% Plasmodium falciparum parasitaemia. Explain why falciparum causes cerebral complications, the immediate treatment, and which adjunctive drug is harmful.
 ```
 
-If the site is down, show the backup screenshots of this answer and say so.
+**If asked "is that case in your test set?":** yes, both are in `eval/hard_cases.jsonl`. Say so before they ask.
 
 ---
 
