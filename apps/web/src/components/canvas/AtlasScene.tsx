@@ -363,7 +363,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       const s = latest.current;
       const sel = new Set(partIdxRef.current);
       hasSelection = [...sel].some((i) => loadedParts.has(i));
-      const vis = new Set<SystemId>(s.visibleSystems ?? SYSTEMS.filter((x) => x.id !== 'integumentary').map((x) => x.id));
+      const vis = new Set<SystemId>(s.visibleSystems ?? SYSTEMS.filter((x) => x.id !== 'integumentary' && x.id !== 'pregnancy').map((x) => x.id));
       const isolate = !!s.isolate && hasSelection;
       for (let i = 0; i < n; i++) {
         const selected = sel.has(i);

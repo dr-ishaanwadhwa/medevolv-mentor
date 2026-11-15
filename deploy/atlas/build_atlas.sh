@@ -11,6 +11,13 @@ git fetch -q origin "$PIN" 2>/dev/null || true
 git checkout -q -f "$PIN"
 git apply "$HERE/deep-link.patch"
 npm ci
+# Female model (R5): built into public/models before the vite build copies it into dist/. Skipped when the source GLB
+# has not been downloaded, or with FEMALE=0. Needs the user's yes for the download (deploy/atlas/female/README.md).
+if [ "${FEMALE:-1}" != "0" ] && [ -f "$HERE/female/source/3d-vh-f-united.glb" ]; then
+  "$HERE/female/build_female.sh" "$DIR"
+fi
+# Precompressed manifest so Caddy's `precompressed gzip` serves atlas.json compressed (1.3 MB -> about 0.2 MB).
+gzip -9 -kf public/models/atlas.json
 npm run build
 cp LICENSE dist/LICENSE-human-atlas.txt          # MIT notice travels with the static files
 cp "$HERE/ATTRIBUTION.md" dist/ATTRIBUTION.md    # BodyParts3D CC BY 4.0

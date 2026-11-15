@@ -28,3 +28,8 @@ few cranial ones, no meningeal vessels, no plexuses, no uterus or thyroid: those
 6. `deploy/atlas/push_atlas.sh 130.210.60.153` (copies dist/ to `~/atlas-site`, 108 MB, models ~33 MB gzip-served).
 7. Check `https://atlas.medevolv.in/?select=heart` and a mentor Explore page (e.g. Aortic dissection).
 Without `ATLAS_URL` the mentor hides every 3D control.
+
+## Female model (R5, offline build)
+`deploy/atlas/female/` converts the HRA female GLB into `female.json` + chunks in the same format; runbook, measured sizes
+and the id map are in `deploy/atlas/female/README.md`. `build_atlas.sh` builds it when the GLB is present (`FEMALE=0` skips)
+and also writes `atlas.json.gz`. Nothing is deployed from here; shipping the files needs the user's yes and a VM disk check.

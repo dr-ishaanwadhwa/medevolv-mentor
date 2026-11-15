@@ -12,6 +12,8 @@ export type SystemId =
   | 'lymphatic'
   | 'endocrine'
   | 'reproductive'
+  | 'reproductive_female'
+  | 'pregnancy'
   | 'integumentary'
   | 'connective';
 
@@ -36,6 +38,8 @@ export const SYSTEMS: SystemMeta[] = [
   { id: 'lymphatic', name: 'Lymphatic', color: '#879f7c', description: 'Vessels and lymphoid tissue returning interstitial fluid and providing immune surveillance.' },
   { id: 'endocrine', name: 'Endocrine', color: '#c5a09a', description: 'Glandular organs secreting hormones regulating metabolism, growth, and homeostasis.' },
   { id: 'reproductive', name: 'Reproductive', color: '#bda098', description: 'Reproductive structures contributing to gametogenesis and sexual hormone production.' },
+  { id: 'reproductive_female', name: 'Reproductive (female)', color: '#c98f9a', description: 'Uterus, uterine tubes, ovaries, vagina, supporting ligaments and the breast: structures of the female reproductive tract.' },
+  { id: 'pregnancy', name: 'Pregnancy reference', color: '#d9a98c', description: 'Placenta and umbilical cord reference structures. Hidden by default; turn this layer on to see them.' },
   { id: 'integumentary', name: 'Body surface', color: '#ba9b7d', description: 'Skin providing an outer anatomical protective boundary and thermoregulation.' },
   { id: 'connective', name: 'Connective tissue', color: '#aec3bb', description: 'Cartilage, fascia, and ligaments stabilizing joints and transmitting structural tension.' },
 ];
@@ -69,7 +73,7 @@ export interface ChunkMeta {
 
 export interface Atlas {
   version: string;
-  sex?: 'male';
+  sex?: 'male' | 'female';
   source?: string;
   scope?: string;
   parts: Part[];
@@ -105,6 +109,7 @@ export const DEFAULT_VISIBLE: SystemId[] = [
   'lymphatic',
   'endocrine',
   'reproductive',
+  'reproductive_female',
   'connective',
 ];
 
