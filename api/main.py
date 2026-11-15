@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from api import concept_page, spatial, store, why
+from api import concept_page, spatial, store, story, why
 from api.schemas import (AnswerEvent, AnswerRecord, AnswerSave, AnswerSaved, ChatRequest, ConceptHit, ConceptPage, DoneEvent,
                          ErrorEvent, FeedbackOk, FeedbackRequest, HealthResponse, NotFound, SpatialEvent,
                          SpatialResolveResponse, StepEvent, WhyRequest)
@@ -205,3 +205,6 @@ async def feedback(req: FeedbackRequest):
 async def health():
     return HealthResponse(llm_backend=config.LLM_BACKEND, atlas_enabled=atlas.enabled(),
                           ontology_loaded=ontology_facts.available())
+
+
+app.include_router(story.router)     # POST /api/story/explore (api/story.py)

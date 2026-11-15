@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 EXCERPT_MAX = 300      # same cap app.py shows; the trailing ellipsis may add one character
 EXCERPT_FIELD_MAX = EXCERPT_MAX + 1
@@ -250,3 +250,32 @@ class FeedbackRequest(BaseModel):
 
 class FeedbackOk(BaseModel):
     ok: Literal[True] = True
+
+
+class StoryExploreRequest(BaseModel):
+    """'Try your own question' on the /how story. Whitespace-only questions are rejected (422)."""
+    question: str = Field(min_length=1, max_length=300)
+
+    @field_validator("question")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("question must not be blank")
+        return v
+
+
+class StoryNeighbour(BaseModel):
+    i: int                  # index of the passage in the story map (scripts/build_library_map.py order)
+    sim: float
+    book: str               # textbook display name
+
+
+class StoryExploreResponse(BaseModel):
+    question: str
+    refused: bool
+    neighbours: list[StoryNeighbour] = []      # 12 nearest passages; [] when refused
+    best: float | None
+    min_similarity: float
+    passes_floor: bool
+    narration: str

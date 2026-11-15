@@ -83,6 +83,27 @@ Body `{answer_id?: str, question?: str, kind: "wrong_citation"|"unhelpful"|"othe
 ### GET /api/health
 `{status:"ok", llm_backend, atlas_enabled, ontology_loaded}`
 
+### POST /api/story/explore  (api/story.py)
+"Try your own question" chapter of the /how scroll story. Places a visitor's question on the story map.
+Body `{question: str}` (1..300 characters after trimming; blank or longer -> 422).
+
+    {question, refused: bool, neighbours: [{i, sim, book}], best: float | null, min_similarity: float,
+     passes_floor: bool, narration: str}
+
+- `neighbours`: the 12 nearest passages. `i` is the passage's index in the story map (the order
+  `scripts/build_library_map.py` writes, paging Chroma from offset 0). `sim` is cosine similarity (1 = identical);
+  `book` is the textbook display name. No passage text is returned.
+- `refused: true` is the personal-advice guard (`rag.answer._guard`), checked before any search: `neighbours` is `[]`,
+  `best` is null, and `narration` is the fixed study-aid refusal.
+- `passes_floor` is `best >= min_similarity` (`MIN_SIMILARITY`, default 0.60). Below it the story says the question
+  was not found in the textbooks.
+- `narration`: two short second-person sentences from `rag.backends.chat` (temperature 0.3, max 160 tokens), given a
+  facts sheet (question, floor pass/fail, best similarity, floor, neighbours per book). Every number in the draft must
+  appear in the facts; one retry, then a deterministic template built from the same facts. Any LLM exception also
+  falls back to the template.
+- Results are cached in-process (`lru_cache`, 256 entries) by the question with whitespace collapsed. The
+  id-to-index map is built once, lazily, from Chroma.
+
 ## Storage
 SQLite at `$APP_DB`, default `var/app.db` in the repo root (gitignored; never under the symlinked `data/`).
 Tables `answers` and `feedback` are created on first use.
