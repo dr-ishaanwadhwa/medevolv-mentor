@@ -3,10 +3,13 @@
 services:
   v2-api:
     build: { context: ., dockerfile: Dockerfile.api }
-    env_file: .env                  # DEEPSEEK_API_KEY, ATLAS_URL, LLM_BACKEND, EMBED_BACKEND (copied by push.sh)
+    env_file: .env                  # DEEPSEEK_API_KEY, ATLAS_URL, LLM_BACKEND, EMBED_BACKEND (+ YOUTUBE_API_KEY, EVENTS_TOKEN,
+                                    # DIAGRAM_SIG_SECRET when set locally) (copied by push.sh)
     restart: unless-stopped
     expose: ["8000"]
-    volumes: [v2_appdb:/home/user/var]
+    # ../v2-state is ~/v2-state on the VM: outside the rsync payload, so push.sh never overwrites the flags. Mounted as a
+    # DIRECTORY (read-only) because `mv` over features.json replaces the inode and a single-file bind mount would go stale.
+    volumes: [v2_appdb:/home/user/var, "../v2-state:/home/user/v2-state:ro"]
     networks: [eka_default]
   v2-web:
     build: { context: ., dockerfile: Dockerfile.web }

@@ -1,12 +1,12 @@
 """MedEvolv Mentor v2 gateway.   uvicorn api.main:app --port 8000
 
-POST /api/chat/stream      SSE: step* -> answer -> spatial -> done   (error ends the stream)
+POST /api/chat/stream      SSE: step* -> answer -> spatial -> topic -> done   (error ends the stream)
 POST /api/why/stream       SSE: step* -> verdict -> done             (error ends the stream)
 GET  /api/concepts/{label_or_id}   concept page (404 JSON when unknown)
 POST /api/answers, GET /api/answers/{id}   save / fetch a shared answer;  POST /api/feedback
 GET  /api/spatial/resolve  ?fma=FMA... | ?label=Name   concept + atlas link(s) + pointer citations + related concepts
 GET  /api/concepts/search  ?q=prefix
-GET  /api/health
+GET  /api/health;  GET /api/features (runtime flags);  POST /api/events + GET /api/events/summary (api/events.py)
 
 answer_multihop runs unchanged in a worker thread; its trace steps are forwarded live. Settings come from rag.config.
 """
@@ -20,10 +20,10 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from api import concept_page, spatial, store, story, why
+from api import concept_page, events, features, spatial, store, story, topic, why
 from api.schemas import (AnswerEvent, AnswerRecord, AnswerSave, AnswerSaved, ChatRequest, ConceptHit, ConceptPage, DoneEvent,
                          ErrorEvent, FeedbackOk, FeedbackRequest, HealthResponse, NotFound, SpatialEvent,
-                         SpatialResolveResponse, StepEvent, WhyRequest)
+                         SpatialResolveResponse, StepEvent, TopicEvent, WhyRequest)
 from rag import atlas, concepts, config, ontology_facts, trace
 from rag.answer import answer_multihop
 
@@ -100,6 +100,11 @@ async def chat_events(question: str):
             yield sse("answer", _answer_event(payload))
             actions = await asyncio.to_thread(spatial.spatial_actions, payload, question)
             yield sse("spatial", SpatialEvent(actions=actions))
+            try:                                    # best effort: no topic must never fail an answer that already streamed
+                t_ev = await asyncio.to_thread(topic.topic_event, question, payload, actions)
+            except Exception:                       # noqa: BLE001
+                t_ev = TopicEvent()
+            yield sse("topic", t_ev)
         except Exception as e:                      # noqa: BLE001
             yield sse("error", ErrorEvent(message="The answer could not be assembled.", error_type=type(e).__name__))
             return
@@ -207,4 +212,6 @@ async def health():
                           ontology_loaded=ontology_facts.available())
 
 
+app.include_router(features.router)   # GET /api/features (api/features.py)
+app.include_router(events.router)     # POST /api/events, GET /api/events/summary (api/events.py)
 app.include_router(story.router)     # POST /api/story/explore (api/story.py)

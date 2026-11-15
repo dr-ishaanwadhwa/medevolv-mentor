@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
+import { FeaturesProvider } from '@/components/FeaturesProvider';
 import { AppShell } from '@/components/shell/AppShell';
+import { fetchFeatures } from '@/lib/features';
 import './globals.css';
 
 const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
@@ -25,14 +27,17 @@ export const viewport: Viewport = {
 // Runs before paint: stored choice wins, otherwise follow the OS.
 const themeScript = `try{var t=localStorage.getItem('mm-theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;var r=document.documentElement;r.classList.toggle('dark',d);r.style.colorScheme=d?'dark':'light'}catch(e){}`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const features = await fetchFeatures(); // D-15: server fetch, 1 s timeout, all-false on any failure
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        <FeaturesProvider value={features}>
+          <AppShell>{children}</AppShell>
+        </FeaturesProvider>
       </body>
     </html>
   );

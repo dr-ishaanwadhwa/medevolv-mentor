@@ -59,6 +59,20 @@ class SpatialEvent(BaseModel):
     actions: list[SpatialAction] = []
 
 
+class RelatedTopic(BaseModel):
+    """One of the topic concept's certified outgoing links (our own ontology data, not YouTube data)."""
+    id: str
+    label: str
+    predicate: str
+    tier: Literal["certified"] = "certified"
+
+
+class TopicEvent(BaseModel):
+    """Chat stream only, after `spatial` and before `done`. topic is None for declined or patient-scoped questions."""
+    topic: str | None = None
+    related: list[RelatedTopic] = []
+
+
 class DoneEvent(BaseModel):
     ms: float
 

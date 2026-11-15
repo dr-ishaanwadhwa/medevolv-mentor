@@ -24,7 +24,11 @@ rsync -a --exclude models apps/web/public/ "$OUT/web/apps/web/public/"
 rsync -a --exclude __pycache__ api rag "$OUT/"
 mkdir -p "$OUT/ontology" && : > "$OUT/ontology/__init__.py" && cp ontology/merge.py "$OUT/ontology/"
 cp deploy/v2/Dockerfile.api deploy/v2/Dockerfile.web deploy/v2/docker-compose.yml deploy/v2/Caddyfile.v2-block "$OUT/"
-{ grep -E '^(DEEPSEEK_API_KEY|ATLAS_URL)=' "$ENV_FILE"; echo "LLM_BACKEND=deepseek"; echo "EMBED_BACKEND=local"; } > "$OUT/.env"
+# Optional keys are forwarded only when present with a value (never echoed): R2 works keyless via the fallback link,
+# /api/events/summary stays off without EVENTS_TOKEN. Feature flags are NOT in .env (see ~/v2-state below).
+{ grep -E '^(DEEPSEEK_API_KEY|ATLAS_URL)=' "$ENV_FILE" || true
+  grep -E '^(YOUTUBE_API_KEY|EVENTS_TOKEN|DIAGRAM_SIG_SECRET)=.+' "$ENV_FILE" || true
+  echo "LLM_BACKEND=deepseek"; echo "EMBED_BACKEND=local"; } > "$OUT/.env"
 chmod 600 "$OUT/.env"
 
 # API fingerprint: the API container is recreated only when this changes. It covers the API code, the API image
@@ -52,6 +56,11 @@ rm -rf "$(dirname "$OUT")"
 $SSH "ubuntu@$HOST" bash -s <<REMOTE
 set -euo pipefail
 chmod 600 ~/v2/.env
+# runtime feature flags (api/features.py): outside ~/v2 so the rsync --delete above never touches them. Created once with
+# everything off; an existing file is never overwritten. Flip with jq + mv (docs: PRD 5.6); no restart needed.
+mkdir -p ~/v2-state && chmod 755 ~/v2-state
+[ -f ~/v2-state/features.json ] || echo '{"diagram": false, "videos": false, "female_atlas": false}' > ~/v2-state/features.json
+chmod 644 ~/v2-state/features.json
 cd ~/v2 && sudo $COMPOSE_UP
 if ! grep -q "$V2HOST" ~/eka/Caddyfile; then
   cat ~/eka/Caddyfile <(echo) ~/v2/Caddyfile.v2-block > /tmp/Caddyfile.new

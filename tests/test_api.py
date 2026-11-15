@@ -73,14 +73,15 @@ def stream(client, q="Inferior MI?"):
 
 def test_event_order_and_schemas(client):
     ev = stream(client)
-    assert [e for e, _ in ev] == ["step", "step", "answer", "spatial", "done"]
+    assert [e for e, _ in ev] == ["step", "step", "answer", "spatial", "topic", "done"]
     StepEvent.model_validate(ev[0][1])
     assert ev[1][1]["stage"] == "route" and ev[1][1]["ms"] == 3.0
     ans = AnswerEvent.model_validate(ev[2][1])
     assert (ans.status, ans.route) == ("answered", "graph")
     assert [c.cited for c in ans.citations] == [True, False]
     SpatialEvent.model_validate(ev[3][1])
-    DoneEvent.model_validate(ev[4][1])
+    assert ev[4][0] == "topic" and set(ev[4][1]) == {"topic", "related"}
+    DoneEvent.model_validate(ev[5][1])
     print("\n".join(f"event: {e}\ndata: {json.dumps(d)[:160]}\n" for e, d in ev))
 
 

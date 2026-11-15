@@ -8,6 +8,11 @@ COPY --chown=user rag /app/rag
 COPY --chown=user ontology /app/ontology
 RUN mkdir -p /home/user/var && chown user:user /home/user/var
 USER user
-ENV APP_DB=/home/user/var/app.db PYTHONUNBUFFERED=1
+# FEATURES_FILE: runtime flags (api/features.py), a read-only mount of the VM's ~/v2-state (docker-compose.yml)
+ENV APP_DB=/home/user/var/app.db PYTHONUNBUFFERED=1 FEATURES_FILE=/home/user/v2-state/features.json
 EXPOSE 8000
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
+# Client IPs for the per-IP rate limiter (api/ratelimit.py): Caddy (another container) sets X-Forwarded-For. Trust it only
+# from private ranges (any docker network); uvicorn then takes the right-most address that is NOT in these ranges, so a
+# client-supplied header cannot pick its own IP. Port 8000 is `expose`d only, never published.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", \
+     "--forwarded-allow-ips", "172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"]

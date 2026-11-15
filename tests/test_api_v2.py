@@ -204,3 +204,61 @@ def test_spatial_resolve_handles_list_paths():
     r = TestClient(app).get("/api/spatial/resolve", params={"label": "Optic chiasm"})
     assert r.status_code == 200
     assert all(not c["chapter"][:1].isdigit() for c in r.json()["citations"])
+
+
+# ---------------------------------------------------------------- `topic` SSE event (PRD 4.2 seam)
+
+from types import SimpleNamespace as _NS
+
+from api import spatial as spatial_mod, topic as topic_mod
+from api.schemas import TopicEvent
+from rag import answer as _answer_mod, concepts as _concepts, diagrams as _diagrams
+from tests.test_api import client, stream  # noqa: F401  (fixture reused: stubbed answer, atlas and concepts)
+
+
+def _link(i, pred="TREATED_BY", tier="certified", books=("harrison",)):
+    return {"other_id": f"C:{i}", "other_label": f"Concept {i}", "other_type": "Drug", "predicate": pred,
+            "tier": tier, "books": list(books), "fact_id": f"f{i}", "sections": []}
+
+
+def test_topic_event_between_spatial_and_done(client, monkeypatch):
+    monkeypatch.setattr(_diagrams, "pick_subject", lambda q, condition=None, drug=None: None)
+    ev = stream(client)
+    names = [e for e, _ in ev]
+    assert names[-3:] == ["spatial", "topic", "done"]
+    t = TopicEvent.model_validate(ev[-2][1])
+    assert t.topic == "Right coronary artery"           # (2) first spatial highlight label
+    assert t.related == []                              # stub concept has no outgoing links
+
+
+def test_topic_prefers_ontology_subject_and_returns_certified_related_only(client, monkeypatch):
+    monkeypatch.setattr(_diagrams, "pick_subject", lambda q, condition=None, drug=None: ("case", "Nephrotic syndrome"))
+    links = [_link(i) for i in range(8)] + [_link(99, tier="derived"), _link(0, pred="OTHER", books=("a", "b"))]
+    concept = {"id": "C:ns", "label": "Nephrotic syndrome", "outgoing": {"TREATED_BY": links}}
+    monkeypatch.setattr(_concepts, "concept", lambda n: concept if n == "Nephrotic syndrome" else {})
+    t = TopicEvent.model_validate(stream(client)[-2][1])
+    assert t.topic == "Nephrotic syndrome"
+    assert len(t.related) == 6 and all(r.tier == "certified" for r in t.related)
+    assert "C:99" not in {r.id for r in t.related}                 # derived link never listed
+    assert t.related[0].id == "C:0" and len({r.id for r in t.related}) == 6   # most books first, no duplicates
+
+
+@pytest.mark.parametrize("q", ["My mother has chest pain, should I give her aspirin?", "I have a lump, what should I do?",
+                               "A patient with MI: what dose of heparin should I give?"])
+def test_topic_null_for_patient_scoped_questions(client, monkeypatch, q):
+    monkeypatch.setattr(spatial_mod, "recognised_concepts", lambda question, text: [])   # keep the real entity linker out
+    t = stream(client, q)[-2]
+    assert t == ("topic", {"topic": None, "related": []})
+
+
+def test_topic_null_when_answer_is_declined(client, monkeypatch):
+    monkeypatch.setattr(main, "answer_multihop", lambda q: _answer_mod.Answer("not here", status="not_in_sources"))
+    assert stream(client)[-2] == ("topic", {"topic": None, "related": []})
+
+
+def test_topic_failure_never_breaks_the_stream(client, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("ontology missing")
+    monkeypatch.setattr(topic_mod, "topic_event", boom)
+    ev = stream(client)
+    assert [e for e, _ in ev][-3:] == ["spatial", "topic", "done"] and ev[-2][1] == {"topic": None, "related": []}
