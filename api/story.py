@@ -56,7 +56,9 @@ def _facts(question: str, passes: bool, best: float, floor: float, books: Counte
     by_book = "; ".join(f"{b}: {n}" for b, n in books.most_common())
     return (f'Question: "{question}". Passes the relevance floor: {"yes" if passes else "no"}. '
             f"Best similarity: {best:.2f} (1 means identical). Relevance floor: {floor:.2f}. "
-            f"The {NEIGHBOURS} nearest passages by textbook: {by_book}.")
+            f"The {NEIGHBOURS} nearest passages by textbook: {by_book}. "
+            f"These {NEIGHBOURS} are only the neighbourhood shown on the map: a real answer sends just the closest few "
+            f"that clear the floor to the model as evidence, never all {NEIGHBOURS}. Do not say the answer uses all of them.")
 
 
 def _template(question: str, passes: bool, best: float, floor: float, books: Counter) -> str:
