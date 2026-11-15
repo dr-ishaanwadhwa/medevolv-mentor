@@ -134,7 +134,7 @@ function ExploreCard({ r, books, dark }: { r: StoryExploreResult; books: StoryBo
       {!r.refused && (
         <p className={`st-try-verdict ${r.passes_floor ? 'st-try-verdict-ok' : 'st-try-verdict-no'}`}>
           {r.passes_floor
-            ? 'These passages would be sent to the model as evidence'
+            ? 'Clears the cut-off: the closest few would be sent to the model as evidence'
             : 'Below the cut-off: the app would say it couldn’t find this'}
         </p>
       )}
