@@ -172,3 +172,105 @@ export type SpatialAction =
       type: 'spatial_action';
       action: 'reset';
     };
+
+/* ---------------------------------------------------------------------------
+ * Atlas helpers: model location, id resolution, and name search.
+ * ------------------------------------------------------------------------- */
+
+export const MODELS_BASE: string = (process.env.NEXT_PUBLIC_MODELS_BASE || '/models').replace(/\/$/, '');
+
+/** atlas.json stores chunk urls as `/models/body-0.bin`; re-root them on MODELS_BASE. */
+export function modelUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  return MODELS_BASE + '/' + path.replace(/^\/?models\//, '').replace(/^\//, '');
+}
+
+export interface AtlasIndex {
+  partIndex: Map<string, number>;
+  conceptById: Map<string, Concept>;
+  partsByConcept: Map<string, number[]>;
+}
+
+export function buildIndex(atlas: Atlas): AtlasIndex {
+  const partIndex = new Map<string, number>();
+  atlas.parts.forEach((p, i) => partIndex.set(p.id, i));
+  const conceptById = new Map<string, Concept>();
+  atlas.concepts.forEach((c) => conceptById.set(c.id.toUpperCase(), c));
+  const partsByConcept = new Map<string, number[]>();
+  atlas.parts.forEach((p, i) => {
+    const key = p.conceptId.toUpperCase();
+    const list = partsByConcept.get(key);
+    if (list) list.push(i);
+    else partsByConcept.set(key, [i]);
+  });
+  return { partIndex, conceptById, partsByConcept };
+}
+
+export function normalizeFma(raw: string): string {
+  const s = raw.trim().toUpperCase();
+  return /^\d+$/.test(s) ? 'FMA' + s : s;
+}
+
+export interface HighlightResolution {
+  partIdx: number[];
+  matched: string[];
+  unmatched: string[];
+  names: string[];
+}
+
+/** Map FMA concept ids (or raw part ids) to part indexes in the atlas. */
+export function resolveHighlight(atlas: Atlas, index: AtlasIndex, ids: string[]): HighlightResolution {
+  const set = new Set<number>();
+  const matched: string[] = [];
+  const unmatched: string[] = [];
+  const names: string[] = [];
+  for (const raw of ids) {
+    const id = normalizeFma(raw);
+    if (!id) continue;
+    const found = new Set<number>();
+    const concept = index.conceptById.get(id);
+    if (concept) {
+      for (const e of concept.elements) {
+        const i = index.partIndex.get(e);
+        if (i !== undefined) found.add(i);
+      }
+    }
+    index.partsByConcept.get(id)?.forEach((i) => found.add(i));
+    const direct = index.partIndex.get(raw.trim()) ?? index.partIndex.get(id);
+    if (direct !== undefined) found.add(direct);
+    if (found.size) {
+      found.forEach((i) => set.add(i));
+      matched.push(id);
+      names.push(concept?.name ?? atlas.parts[[...found][0]].name);
+    } else unmatched.push(id);
+  }
+  return { partIdx: [...set].sort((a, b) => a - b), matched, unmatched, names };
+}
+
+export function conceptName(atlas: Atlas | null, index: AtlasIndex | null, id: string): string {
+  if (!atlas || !index) return id;
+  return index.conceptById.get(normalizeFma(id))?.name ?? id;
+}
+
+/** Name search over atlas concepts: exact > prefix > word-prefix > substring, shorter names first. */
+export function searchStructures(atlas: Atlas, query: string, limit = 8): Concept[] {
+  const q = query.toLowerCase().trim();
+  if (q.length < 2) return [];
+  const scored: [number, Concept][] = [];
+  for (const c of atlas.concepts) {
+    if (!c.elements.length) continue;
+    const n = c.name.toLowerCase();
+    let score = -1;
+    if (n === q) score = 0;
+    else if (n.startsWith(q)) score = 1;
+    else if (n.includes(' ' + q)) score = 2;
+    else if (n.includes(q)) score = 3;
+    else if (c.id.toLowerCase() === q) score = 0;
+    if (score >= 0) scored.push([score * 1000 + n.length, c]);
+  }
+  scored.sort((a, b) => a[0] - b[0]);
+  return scored.slice(0, limit).map((x) => x[1]);
+}
+
+/** Quick-pick structures for the atlas empty state. */
+export const SUGGESTED_STRUCTURES = ['heart', 'brain', 'liver', 'kidney', 'adrenal gland', 'optic chiasm', 'brachial plexus'];
