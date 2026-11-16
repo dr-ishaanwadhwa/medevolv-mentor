@@ -8,11 +8,15 @@ import { atlasHref } from '@/lib/format';
 import { useChat, type Turn } from '@/store/chat';
 import { FeedbackButton, ShareButton } from './Actions';
 import { ErrorCard, NextSteps } from './Cards';
-import { DiagramSlot, FlowchartChip } from './DiagramSlot';
-import { RelatedTopics } from './RelatedTopics';
 import { SourceList } from './SourceList';
 import { LiveTrace, TraceDisclosure } from './StepTrace';
-import { Videos } from './Videos';
+import dynamic from 'next/dynamic';
+
+// Answer extras load only after an answer renders (keeps the /ask first load inside the PRD §5.2 budget)
+const DiagramSlot = dynamic(() => import('./DiagramSlot').then((m) => m.DiagramSlot), { ssr: false });
+const FlowchartChip = dynamic(() => import('./DiagramSlot').then((m) => m.FlowchartChip), { ssr: false });
+const RelatedTopics = dynamic(() => import('./RelatedTopics').then((m) => m.RelatedTopics), { ssr: false });
+const Videos = dynamic(() => import('./Videos').then((m) => m.Videos), { ssr: false });
 
 const ROUTE: Record<string, string> = {
   graph: 'Clinical case · graph route',
