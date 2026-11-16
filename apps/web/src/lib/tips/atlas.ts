@@ -15,7 +15,7 @@ export const ATLAS_TIPS = {
   },
   'atlas.reset': {
     purpose: "Goes back to this model's starting view.",
-    effect: 'Clears your selection and Isolate. Layers stay as you set them. You can undo.',
+    effect: 'Clears your selection, Isolate, hidden structures and Explode. Layers stay as you set them. You can undo.',
     disabled: 'Atlas still loading',
   },
   'atlas.layers': {
@@ -57,6 +57,44 @@ export const ATLAS_TIPS = {
   'atlas.panel.concept': {
     purpose: 'Opens the textbook page for this structure.',
     effect: 'Leaves the atlas for the concept page.',
+  },
+  'atlas.hide': {
+    purpose: 'Takes the selected structure out of the 3D view.',
+    effect: 'It stays hidden while you select other things. Use Restore to bring it back.',
+    disabled: 'Select a structure first.',
+  },
+  'atlas.hide.restore': {
+    purpose: 'Brings every hidden structure back.',
+    effect: 'Shows them again in their original place.',
+  },
+  'atlas.explode': {
+    purpose: 'Pulls the structures apart so you can see each one.',
+    effect: 'Opens the explode controls. The body stays exploded until you set it back.',
+    disabled: 'Atlas still loading',
+  },
+  'atlas.explode.slider': {
+    purpose: 'Sets how far apart the structures are.',
+    effect: 'Systems slide apart first, then each structure spreads out.',
+  },
+  'atlas.explode.assembled': {
+    purpose: 'Puts every structure back in place.',
+    effect: 'Sets the explode amount to zero.',
+  },
+  'atlas.explode.systems': {
+    purpose: 'Separates the body systems from each other.',
+    effect: 'Moves each group sideways. Structures inside a group stay together.',
+  },
+  'atlas.explode.pieces': {
+    purpose: 'Spreads out every single structure.',
+    effect: 'Lays each one in its own space.',
+  },
+  'atlas.explode.play': {
+    purpose: 'Plays the explosion one stage at a time.',
+    effect: 'Starts from where you are, pausing once when the systems are apart.',
+  },
+  'atlas.explode.pause': {
+    purpose: 'Stops the explosion where it is.',
+    effect: 'Keeps the current spread. Press Play to carry on.',
   },
   'atlas.female.download': {
     purpose: 'Starts loading the female model.',

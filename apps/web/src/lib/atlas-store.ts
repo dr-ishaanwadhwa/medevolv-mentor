@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { buildIndex, modelUrl, DEFAULT_VISIBLE, type Atlas, type AtlasIndex, type SystemId } from './anatomy';
 import { getCachedManifest, setCachedManifest } from './idb';
+import { hideParts, revealParts } from './atlas-hidden';
 import { LEGACY_MALE_CACHE_KEY, manifestCacheKey, manifestFile, manifestMatches, type Sex } from './atlas-sex';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
@@ -22,6 +23,10 @@ interface AtlasState {
   /** The full viewer failed to load a model's geometry (the toolbar then falls back to Male) */
   sceneError: { sex: Sex; message: string } | null;
   isolate: boolean;
+  /** Part ids hidden with the Hide control, for the model in the scene. Cleared by Reset view and by a model switch. */
+  hiddenParts: string[];
+  /** Explode amount: 0 assembled, 0.3 systems apart, 1 every piece. */
+  explode: number;
   resetNonce: number;
   visible: SystemId[];
   loadManifest: (sex?: Sex) => Promise<void>;
@@ -29,6 +34,10 @@ interface AtlasState {
   setModelReady: (s: Sex | null) => void;
   setSceneError: (e: { sex: Sex; message: string } | null) => void;
   setIsolate: (v: boolean) => void;
+  hideParts: (ids: string[]) => void;
+  revealParts: (ids: string[]) => void;
+  setHiddenParts: (ids: string[]) => void;
+  setExplode: (n: number) => void;
   reset: () => void;
   toggleSystem: (id: SystemId) => void;
   resetLayers: () => void;
@@ -85,6 +94,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   modelReady: null,
   sceneError: null,
   isolate: false,
+  hiddenParts: [],
+  explode: 0,
   resetNonce: 0,
   visible: DEFAULT_VISIBLE,
   loadManifest: (sex = 'male') => {
@@ -116,7 +127,11 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setModelReady: (modelReady) => set({ modelReady }),
   setSceneError: (sceneError) => set({ sceneError }),
   setIsolate: (isolate) => set({ isolate }),
-  reset: () => set((s) => ({ resetNonce: s.resetNonce + 1, isolate: false })),
+  hideParts: (ids) => set((s) => ({ hiddenParts: hideParts(s.hiddenParts, ids) })),
+  revealParts: (ids) => set((s) => (s.hiddenParts.some((h) => ids.includes(h)) ? { hiddenParts: revealParts(s.hiddenParts, ids) } : s)),
+  setHiddenParts: (hiddenParts) => set({ hiddenParts: [...hiddenParts] }),
+  setExplode: (n) => set({ explode: Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0)) }),
+  reset: () => set((s) => ({ resetNonce: s.resetNonce + 1, isolate: false, hiddenParts: [], explode: 0 })),
   toggleSystem: (id) =>
     set((s) => ({ visible: s.visible.includes(id) ? s.visible.filter((x) => x !== id) : [...s.visible, id] })),
   resetLayers: () => set({ visible: DEFAULT_VISIBLE }),

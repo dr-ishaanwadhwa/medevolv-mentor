@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, Focus, Layers, RotateCcw, Search, X } from 'lucide-react';
-import { SYSTEMS, searchStructures, SUGGESTED_STRUCTURES, conceptName, normalizeFma } from '@/lib/anatomy';
+import { ChevronDown, EyeOff, Eye, Focus, Layers, Move3d, RotateCcw, Search, X } from 'lucide-react';
+import { SYSTEMS, searchStructures, resolveHighlight, SUGGESTED_STRUCTURES, conceptName, normalizeFma } from '@/lib/anatomy';
+import { anyHidden } from '@/lib/atlas-hidden';
+import { explodeFamilyCount } from '@/lib/atlas-explode';
+import { flattenGroups, groupSearchResults, systemLookup } from '@/lib/atlas-search';
 import { useAtlasStore } from '@/lib/atlas-store';
 import { hasSomethingToUndo, resetIntent, withSelection, type ViewState } from '@/lib/atlas-reset';
 import {
@@ -36,6 +39,7 @@ import { Button, Chip } from '@/components/ui';
 import AtlasCanvas, { type AtlasHit, type AtlasResolved } from './AtlasCanvas';
 import type { AtlasCameraApi } from './AtlasScene';
 import { SelectionPanel } from './SelectionPanel';
+import { ExplodeControls } from './ExplodeControls';
 import { FemaleNote, SexToggle } from './SexToggle';
 import { DownloadProgress, FemaleConfirmSheet } from './FemaleDownload';
 
@@ -76,11 +80,15 @@ export function AtlasView() {
     loadManifest,
     isolate,
     setIsolate,
+    hiddenParts,
+    explode,
+    setExplode,
     resetNonce,
     reset,
     visible,
     toggleSystem,
     resetLayers,
+    setHiddenParts,
     progress,
     progressSex,
     modelReady,
@@ -91,6 +99,12 @@ export function AtlasView() {
   useEffect(() => {
     void loadManifest(active);
   }, [loadManifest, active]);
+  // Hidden structures and the explode amount belong to one model: a switch starts clean.
+  useEffect(() => {
+    const st = useAtlasStore.getState();
+    st.setHiddenParts([]);
+    st.setExplode(0);
+  }, [active]);
 
   const replaceQuery = useCallback((q: string) => router.replace(`${pathname}${q}`, { scroll: false }), [router, pathname]);
 
@@ -105,6 +119,7 @@ export function AtlasView() {
   const [resolved, setResolved] = useState<AtlasResolved | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [explodeOpen, setExplodeOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [wide, setWide] = useState(true);
   const [sheetH, setSheetH] = useState(0);
@@ -278,7 +293,7 @@ export function AtlasView() {
   const cameraApi = useRef<AtlasCameraApi | null>(null);
   const doReset = useCallback(() => {
     if (!atlas) return; // RV-7: nothing to reset before the manifest has loaded
-    const prev: ViewState = { selection: ids, isolate, goal: cameraApi.current?.getGoal() ?? null };
+    const prev: ViewState = { selection: ids, isolate, goal: cameraApi.current?.getGoal() ?? null, hidden: hiddenParts, explode };
     const intent = resetIntent(prev);
     const undoable = hasSomethingToUndo(prev, cameraApi.current?.hasMoved() ?? false);
     setSelection(intent.selection);
@@ -289,13 +304,15 @@ export function AtlasView() {
       undoRef.current = null;
       setSelection(intent.undo.selection);
       setIsolate(intent.undo.isolate);
+      setHiddenParts(intent.undo.hidden);
+      setExplode(intent.undo.explode);
       // The selection reaches the scene a frame or two later; restoreGoal waits for it so its framing does not win.
       if (intent.undo.goal) cameraApi.current?.restoreGoal(intent.undo.goal, intent.undo.selection);
     };
     toastId = toast('View reset', { ms: 5000, action: { label: 'Undo', onClick: undo, tip: UNDO_TIP } });
     // Keyboard route to Undo while the toast is live (focus stays on Reset view, the toast is far away in tab order).
     undoRef.current = { run: () => { undo(); dismissToast(toastId); }, id: toastId };
-  }, [atlas, ids, isolate, reset, setIsolate, setSelection, toast, dismissToast]);
+  }, [atlas, ids, isolate, hiddenParts, explode, reset, setIsolate, setHiddenParts, setExplode, setSelection, toast, dismissToast]);
 
   const undoRef = useRef<{ run: () => void; id: number } | null>(null);
   const liveToastIds = useUi((s) => s.toasts.map((t) => t.id).join(','));
@@ -318,6 +335,27 @@ export function AtlasView() {
   const onSelect = useCallback((hit: AtlasHit) => setSelection([hit.fmaId]), [setSelection]);
   const hasSelection = ids.length > 0;
 
+  // ---- hide / restore ----
+  const selectedPartIds = useMemo(() => {
+    if (!atlas || !index || !ids.length) return [];
+    return resolveHighlight(atlas, index, ids).partIdx.map((i) => atlas.parts[i].id);
+  }, [atlas, index, ids]);
+  const doHide = () => {
+    if (!selectedPartIds.length) return;
+    useAtlasStore.getState().hideParts(selectedPartIds);
+    setIsolate(false);
+    setSelection([]);
+  };
+  // A structure that is selected is never also hidden: choosing it (search, chip, link, Back button) brings it back.
+  useEffect(() => {
+    const st = useAtlasStore.getState();
+    if (selectedPartIds.length && anyHidden(st.hiddenParts, selectedPartIds)) st.revealParts(selectedPartIds);
+    // only a change of selection reveals; hiding keeps the selection until the URL catches up
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
+  const familyCount = useMemo(() => (atlas ? explodeFamilyCount(atlas.parts) : 0), [atlas]);
+  const sceneReady = modelReady === active;
+
   // Keep the camera framing clear of the panel.
   useEffect(() => {
     if (!hasSelection) {
@@ -336,7 +374,9 @@ export function AtlasView() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
-  const results = useMemo(() => (atlas ? searchStructures(atlas, q, 8) : []), [atlas, q]);
+  const bySystem = useMemo(() => (atlas ? systemLookup(atlas) : new Map()), [atlas]);
+  const groups = useMemo(() => (atlas ? groupSearchResults(searchStructures(atlas, q, 24), bySystem) : []), [atlas, q, bySystem]);
+  const results = useMemo(() => flattenGroups(groups), [groups]);
   useEffect(() => setCursor(0), [q]);
   const pickStructure = (id: string) => {
     setSelection([id]);
@@ -368,6 +408,8 @@ export function AtlasView() {
           resetNonce={resetNonce}
           cameraApiRef={cameraApi}
           visibleSystems={visible}
+          hiddenParts={hiddenParts}
+          explode={explode}
           inset={inset}
           onSelect={onSelect}
           onResolved={setResolved}
@@ -441,20 +483,33 @@ export function AtlasView() {
               role="listbox"
               className="absolute inset-x-0 top-full z-30 mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-pop"
             >
-              {results.map((c, i) => (
-                <Tooltip key={c.id} tip={structureTip(c.name)}>
-                  <li
-                    role="option"
-                    aria-selected={i === cursor}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => pickStructure(c.id)}
-                    onMouseEnter={() => setCursor(i)}
-                    className={cn('flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3.5 py-2 text-sm md:min-h-[38px]', i === cursor && 'bg-accent-soft')}
-                  >
-                    <span className="truncate first-letter:uppercase">{c.name}</span>
-                    <span className="shrink-0 font-mono text-[0.68rem] text-muted">{c.id}</span>
-                  </li>
-                </Tooltip>
+              {groups.map((g) => (
+                <li key={g.system} role="group" aria-label={g.name}>
+                  <div className="label-mono sticky top-0 z-10 flex items-center gap-2 bg-surface px-3.5 py-1.5" aria-hidden>
+                    <span className="h-2 w-2 rounded-full" style={{ background: SYSTEMS.find((x) => x.id === g.system)?.color }} />
+                    {g.name}
+                  </div>
+                  <ul role="presentation">
+                    {g.items.map((c) => {
+                      const i = results.indexOf(c);
+                      return (
+                        <Tooltip key={c.id} tip={structureTip(c.name)}>
+                          <li
+                            role="option"
+                            aria-selected={i === cursor}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => pickStructure(c.id)}
+                            onMouseEnter={() => setCursor(i)}
+                            className={cn('flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3.5 py-2 text-sm md:min-h-[38px]', i === cursor && 'bg-accent-soft')}
+                          >
+                            <span className="truncate first-letter:uppercase">{c.name}</span>
+                            <span className="shrink-0 font-mono text-[0.68rem] text-muted">{c.id}</span>
+                          </li>
+                        </Tooltip>
+                      );
+                    })}
+                  </ul>
+                </li>
               ))}
             </ul>
           )}
@@ -480,6 +535,27 @@ export function AtlasView() {
           >
             <Focus className="h-4 w-4" aria-hidden /> Isolate
           </Button>
+          <Button
+            size="md"
+            variant="secondary"
+            onClick={doHide}
+            disabled={!selectedPartIds.length}
+            tip={ATLAS_TIPS['atlas.hide']}
+            className="px-3 text-sm shadow-card md:min-h-[32px]"
+          >
+            <EyeOff className="h-4 w-4" aria-hidden /> Hide
+          </Button>
+          {hiddenParts.length > 0 && (
+            <Button
+              size="md"
+              variant="secondary"
+              onClick={() => setHiddenParts([])}
+              tip={ATLAS_TIPS['atlas.hide.restore']}
+              className="px-3 text-sm shadow-card md:min-h-[32px]"
+            >
+              <Eye className="h-4 w-4" aria-hidden /> Restore ({hiddenParts.length})
+            </Button>
+          )}
           <Button size="md" variant="secondary" onClick={doReset} disabled={!atlas} tip={ATLAS_TIPS['atlas.reset']} className="px-3 text-sm shadow-card md:min-h-[32px]">
             <RotateCcw className="h-4 w-4" aria-hidden /> Reset view
           </Button>
@@ -493,6 +569,17 @@ export function AtlasView() {
           >
             <Layers className="h-4 w-4" aria-hidden /> Layers
           </Button>
+          <Button
+            size="md"
+            variant={explodeOpen || explode > 0 ? 'primary' : 'secondary'}
+            onClick={() => setExplodeOpen((v) => !v)}
+            disabled={!sceneReady}
+            aria-expanded={explodeOpen}
+            tip={ATLAS_TIPS['atlas.explode']}
+            className="px-3 text-sm shadow-card md:min-h-[32px]"
+          >
+            <Move3d className="h-4 w-4" aria-hidden /> Explode
+          </Button>
         </div>
 
         {femaleFlag && active === 'female' && (
@@ -500,6 +587,8 @@ export function AtlasView() {
             <FemaleNote id="atlas-female-note" />
           </div>
         )}
+
+        {explodeOpen && sceneReady && <ExplodeControls amount={explode} familyCount={familyCount} onChange={setExplode} />}
 
         {layersOpen && (
           <div className="pointer-events-auto card p-3">

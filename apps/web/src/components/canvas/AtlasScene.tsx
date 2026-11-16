@@ -10,6 +10,8 @@ import { SYSTEMS, resolveHighlight, type Atlas, type SystemId } from '@/lib/anat
 import { useAtlasStore } from '@/lib/atlas-store';
 import { defaultFramingParts, type Sex } from '@/lib/atlas-sex';
 import { computeGoalPose } from '@/lib/atlas-camera';
+import { pinchZoomFactor, wheelZoomFactor, zoomTowardPoint } from '@/lib/atlas-zoom';
+import { createExplodeLayout, explodeOffset, type ExplodeLayout } from '@/lib/atlas-explode';
 import type { PoseSnapshot } from '@/lib/atlas-reset';
 import { cn } from '@/lib/cn';
 import { PointerTap } from './pointer-tap';
@@ -54,6 +56,10 @@ export interface AtlasCanvasProps {
   onResolved?: (r: AtlasResolved) => void;
   /** Free pixels the camera should keep clear (e.g. a side panel or bottom sheet overlaying the canvas). */
   inset?: { right?: number; bottom?: number };
+  /** Part ids to hide (Hide control). They are not drawn, not pickable and not ghosted. */
+  hiddenParts?: string[];
+  /** Explode amount, 0 (assembled) to 1 (every piece). Ignored in compact mode. */
+  explode?: number;
   /** Small embed: load only the highlighted structures, no wheel zoom, vertical swipes scroll the page. */
   compact?: boolean;
   autoRotate?: boolean;
@@ -167,8 +173,9 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     controls.maxDistance = 30;
     controls.maxPolarAngle = Math.PI * 0.96;
     controls.addEventListener('change', () => (dirty = true));
+    // Zoom is ours in the full viewer (towards the cursor or pinch centre); in compact mode it is off so the page scrolls.
+    controls.enableZoom = false;
     if (compact) {
-      controls.enableZoom = false;
       controls.enablePan = false;
       canvas.style.touchAction = 'pan-y';
     }
@@ -193,6 +200,10 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     const stateData = new Uint8Array(n * 4);
     const stateTexture = new T.DataTexture(stateData, n, 1, T.RGBAFormat, T.UnsignedByteType);
     stateTexture.needsUpdate = true;
+    // Per-part explode offset (world space), sampled in the vertex shader. All zero while assembled.
+    const offsetData = new Float32Array(n * 4);
+    const offsetTexture = new T.DataTexture(offsetData, n, 1, T.RGBAFormat, T.FloatType);
+    offsetTexture.needsUpdate = true;
 
     const makeMaterial = (color: string, ghost: boolean) => {
       const m = new T.MeshStandardMaterial({
@@ -207,13 +218,14 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       m.customProgramCacheKey = () => (ghost ? 'atlas-ghost' : 'atlas-solid');
       m.onBeforeCompile = (shader) => {
         shader.uniforms.partState = { value: stateTexture };
+        shader.uniforms.partOffset = { value: offsetTexture };
         shader.uniforms.stateWidth = { value: n };
         shader.uniforms.accent = { value: ACCENT };
         shader.vertexShader =
-          'attribute float partIndex; uniform sampler2D partState; uniform float stateWidth; varying vec3 vPart;\n' +
+          'attribute float partIndex; uniform sampler2D partState; uniform sampler2D partOffset; uniform float stateWidth; varying vec3 vPart;\n' +
           shader.vertexShader.replace(
             '#include <begin_vertex>',
-            '#include <begin_vertex>\nvPart = texture2D(partState, vec2((partIndex + 0.5) / stateWidth, 0.5)).rgb;',
+            '#include <begin_vertex>\nvPart = texture2D(partState, vec2((partIndex + 0.5) / stateWidth, 0.5)).rgb;\ntransformed += texture2D(partOffset, vec2((partIndex + 0.5) / stateWidth, 0.5)).rgb;',
           );
         shader.fragmentShader =
           'varying vec3 vPart; uniform vec3 accent;\n' +
@@ -238,6 +250,9 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     const pickMaterial = new T.MeshBasicMaterial({ side: T.DoubleSide });
     const pickers: (T.Mesh | undefined)[] = new Array(n);
     const bounds = parts.map((p) => new T.Box3(new T.Vector3().fromArray(p.bounds[0]), new T.Vector3().fromArray(p.bounds[1])));
+    // Where each part is drawn now: its bounds moved by the explode offset. Picking and framing read these.
+    const curBounds = bounds.map((b) => b.clone());
+    let appliedExplode = 0;
 
     let stateKey = '';
 
@@ -345,7 +360,8 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       const boxes: T.Box3[] = [];
       parts.forEach((p, i) => {
         if (p.system === 'integumentary') return;
-        if (useAll ? (defaultFrameSet ? defaultFrameSet.has(i) : wanted.has(i)) : idx.includes(i)) boxes.push(bounds[i]);
+        const inFrame = useAll ? (appliedExplode > 0 ? loadedParts.has(i) : defaultFrameSet ? defaultFrameSet.has(i) : wanted.has(i)) : idx.includes(i);
+        if (inFrame) boxes.push(curBounds[i]);
       });
       const dir = fromDefaultDirection || userMoved === false ? undefined : camera.position.clone().sub(controls.target);
       const goal = computeGoalPose(
@@ -409,16 +425,21 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     let appliedReset = latest.current.resetNonce ?? 0;
     let appliedHighlight = '';
     let appliedInset = '';
+    // Hidden structures: part ids from the Hide control, resolved to indices when the list changes.
+    const partIndexById = new Map(parts.map((p, i) => [p.id, i]));
+    let hiddenIdx = new Set<number>();
+    let seenHidden: string[] | undefined;
+    let hiddenVersion = 0;
     const applyState = () => {
       const s = latest.current;
       const sel = new Set(partIdxRef.current);
-      hasSelection = [...sel].some((i) => loadedParts.has(i));
+      hasSelection = [...sel].some((i) => loadedParts.has(i) && !hiddenIdx.has(i));
       const vis = new Set<SystemId>(s.visibleSystems ?? SYSTEMS.filter((x) => x.id !== 'integumentary' && x.id !== 'pregnancy').map((x) => x.id));
       const isolate = !!s.isolate && hasSelection;
       for (let i = 0; i < n; i++) {
         const selected = sel.has(i);
         const loaded = loadedParts.has(i);
-        const visible = loaded && (isolate ? selected : compact ? true : vis.has(parts[i].system) || selected);
+        const visible = loaded && !hiddenIdx.has(i) && (isolate ? selected : compact ? true : vis.has(parts[i].system) || selected);
         stateData[i * 4] = visible ? 255 : 0;
         stateData[i * 4 + 1] = selected && hasSelection ? 255 : 0;
         // Context ghosting skips superficial layers (muscle, fascia, vessels) that would just fog the view.
@@ -430,6 +451,31 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       const wantGhost = hasSelection && !isolate && !compact;
       ghostMeshes.forEach((m) => (m.visible = wantGhost));
       dirty = true;
+    };
+
+    // ---- explode ----
+    let layout: ExplodeLayout | null = null;
+    let layoutParts = -1;
+    const zero = new T.Vector3();
+    const offset = new T.Vector3();
+    const applyExplode = (amount: number) => {
+      appliedExplode = amount;
+      if (amount > 0 && (!layout || layoutParts !== loadedParts.size)) {
+        layout = createExplodeLayout([...loadedParts].map((i) => parts[i]));
+        layoutParts = loadedParts.size;
+      }
+      for (let i = 0; i < n; i++) {
+        const target = amount > 0 ? layout?.targets.get(parts[i].id) : undefined;
+        if (target && layout) offset.fromArray(explodeOffset(target, amount, layout.familyCount));
+        else offset.copy(zero);
+        offset.toArray(offsetData, i * 4);
+        curBounds[i].copy(bounds[i]).translate(offset);
+        pickers[i]?.matrixWorld.makeTranslation(offset.x, offset.y, offset.z);
+      }
+      offsetTexture.needsUpdate = true;
+      dirty = true;
+      // Refit the view so the spread-out body stays in frame, whether it is moving apart or coming back together.
+      frame3(partIdxRef.current, false);
     };
 
     // ---- sizing ----
@@ -460,6 +506,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       'pointer-events-none absolute z-10 max-w-[240px] rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-ink shadow-pop';
     el.appendChild(hover);
 
+    let pickPoint: T.Vector3 | null = null;
     const pick = (clientX: number, clientY: number): number => {
       const rect = canvas.getBoundingClientRect();
       pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
@@ -468,11 +515,13 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       let bestGhost = Infinity;
       let solidIdx = -1;
       let ghostIdx = -1;
+      let solidPoint: T.Vector3 | null = null;
+      let ghostPoint: T.Vector3 | null = null;
       const sel = new Set(partIdxRef.current);
       for (let i = 0; i < n; i++) {
         const mesh = pickers[i];
         if (!mesh || stateData[i * 4] < 128) continue;
-        if (!raycaster.ray.intersectBox(bounds[i], hitPoint)) continue;
+        if (!raycaster.ray.intersectBox(curBounds[i], hitPoint)) continue;
         const hits = raycaster.intersectObject(mesh, false);
         if (!hits[0]) continue;
         const isGhost = stateData[i * 4 + 2] > 128 && !sel.has(i);
@@ -480,13 +529,82 @@ export default function AtlasScene(props: AtlasCanvasProps) {
           if (hits[0].distance < bestGhost) {
             bestGhost = hits[0].distance;
             ghostIdx = i;
+            ghostPoint = hits[0].point;
           }
         } else if (hits[0].distance < bestSolid) {
           bestSolid = hits[0].distance;
           solidIdx = i;
+          solidPoint = hits[0].point;
         }
       }
+      pickPoint = solidIdx >= 0 ? solidPoint : ghostPoint;
       return solidIdx >= 0 ? solidIdx : ghostIdx;
+    };
+
+    // ---- zoom towards the cursor (wheel) or the pinch centre (touch) ----
+    // The surface under the cursor stays under the cursor. While the cursor rests, the anchor stays valid (that point is
+    // pinned to the screen), so it is reused instead of ray-casting every wheel tick.
+    let anchorCache: { x: number; y: number; at: number; hit: T.Vector3 | null } | null = null;
+    const zoomAt = (clientX: number, clientY: number, factor: number, tolerance: number) => {
+      if (factor === 1) return;
+      const now = performance.now();
+      const fresh = anchorCache && now - anchorCache.at < 400 && Math.hypot(clientX - anchorCache.x, clientY - anchorCache.y) <= tolerance;
+      if (!fresh || !anchorCache) {
+        pick(clientX, clientY); // sets the ray and the first visible surface under it
+        anchorCache = { x: clientX, y: clientY, at: now, hit: pickPoint ? (pickPoint as T.Vector3).clone() : null };
+      } else {
+        anchorCache.at = now;
+        const rect = canvas.getBoundingClientRect();
+        pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+        raycaster.setFromCamera(pointer, camera);
+      }
+      const next = zoomTowardPoint({
+        position: camera.position,
+        target: controls.target,
+        ray: raycaster.ray,
+        hit: anchorCache.hit,
+        factor,
+        minDistance: controls.minDistance,
+        maxDistance: controls.maxDistance,
+      });
+      camera.position.copy(next.position);
+      controls.target.copy(next.target);
+      goalPos.copy(next.position);
+      goalTarget.copy(next.target);
+      tweening = false;
+      userMoved = true;
+      dirty = true;
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      hover.hidden = true;
+      zoomAt(e.clientX, e.clientY, wheelZoomFactor(e.deltaY, e.deltaMode, e.ctrlKey), 3);
+    };
+    const fingers = new Map<number, { x: number; y: number }>();
+    let pinchSpan = 0;
+    const span = () => {
+      const [a, b] = [...fingers.values()];
+      return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    };
+    const onPinchDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pinchSpan = fingers.size === 2 ? span().d : 0;
+      anchorCache = null;
+    };
+    const onPinchMove = (e: PointerEvent) => {
+      const f = fingers.get(e.pointerId);
+      if (!f) return;
+      f.x = e.clientX;
+      f.y = e.clientY;
+      if (fingers.size !== 2) return;
+      const { d, cx, cy } = span();
+      zoomAt(cx, cy, pinchZoomFactor(pinchSpan, d), 12);
+      pinchSpan = d;
+    };
+    const onPinchUp = (e: PointerEvent) => {
+      fingers.delete(e.pointerId);
+      pinchSpan = fingers.size === 2 ? span().d : 0;
     };
 
     let hoverQueued = false;
@@ -534,6 +652,13 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onCancel);
     canvas.addEventListener('pointerleave', onLeave);
+    if (!compact) {
+      canvas.addEventListener('wheel', onWheel, { passive: false });
+      canvas.addEventListener('pointerdown', onPinchDown);
+      canvas.addEventListener('pointermove', onPinchMove);
+      canvas.addEventListener('pointerup', onPinchUp);
+      canvas.addEventListener('pointercancel', onPinchUp);
+    }
     const onLost = (e: Event) => {
       e.preventDefault();
       fail('The 3D session was paused by your device. Reload to continue.');
@@ -555,8 +680,13 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       const dt = Math.min(clock.getDelta(), 0.05);
       const s = latest.current;
 
+      if (s.hiddenParts !== seenHidden) {
+        seenHidden = s.hiddenParts;
+        hiddenIdx = new Set((s.hiddenParts ?? []).map((id) => partIndexById.get(id)).filter((i): i is number => i !== undefined));
+        hiddenVersion++;
+      }
       const hKey = partIdxRef.current.join(',');
-      const key2 = `${hKey}|${s.isolate ? 1 : 0}|${(s.visibleSystems ?? []).join(',')}|${loadedParts.size}`;
+      const key2 = `${hKey}|${s.isolate ? 1 : 0}|${(s.visibleSystems ?? []).join(',')}|${loadedParts.size}|${hiddenVersion}`;
       if (key2 !== stateKey) {
         stateKey = key2;
         applyState();
@@ -566,6 +696,8 @@ export default function AtlasScene(props: AtlasCanvasProps) {
           frame3(partIdxRef.current, true);
         }
       }
+      const wantExplode = compact ? 0 : Math.max(0, Math.min(1, s.explode ?? 0));
+      if (wantExplode !== appliedExplode || (wantExplode > 0 && layoutParts !== loadedParts.size)) applyExplode(wantExplode);
       const insetKey = `${s.inset?.right ?? 0}x${s.inset?.bottom ?? 0}`;
       if (insetKey !== appliedInset) {
         appliedInset = insetKey;
@@ -620,6 +752,11 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onCancel);
       canvas.removeEventListener('pointerleave', onLeave);
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('pointerdown', onPinchDown);
+      canvas.removeEventListener('pointermove', onPinchMove);
+      canvas.removeEventListener('pointerup', onPinchUp);
+      canvas.removeEventListener('pointercancel', onPinchUp);
       canvas.removeEventListener('webglcontextlost', onLost);
       controls.dispose();
       geometries.forEach((g) => g.dispose());
@@ -627,6 +764,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       ghost.forEach((m) => m.dispose());
       pickMaterial.dispose();
       stateTexture.dispose();
+      offsetTexture.dispose();
       envTarget.dispose();
       hover.remove();
       renderer.dispose();

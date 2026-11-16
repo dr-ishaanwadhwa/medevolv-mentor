@@ -4,7 +4,7 @@ import { hasSomethingToUndo, resetIntent, withSelection, type ViewState } from '
 import { computeGoalPose } from './atlas-camera';
 
 const goal = { target: new T.Vector3(1, 2, 3), position: new T.Vector3(4, 5, 6) };
-const prev: ViewState = { selection: ['FMA62045'], isolate: true, goal };
+const prev: ViewState = { selection: ['FMA62045'], isolate: true, goal, hidden: ['FJ1', 'FJ2'], explode: 0.3 };
 const view = { width: 1000, height: 800, aspect: 1.25, fov: 34 };
 const box = (x: number, y: number, z: number, s: number) =>
   new T.Box3(new T.Vector3(x - s, y - s, z - s), new T.Vector3(x + s, y + s, z + s));
@@ -19,7 +19,7 @@ describe('resetIntent', () => {
   });
   it('is idempotent: two resets in a row give the same intent (RV-5)', () => {
     const first = resetIntent(prev);
-    const second = resetIntent({ selection: first.selection, isolate: first.isolate, goal });
+    const second = resetIntent({ selection: first.selection, isolate: first.isolate, goal, hidden: first.hidden, explode: first.explode });
     expect(second.selection).toEqual(first.selection);
     expect(second.isolate).toBe(first.isolate);
     expect(second.frameParts).toEqual(first.frameParts);
@@ -31,12 +31,43 @@ describe('resetIntent', () => {
   });
 });
 
+describe('Reset view and hidden structures / explode', () => {
+  it('clears the hidden set and the explode amount, and Undo keeps copies of both', () => {
+    const i = resetIntent(prev);
+    expect(i.hidden).toEqual([]);
+    expect(i.explode).toBe(0);
+    expect(i.undo.hidden).toEqual(['FJ1', 'FJ2']);
+    expect(i.undo.hidden).not.toBe(prev.hidden);
+    expect(i.undo.explode).toBe(0.3);
+  });
+  it('is undoable when only something is hidden or exploded', () => {
+    const base = { selection: [], isolate: false, goal: null };
+    expect(hasSomethingToUndo({ ...base, hidden: ['FJ1'], explode: 0 }, false)).toBe(true);
+    expect(hasSomethingToUndo({ ...base, hidden: [], explode: 0.3 }, false)).toBe(true);
+  });
+  it('store: Reset view empties the hidden set and the explode amount; Undo can put them back', async () => {
+    const { useAtlasStore } = await import('./atlas-store');
+    const st = useAtlasStore.getState();
+    st.hideParts(['FJ1', 'FJ2']);
+    st.setExplode(0.3);
+    const intent = resetIntent({ selection: [], isolate: false, goal: null, hidden: useAtlasStore.getState().hiddenParts, explode: useAtlasStore.getState().explode });
+    useAtlasStore.getState().reset();
+    expect(useAtlasStore.getState().hiddenParts).toEqual([]);
+    expect(useAtlasStore.getState().explode).toBe(0);
+    useAtlasStore.getState().setHiddenParts(intent.undo.hidden);
+    useAtlasStore.getState().setExplode(intent.undo.explode);
+    expect(useAtlasStore.getState().hiddenParts).toEqual(['FJ1', 'FJ2']);
+    expect(useAtlasStore.getState().explode).toBe(0.3);
+    useAtlasStore.getState().reset();
+  });
+});
+
 describe('hasSomethingToUndo', () => {
   it('is false for a pristine view and true otherwise', () => {
-    expect(hasSomethingToUndo({ selection: [], isolate: false, goal: null }, false)).toBe(false);
-    expect(hasSomethingToUndo({ selection: [], isolate: false, goal: null }, true)).toBe(true);
-    expect(hasSomethingToUndo({ selection: ['A'], isolate: false, goal: null }, false)).toBe(true);
-    expect(hasSomethingToUndo({ selection: [], isolate: true, goal: null }, false)).toBe(true);
+    expect(hasSomethingToUndo({ selection: [], isolate: false, goal: null, hidden: [], explode: 0 }, false)).toBe(false);
+    expect(hasSomethingToUndo({ selection: [], isolate: false, goal: null, hidden: [], explode: 0 }, true)).toBe(true);
+    expect(hasSomethingToUndo({ selection: ['A'], isolate: false, goal: null, hidden: [], explode: 0 }, false)).toBe(true);
+    expect(hasSomethingToUndo({ selection: [], isolate: true, goal: null, hidden: [], explode: 0 }, false)).toBe(true);
   });
 });
 
