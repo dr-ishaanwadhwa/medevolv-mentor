@@ -33,7 +33,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from api import events, features, store
-from api.diagram_validate import KINDS, SchemaError, markers_in, sentences, strip_numbers_of_dose, validate
+from api.diagram_validate import KINDS, RULES_VERSION, SchemaError, markers_in, sentences, strip_numbers_of_dose, validate
 from api.ratelimit import DailyCap, limit
 from api.safety_cues import patient_scoped
 from rag import diagrams, ontology_facts as onto
@@ -173,7 +173,7 @@ def _purge(con: sqlite3.Connection) -> None:
 
 def cache_key(question: str, answer_text: str, citations: list[dict], graph_citations: list[dict]) -> str:
     stamp = onto.PATH.stat().st_mtime_ns if onto.PATH.exists() else 0
-    blob = [VERSION, diagrams.VERSION, stamp, hashlib.sha256(canonical_answer_bytes(question, answer_text, citations,
+    blob = [VERSION, RULES_VERSION, diagrams.VERSION, stamp, hashlib.sha256(canonical_answer_bytes(question, answer_text, citations,
                                                                                  graph_citations)).hexdigest()]
     return hashlib.sha256(json.dumps(blob).encode()).hexdigest()
 
@@ -264,15 +264,22 @@ def ontology_response(ont: dict) -> dict | None:
 
 SYSTEM = """You restructure ONE cited answer into a flowchart, as JSON. Rules:
 - Restructure ONLY the given answer. Do not add facts, steps, boxes or arrows the answer does not state.
-- Choose one kind: "classification" (types and subtypes), "pathway" (courses, branches, supply, drainage) or "sequence"
-  (mechanism, pathogenesis, cascade, workup, treatment steps).
-- Every node and every edge must list in "cites" the markers (for example "1" for [1], "G1" for [G1]) that appear in the
-  answer sentence it came from. Use only markers that appear in the answer.
-- Node labels are short (at most 80 characters), made of words from the answer. No doses, durations or frequencies.
-- Edge "label" is one of the allowed verbs for the kind, or "". Arrows follow the order the answer states.
-- At most the node limit for the kind. The graph must be connected, EXCEPT when the answer compares separate things
-  (for example two drug classes): then draw one chain per item (at most 3 chains, each with at least 2 nodes) and do
-  NOT invent a linking box or arrow between them. No self-loops.
+- Choose one kind: "classification" (types, subtypes, members of a list: "X is classified into", "X includes",
+  "structures passing through X"), "pathway" (anatomical courses, branches, supply, drainage) or "sequence" (a mechanism,
+  pathogenesis, cascade, workup or treatment the answer states as steps that cause or follow one another).
+- A list of separate features under a heading or "include(s):" is not a sequence. Draw it as a classification (the
+  heading or lead-in as the parent box, each item as a child), or leave out the items you cannot connect.
+- Every node and every edge must list in "cites" the markers (for example "1" for [1], "G1" for [G1]) of the answer
+  sentence it came from; a list item with no marker of its own uses the marker of the line that introduces the list.
+  Use only markers that appear in the answer.
+- Node labels copy the answer's own words (at most 80 characters, no paraphrase, no synonyms). No doses, durations or
+  frequencies, and no number the answer's sentence does not contain.
+- Draw an arrow only where the answer itself links the two boxes: in one sentence, under the same heading or lead-in,
+  or as consecutive steps ("This causes ...", "then", numbered steps). Arrows point in the answer's causal order: for
+  "B is a consequence of A" the arrow is A -> B. Edge "label" is one of the allowed verbs for the kind, or "".
+- At most the node limit for the kind. Prefer one connected graph. When the answer compares separate things (for
+  example two drug classes), draw one chain per item (at most 3 chains, each with at least 2 nodes) and do NOT invent a
+  linking box or arrow between them. Leave a box out rather than invent an arrow to it. No self-loops.
 Output JSON: {"kind": "...", "title": "...", "nodes": [{"id": "n1", "label": "...", "role": "start|step|branch|end|warning",
 "cites": ["1"]}], "edges": [{"from": "n1", "to": "n2", "label": "", "cites": ["1"]}]}"""
 
@@ -302,11 +309,12 @@ def _extract_json(raw: str):
 
 
 def answer_path(answer_text: str, passage_ns: set[int], fact_ns: set[int], graph_pointers: list[dict]) -> dict:
-    """Blocking (runs on the diagram executor): one LLM call, one retry on a malformed reply, then the validator."""
+    """Blocking (runs on the diagram executor): one LLM call, then the validator; one retry, with feedback, on a malformed
+    reply or a validation decline."""
     err = None
     for attempt in range(2):
         try:
-            raw = chat(SYSTEM, _user_prompt(answer_text, passage_ns, fact_ns, err), temperature=0, max_tokens=1000,
+            raw = chat(SYSTEM, _user_prompt(answer_text, passage_ns, fact_ns, err), temperature=0, max_tokens=2000,
                        json_mode=True, purpose="Flowchart from a cited answer")
             res = validate(_extract_json(raw), answer_text=answer_text, passage_ns=passage_ns, fact_ns=fact_ns)
         except SchemaError as e:
@@ -314,9 +322,11 @@ def answer_path(answer_text: str, passage_ns: set[int], fact_ns: set[int], graph
             continue
         if not res.ok:
             if attempt == 0:      # one retry with feedback: the reply was well-formed but its boxes/arrows weren't supported
-                err = ("too few boxes or arrows were supported by the answer's own sentences. Use the answer's own words "
-                       "in each label, cite the marker of the sentence each box comes from, and only connect steps in the "
-                       "order the answer states them.")
+                what = "; ".join(dict.fromkeys(res.notes))[:1200]
+                err = ("too few boxes or arrows were supported by the answer's own sentences"
+                       + (f" ({what})" if what else "") + ". Remove or reword those boxes and arrows with the answer's own "
+                       "words and the marker of the sentence each comes from. Do not add new boxes or arrows to reconnect "
+                       "the rest: leave out a box the answer does not link, or draw a list as a classification.")
                 continue
             return _declined(res.reason or "too_few_supported_nodes")
         g = res.graph

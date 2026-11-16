@@ -10,11 +10,20 @@ apart or shrinks below 3 nodes is declined, not repaired.
     raises SchemaError(message) for the retryable "not the JSON we asked for" cases (V1/V2 structure).
 
 Tightening thresholds is allowed on the eval set; loosening V3 or E1 is not (PRD risks table).
+
+Answer structure the validator reads (it never adds words, only keeps the answer's own words together):
+- A list item belongs to the line that introduces it: a lead-in ending in ":" ("The facial nerve gives off the following
+  branches:"), a bold or # heading ("**Cardioselective (β1)**") and a parent bullet ending in ":". Those words are the
+  item's CONTEXT, read before the item's own words. An item with no marker of its own inherits the markers of a cited
+  lead-in ("The superior orbital fissure transmits [1]:"). A plain paragraph line ends every list context.
+- An arrow's evidence unit is the ";"-clause of one cited sentence that holds both boxes (plus the item's context), so
+  a negation, verb or antonym in another clause neither blocks nor confirms it. With no such clause, the whole sentence.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 KINDS: dict[str, tuple[int, tuple[str, ...]]] = {
     "classification": (24, ("includes", "subtype of", "is a")),
@@ -28,6 +37,7 @@ MIN_NODES = 3
 MAX_LABEL = 80
 SUPPORT_MIN = 0.5                                  # V4/E1: share of a label's content words found in the cited sentences
 FAIL_CEILING = 0.30                                # V6: more than this share of failed nodes declines the whole diagram
+RULES_VERSION = 3                                  # part of the diagram cache key: a rules change re-validates cached declines
 
 # Order-sensitive verbs (E2): the source's words must appear before the target's in the cited sentence.
 ORDER_VERBS = ("causes", "leads to", "passes to", "branches to")
@@ -66,6 +76,13 @@ NEG_STEMS = ("inhibit", "decreas", "reduc", "lower", "suppress", "block", "antag
 
 NEGATION = frozenset({"not", "never", "no", "without", "unless", "neither", "nor", "cannot", "none"})
 WARNING_CUES = ("never", "contraindicated", "avoid", "must not", "warning", "do not", "should not", "danger")
+# "Y is a consequence of X", "Y because X": the words between the two boxes reverse the causal direction (E2 order).
+BACKWARD = ("consequence of", "result of", "results from", "resulting from", "due to", "caused by", "secondary to",
+            "because", "owing to", "induced by", "mediated by", "driven by", "stems from", "arises from")
+# A later sentence that opens with one of these continues the previous step ("This causes ...", "Then it binds ...").
+STEP_OPENERS = frozenset({"then", "next", "subsequently", "thereafter", "thereby", "thus", "hence", "therefore",
+                          "consequently", "finally", "this", "these", "which", "so", "eventually", "later"})
+STEP_OPENER_STEMS = ("lead", "result", "caus", "ensu", "trigger", "follow", "produc", "induc", "progress")
 
 STOP = frozenset("""a an the of in on at to for from by with and or but is are was were be been being as it its this that
 these those which who whom whose into onto than then there their they them he she his her we you your i our not no nor
@@ -95,6 +112,7 @@ class Result:
     graph: dict | None = None                       # {kind, title, groups: [], nodes, edges}
     dropped: int = 0
     fact_ns: set = field(default_factory=set)       # [G#] numbers the surviving graph cites
+    notes: list = field(default_factory=list)       # why boxes/arrows failed (feedback for the one retry; never shown)
 
 
 # ---------------------------------------------------------------- text helpers
@@ -104,7 +122,12 @@ def strip_numbers_of_dose(label: str) -> str:
     out = _FREQ.sub(" ", out)
     out = re.sub(r"\(\s*[,;/\- ]*\)", " ", out)
     out = re.sub(r"\s+", " ", out)
-    return out.strip(" ,;:-–/()")
+    out = out.strip(" ,;:-–/")
+    while out and (out[-1] == "(" or (out[-1] == ")" and out.count(")") > out.count("("))):     # only unbalanced parens
+        out = out[:-1].rstrip(" ,;:-–/")
+    while out and (out[0] == ")" or (out[0] == "(" and out.count("(") > out.count(")"))):
+        out = out[1:].lstrip(" ,;:-–/")
+    return out
 
 
 def _stem(w: str) -> str:
@@ -132,7 +155,17 @@ def support(label: str, sentence_words: set[str]) -> float:
     return len(lw & sentence_words) / len(lw) if lw else 0.0
 
 
+def node_supported(label: str, words: set[str]) -> bool:
+    """V4. A label of one or two content words needs all of them (half of "Optic nerve" is just "nerve", which any
+    list of nerves has); a longer label needs SUPPORT_MIN of them."""
+    lw = content_words(label)
+    if not lw:
+        return False
+    return support(label, words) >= (1.0 if len(lw) <= 2 else SUPPORT_MIN)
+
+
 _MARK = re.compile(r"\[([^\[\]]{1,40})\]")
+_CITE_MARK = re.compile(r"\[\s*G?\d+(?:\s*,\s*G?\d+)*\s*\]", re.I)     # only real citation markers, not "[VII]" or "[V1]"
 
 
 def markers_in(text: str) -> set[tuple[str, int]]:
@@ -150,23 +183,89 @@ def markers_in(text: str) -> set[tuple[str, int]]:
 
 
 def strip_markers(text: str) -> str:
-    return re.sub(r"\s+", " ", _MARK.sub(" ", text or "")).strip()
+    """Removes citation markers only; an anatomical label in brackets ("facial nerve [VII]") is answer text and stays."""
+    return re.sub(r"\s+", " ", _CITE_MARK.sub(" ", text or "")).strip()
+
+
+_ITEM = re.compile(r"^(\s*)(?:[*\-•+]+|\d+[.)])\s+")
+_NUMBERED = re.compile(r"^\s*\d+[.)]\s+")
+_HEADING = re.compile(r"^\s*(?:#{1,6}\s+(?P<h>[^\n]{1,80})|\*\*(?P<b>[^*\n]{1,80})\*\*\s*:?)\s*$")
+_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[(*\-•\d])")
+
+
+@dataclass
+class Sent:
+    text: str                 # the sentence with its markers (its own, or those inherited from a cited lead-in)
+    ctx: str = ""             # words of the lead-in / heading / parent bullet that introduce this list item ("" if none)
+    block: int = 0            # the paragraph or bullet line it comes from
+    numbered: bool = False    # an item of a numbered list (1. 2. 3.): the answer orders those steps itself
+    mk: set = field(default_factory=set)
+    words: set = field(default_factory=set)       # content words of ctx + sentence
+    toks: list = field(default_factory=list)      # tokens of ctx + sentence, ctx first
+    own: set = field(default_factory=set)         # content words of the sentence alone
+
+
+def _sent(text: str, ctx: str, block: int, numbered: bool) -> Sent:
+    full = f"{ctx} {strip_markers(text)}".strip()
+    return Sent(text, ctx, block, numbered, markers_in(text), content_words(full), tokens(full),
+                content_words(strip_markers(text)))
+
+
+def parse_answer(answer_text: str) -> list[Sent]:
+    """Answer sentences with their list context (see module docstring). A segment that is only markers joins the
+    sentence before it. The context is the answer's own words, in the answer's own order; nothing is added."""
+    lines = (answer_text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[Sent] = []
+    lead = lead_marks = head = ""
+    sub: tuple[int, str, str] | None = None          # (indent, text, markers) of a parent bullet ending in ":"
+    block = 0
+
+    def emit(body: str, ctx: str, inherit: str, numbered: bool) -> None:
+        for part in _SPLIT.split(body):
+            part = re.sub(r"^\s*(?:[*\-•>#]+|\d+[.)])\s+", "", part.strip())
+            if not part:
+                continue
+            if out and not strip_markers(part).strip(" .,;:*-"):
+                out[-1] = _sent(out[-1].text + " " + part, out[-1].ctx, out[-1].block, out[-1].numbered)
+                continue
+            out.append(_sent(f"{part} {inherit}".strip(), ctx, block, numbered))
+
+    for line in lines:
+        if not line.strip():
+            continue
+        block += 1
+        m = _ITEM.match(line)
+        if m:
+            indent, body = len(m.group(1).expandtabs(4)), line[m.end():].strip()
+            if sub and indent <= sub[0]:
+                sub = None
+            ctx = " ".join(x for x in (lead, head, sub[1] if sub else "") if x)
+            inherit = "" if markers_in(body) else (sub[2] if sub and sub[2] else lead_marks)
+            emit(body, ctx, inherit, bool(_NUMBERED.match(line)))
+            clean = strip_markers(body).strip()
+            if clean.endswith(":"):
+                own = " ".join(sorted({m.group(0) for m in _CITE_MARK.finditer(body)}))
+                sub = (indent, clean.rstrip(": ").replace("*", ""), own or inherit)
+            continue
+        h = _HEADING.match(line)
+        if h and not markers_in(line):
+            head, sub = (h.group("h") or h.group("b")).strip(" :*#"), None
+            emit(line.strip(), "", "", False)
+            continue
+        clean = strip_markers(line).strip()
+        head, sub = "", None
+        if clean.endswith(":"):
+            lead = clean.rstrip(": ").replace("*", "")
+            lead_marks = " ".join(m.group(0) for m in _CITE_MARK.finditer(line))
+        else:
+            lead = lead_marks = ""
+        emit(line.strip(), "", "", False)
+    return out
 
 
 def sentences(answer_text: str) -> list[str]:
-    """Answer sentences, each keeping its markers. A segment that is only markers joins the sentence before it."""
-    text = (answer_text or "").replace("\r\n", "\n")
-    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z\[(*\-•\d])|\n+", text)
-    out: list[str] = []
-    for p in parts:
-        p = re.sub(r"^\s*(?:[*\-•>#]+|\d+[.)])\s+", "", p.strip())
-        if not p:
-            continue
-        if out and not strip_markers(p).strip(" .,;:*-"):
-            out[-1] += " " + p
-        else:
-            out.append(p)
-    return out
+    """Answer sentences, each keeping its markers (list items under a cited lead-in carry the lead-in's markers)."""
+    return [s.text for s in parse_answer(answer_text)]
 
 
 # ---------------------------------------------------------------- cites
@@ -186,16 +285,16 @@ def _norm_cite(c) -> tuple[str, int] | None:
     return None
 
 
-def _carriers(cites: set, sents: list[tuple[str, set, set, list[str]]]) -> list[tuple[str, set, list[str]]]:
-    """Sentences (text, content words, tokens) that carry at least one of `cites`."""
-    return [(t, w, tk) for t, mk, w, tk in sents if mk & cites]
+def _carriers(cites: set, sents: list[Sent]) -> list[Sent]:
+    """Sentences that carry at least one of `cites`."""
+    return [s for s in sents if s.mk & cites]
 
 
 # ---------------------------------------------------------------- the validator
 
 def _shorten(label: str) -> str:
     """A label a little over MAX_LABEL is cut at a word boundary with an ellipsis (words removed, none added; the support
-    check then runs on what is left). Labels far over the limit are left as they are, so the schema check rejects them."""
+    check then runs on what is left). Labels far over the limit are left as they are, and validate() drops that box."""
     s = label.strip()
     if len(s) <= MAX_LABEL or len(s) > 2 * MAX_LABEL:
         return s
@@ -221,8 +320,9 @@ def parse_graph(raw) -> dict:
         if n["id"] in ids:
             raise SchemaError(f"duplicate node id {n['id']}.")
         n = {**n, "label": _shorten(n["label"])}
-        if not n["label"].strip() or len(n["label"]) > MAX_LABEL:
-            raise SchemaError(f"node labels must be 1 to {MAX_LABEL} characters.")
+        if not n["label"].strip():
+            raise SchemaError("node labels must not be empty.")
+        # a label far over MAX_LABEL is one box we cannot draw, not a malformed reply: validate() drops it (V6 counts it)
         ids.add(n["id"])
         role = n.get("role") if n.get("role") in ROLES else "step"
         cites = n.get("cites") if isinstance(n.get("cites"), list) else []
@@ -239,10 +339,9 @@ def parse_graph(raw) -> dict:
         cites = e.get("cites") if isinstance(e.get("cites"), list) else []
         edges.append({"from": e["from"], "to": e["to"], "label": label.strip().lower(), "cites": cites})
     title = raw.get("title") if isinstance(raw.get("title"), str) else None
-    g = {"kind": kind, "title": title, "nodes": nodes, "edges": edges}
-    if not _connected([n["id"] for n in nodes], edges):
-        raise SchemaError("the graph must be connected, or up to 3 separate chains of at least 2 nodes each (one per compared item).")
-    return g
+    # Connectivity (E4) is NOT a structure error: a faithful drawing of a list of separate features is disconnected, and
+    # asking the model to "connect it" only invites invented links. E4 is checked once, after validation, in validate().
+    return {"kind": kind, "title": title, "nodes": nodes, "edges": edges}
 
 
 MAX_STEP_GAP = 3     # E2 fallback: the target may sit up to 3 sentences after the source, in the same section
@@ -301,76 +400,163 @@ def _has_stem(stems: tuple[str, ...], toks: list[str]) -> bool:
     return any(t.startswith(s) for s in stems for t in toks)
 
 
-def _edge_ok(e: dict, src: dict, tgt: dict, carriers: list, kind: str) -> tuple[bool, str]:
-    """E1-E3 on the sentences that carry the edge's cites. Returns (keep, label to show)."""
+def _negated(low: str, toks: list[str], own: set[str]) -> bool:
+    """E3: a negation in the evidence unit that the boxes and the arrow do not carry themselves."""
+    return bool((NEGATION & set(toks) or "n't" in low) and not (NEGATION & own))
+
+
+def _antonym(label: str, low: str, toks: list[str]) -> bool:
+    if not label or _has_syn(label, low, toks):
+        return False
+    opposite = NEG_STEMS if label in POS_VERBS else POS_STEMS if label in NEG_VERBS else ()
+    return bool(opposite and _has_stem(opposite, toks))
+
+
+class Unit(NamedTuple):
+    low: str                  # lowercase text: list context, then the clause
+    toks: list                # its tokens, context first
+    own: set                  # content words of the clause alone
+    ctx: set                  # content words of the list context alone
+    n_ctx: int                # how many leading tokens are context
+
+
+def _sup(label: str, u: Unit) -> float:
+    """A box is supported by the sentence's own words OR by its list context (a box that IS the heading or lead-in),
+    never by a blend: context words never top up an item's box."""
+    return max(support(label, u.own), support(label, u.ctx))
+
+
+def _in_unit(label: str, u: Unit, strict: bool = False) -> bool:
+    """E1 for one box: own words or list context, never a blend. `strict` (classification arrows, whose only evidence
+    is that both boxes sit in one unit; directional arrows must also be found in order) applies the V4 standard, so a
+    two-word box is not placed by one generic word ("effects", "nerve")."""
+    if strict:
+        return node_supported(label, u.own) or node_supported(label, u.ctx)
+    return _sup(label, u) >= SUPPORT_MIN
+
+
+def _units(s: Sent, labels: list[str], strict: bool = False) -> list[Unit]:
+    """Evidence units of one cited sentence for these boxes: each ";"-clause (read after the item's list context) in
+    which every label reaches SUPPORT_MIN; when no single clause holds them all, the whole sentence. A unit is always a
+    piece of the answer's own text, so it can only lose words, never gain any."""
+    body = strip_markers(s.text)
+    ctx_w, n_ctx = content_words(s.ctx), len(tokens(s.ctx))
+    clauses = [c for c in body.split(";") if c.strip()]
+    out = []
+    if len(clauses) > 1:
+        for c in clauses:
+            u = Unit(f"{s.ctx} {c}".strip().lower(), tokens(f"{s.ctx} {c}"), content_words(c), ctx_w, n_ctx)
+            if all(_in_unit(lb, u, strict) for lb in labels):
+                out.append(u)
+    if not out:
+        out.append(Unit(f"{s.ctx} {body}".strip().lower(), s.toks, s.own, ctx_w, n_ctx))
+    return out
+
+
+def _order(src_label: str, tgt_label: str, u: Unit) -> str:
+    """E2 order inside one evidence unit: 'forward', 'reversed' or 'unknown'. Words order the boxes, except that a
+    backward connective between them ("Y is a consequence of X", "Y because X") states the opposite direction. A box
+    supported by its list context (the heading or lead-in) sits in the context, before the item's own words."""
+    sw, tw = content_words(src_label), content_words(tgt_label)
+    s_only, t_only = (sw - tw) or sw, (tw - sw) or tw
+
+    def pos(label: str, words: set[str]) -> int | None:
+        if support(label, u.own) >= SUPPORT_MIN:
+            p = _first_pos(words, u.toks[u.n_ctx:])
+            return None if p is None else u.n_ctx + p
+        return _first_pos(words, u.toks[:u.n_ctx])
+
+    ps, pt = pos(src_label, s_only), pos(tgt_label, t_only)
+    if ps is None or pt is None or ps == pt:
+        return "unknown"
+    lo, hi = min(ps, pt), max(ps, pt)
+    between = f" {' '.join(u.toks[lo + 1:hi])} "
+    forward = ps < pt
+    if any(f" {c} " in between for c in BACKWARD):
+        forward = not forward
+    return "forward" if forward else "reversed"
+
+
+def _directional(label: str, kind: str) -> bool:
+    return label in ORDER_VERBS or kind in DIRECTIONAL_KINDS
+
+
+def _edge_ok(e: dict, src: dict, tgt: dict, carriers: list[Sent], kind: str) -> tuple[bool, str]:
+    """E1-E3 on the evidence units of the sentences that carry the edge's cites. Returns (keep, label to show)."""
     label = e["label"]
-    sw, tw = content_words(src["label"]), content_words(tgt["label"])
-    for text, words, toks in carriers:
-        if support(src["label"], words) < SUPPORT_MIN or support(tgt["label"], words) < SUPPORT_MIN:       # E1
-            continue
-        clean = strip_markers(text)
-        low = clean.lower()
-        # E3: a negation in the supporting sentence that the boxes and the arrow do not carry fails this sentence
-        own = set(tokens(src["label"])) | set(tokens(tgt["label"])) | set(tokens(label))
-        if (NEGATION & set(toks) or "n't" in low) and not (NEGATION & own):
-            continue
-        show = label
-        if label:
-            if _has_syn(label, low, toks):                                                                 # E2 verb
-                pass
-            else:
-                opposite = NEG_STEMS if label in POS_VERBS else POS_STEMS if label in NEG_VERBS else ()
-                if opposite and _has_stem(opposite, toks):
+    own = set(tokens(src["label"])) | set(tokens(tgt["label"])) | set(tokens(label))
+    strict = kind == "classification"
+    for s in carriers:
+        for u in _units(s, [src["label"], tgt["label"]], strict):
+            low, toks = u.low, u.toks
+            if not (_in_unit(src["label"], u, strict) and _in_unit(tgt["label"], u, strict)):               # E1
+                continue
+            if _negated(low, toks, own):                                                                    # E3
+                continue
+            show = label
+            if label and not _has_syn(label, low, toks):                                                   # E2 verb
+                if _antonym(label, low, toks):
                     continue                                                                               # antonym: drop
                 show = ""
-        if label in ORDER_VERBS or kind in DIRECTIONAL_KINDS:                                              # E2 order
-            s_only, t_only = (sw - tw) or sw, (tw - sw) or tw
-            ps, pt = _first_pos(s_only, toks), _first_pos(t_only, toks)
-            if ps is None or pt is None or ps >= pt:
+            if _directional(label, kind) and _order(src["label"], tgt["label"], u) != "forward":                    # E2 order
                 continue
-        return True, show
+            return True, show
     return False, ""
 
 
-def _contradicted(label: str, src: dict, tgt: dict, carriers: list) -> bool:
-    """True when a cited sentence that holds BOTH boxes says something the arrow would contradict: a negation the boxes
-    don't carry (E3), the opposite direction verb (antonym), or the target clearly before the source (reversed order).
-    'Order could not be confirmed' is not a contradiction; those edges may still use the cross-sentence fallback."""
-    sw, tw = content_words(src["label"]), content_words(tgt["label"])
+def _contradicted(label: str, src: dict, tgt: dict, carriers: list[Sent], kind: str) -> bool:
+    """True when a cited unit that holds BOTH boxes says something the arrow would contradict: a negation the boxes
+    don't carry (E3), the opposite direction verb (antonym), or, for a directional arrow, the target before the source
+    (reversed order, backward connectives included). 'Order could not be confirmed' is not a contradiction."""
     own = set(tokens(src["label"])) | set(tokens(tgt["label"])) | set(tokens(label))
-    for text, words, toks in carriers:
-        if support(src["label"], words) < SUPPORT_MIN or support(tgt["label"], words) < SUPPORT_MIN:
-            continue
-        low = strip_markers(text).lower()
-        if (NEGATION & set(toks) or "n't" in low) and not (NEGATION & own):
-            return True
-        if label and not _has_syn(label, low, toks):
-            opposite = NEG_STEMS if label in POS_VERBS else POS_STEMS if label in NEG_VERBS else ()
-            if opposite and _has_stem(opposite, toks):
+    for s in carriers:
+        for u in _units(s, [src["label"], tgt["label"]]):
+            low, toks = u.low, u.toks
+            if _sup(src["label"], u) < SUPPORT_MIN or _sup(tgt["label"], u) < SUPPORT_MIN:
+                continue
+            if _negated(low, toks, own) or _antonym(label, low, toks):
                 return True
-        s_only, t_only = (sw - tw) or sw, (tw - sw) or tw
-        ps, pt = _first_pos(s_only, toks), _first_pos(t_only, toks)
-        if ps is not None and pt is not None and ps > pt and _first_pos(s_only, toks[pt:]) is None:
-            return True                                     # every source word comes after the target: reversed
+            if _directional(label, kind) and _order(src["label"], tgt["label"], u) == "reversed":
+                return True
     return False
 
 
-def _adjacent_ok(e: dict, src: dict, tgt: dict, cites: set, sents: list) -> bool:
-    """E2 fallback for step-per-sentence answers (bullet lists): the source box is supported by cited sentence i and the
-    target box by a later sentence of the same section (at most MAX_STEP_GAP on), so the arrow only restates the order the answer gives. No verb,
-    never across a gap, and not when either sentence carries a negation the boxes don't."""
+_SEQ_LEAD = ("step", "stage", "sequen", "cascade", "phase", "chronolog", "event")
+
+
+def _continues(prev: Sent, s: Sent) -> bool:
+    """The answer itself says sentence `s` is the next step after `prev`: a numbered list (1. 2. 3.), a lead-in that
+    announces steps ("The events occur in the following stages:"), or `s` opens with a step word ("This causes ...",
+    "It then binds ...", "Thereafter ..."). Plain bullets under "features include:" are NOT steps."""
+    if prev.numbered and s.numbered:
+        return True
+    if s.ctx and s.ctx == prev.ctx and _has_stem(_SEQ_LEAD, tokens(s.ctx)):
+        return True
+    head = tokens(strip_markers(s.text))[:4]
+    if not head:
+        return False
+    return (head[0] in STEP_OPENERS - {"this", "these", "which", "so"} or "then" in head
+            or any(t.startswith(st) for t in head for st in STEP_OPENER_STEMS))
+
+
+def _adjacent_ok(e: dict, src: dict, tgt: dict, cites: set, sents: list[Sent]) -> bool:
+    """E2 fallback for step-per-sentence answers: the source box is supported by cited sentence i and the target box by
+    a later sentence j of the same section (at most MAX_STEP_GAP on) that the answer marks as the next step (see
+    _continues), so the arrow only restates the order the answer gives. No verb, and not when the clause that supports
+    either box carries a negation the boxes don't."""
     own = set(tokens(src["label"])) | set(tokens(tgt["label"]))
 
     def ok_at(i: int, label: str) -> bool:
-        text, mk, words, toks = sents[i]
-        if not (mk & cites) or support(label, words) < SUPPORT_MIN:
+        s = sents[i]
+        if not (s.mk & cites):
             return False
-        return not ((NEGATION & set(toks) or "n't" in strip_markers(text).lower()) and not (NEGATION & own))
+        return any(_in_unit(label, u) and not _negated(u.low, u.toks, own) for u in _units(s, [label]))
 
     def same_section(i: int, j: int) -> bool:          # a sentence with no marker (a heading) ends a section
-        return all(sents[k][1] for k in range(i + 1, j))
+        return all(sents[k].mk for k in range(i + 1, j))
 
-    return any(ok_at(i, src["label"]) and ok_at(j, tgt["label"]) and same_section(i, j)
+    return any(ok_at(i, src["label"]) and ok_at(j, tgt["label"]) and same_section(i, j) and _continues(sents[j - 1], sents[j])
+               and all(_continues(sents[k - 1], sents[k]) for k in range(i + 1, j))
                for i in range(len(sents)) for j in range(i + 1, min(i + 1 + MAX_STEP_GAP, len(sents))))
 
 
@@ -378,10 +564,11 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
     g = parse_graph(raw)
     kind = g["kind"]
     _, verbs = KINDS[kind]
-    sents = [(s, markers_in(s), content_words(strip_markers(s)), tokens(strip_markers(s))) for s in sentences(answer_text)]
-    present = set().union(*(mk for _, mk, _, _ in sents)) if sents else set()
+    sents = parse_answer(answer_text)
+    present = set().union(*(s.mk for s in sents)) if sents else set()
     allowed = {("passage", n) for n in passage_ns} | {("fact", n) for n in fact_ns}
     usable = allowed & present                                   # V3: exists in the citations AND appears in the text
+    notes: list[str] = []                                        # what failed, for the one retry's feedback
 
     def cites_of(raw_cites) -> set:
         norm = {_norm_cite(c) for c in raw_cites}
@@ -390,45 +577,69 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
     # ---- nodes: V3, V4
     kept: dict[str, dict] = {}
     for n in g["nodes"]:
+        if len(n["label"]) > MAX_LABEL:
+            notes.append(f'box "{n["label"][:60]}…" is longer than {MAX_LABEL} characters')
+            continue
         cites = cites_of(n["cites"])
         label = strip_numbers_of_dose(n["label"])
         if not cites or not label:
+            notes.append(f'box "{n["label"]}" cites no marker that appears in the answer')
             continue
         carry = _carriers(cites, sents)
-        words = set().union(*(w for _, w, _ in carry)) if carry else set()
-        text = " ".join(t for t, _, _ in carry)
-        if support(label, words) < SUPPORT_MIN:
+        own_w = set().union(*(s.own for s in carry)) if carry else set()
+        ctx_w = set().union(*(content_words(s.ctx) for s in carry)) if carry else set()
+        text = " ".join(f"{s.ctx} {strip_markers(s.text)}" for s in carry)
+        if not (node_supported(label, own_w) or node_supported(label, ctx_w)):    # own words or the heading, not a blend
+            notes.append(f'box "{label}" is not worded as its cited sentence says it')
             continue
-        if any(num not in numbers_in(strip_markers(text)) for num in numbers_in(label)):    # no new numbers
+        if any(num not in numbers_in(text) for num in numbers_in(label)):                  # no new numbers
+            notes.append(f'box "{label}" has a number its cited sentence does not')
             continue
         role = n["role"]
-        if role == "warning" and not any(c in strip_markers(text).lower() for c in WARNING_CUES):   # E5
+        if role == "warning" and not any(c in text.lower() for c in WARNING_CUES):          # E5
             role = "step"
         kept[n["id"]] = {"id": n["id"], "label": label[:MAX_LABEL], "role": role, "cites": cites}
     n_total = len(g["nodes"])
     failed = n_total - len(kept)
     if failed / n_total > FAIL_CEILING:                                                      # V6
-        return Result(False, "too_few_supported_nodes", dropped=failed)
+        return Result(False, "too_few_supported_nodes", dropped=failed, notes=notes)
 
-    # ---- edges: V3, V5, E1-E4 (an edge to a dropped node is dropped, never bridged)
+    # ---- edges: V3, V5, E1-E3 (an edge to a dropped node is dropped, never bridged)
     edges = []
+    contradicted: set[str] = set()                   # boxes with an arrow the answer contradicts: never pruned below
     for e in g["edges"]:
         if e["from"] not in kept or e["to"] not in kept:
             continue
-        cites = cites_of(e["cites"])
-        if not cites:
-            continue
-        label = e["label"] if e["label"] in verbs else ""                                    # V5
-        ok, show = _edge_ok({**e, "label": label}, kept[e["from"]], kept[e["to"]], _carriers(cites, sents), kind)
         src, tgt = kept[e["from"]], kept[e["to"]]
-        if not ok and kind in DIRECTIONAL_KINDS and not _contradicted(label, src, tgt, _carriers(cites, sents)):
+        cites = cites_of(e["cites"])
+        label = e["label"] if e["label"] in verbs else ""                                    # V5
+        carriers = _carriers(cites | src["cites"] | tgt["cites"], sents)
+        ok, show = _edge_ok({**e, "label": label}, src, tgt, _carriers(cites, sents), kind) if cites else (False, "")
+        if not ok and _contradicted(label, src, tgt, carriers, kind):     # boxes' own sentences count as evidence too
+            contradicted |= {e["from"], e["to"]}
+        elif not ok and cites and kind in DIRECTIONAL_KINDS:
             # the cross-sentence order fallback never overrides a contradiction found inside one sentence
             ok, show = _adjacent_ok(e, src, tgt, cites | src["cites"] | tgt["cites"], sents), ""
         if ok:
             edges.append({"from": e["from"], "to": e["to"], "label": show, "cites": cites})
+        else:
+            notes.append(f'arrow "{src["label"]}" -> "{tgt["label"]}" is not stated by a cited sentence')
+
+    # ---- a supported box none of whose arrows the answer states (a separate feature in a list) is left out, like a box
+    # that failed V4: never connected by an invented arrow, counted in `dropped`, under the same V6 ceiling. A box whose
+    # arrow the answer contradicts is never left out this way: the whole diagram declines (E4) instead.
+    lone = [next(iter(c)) for c in _components(list(kept), edges) if len(c) == 1]
+    if lone and not (set(lone) & contradicted) and (failed + len(lone)) / n_total <= FAIL_CEILING:
+        for i in lone:
+            notes.append(f'box "{kept[i]["label"]}" has no arrow the answer states')
+            del kept[i]
+        failed += len(lone)
     ids = list(kept)
     if len(ids) < MIN_NODES or not _connected(ids, edges):                                   # E4
-        return Result(False, "too_few_supported_nodes", dropped=failed)
+        for c in _components(ids, edges):
+            if len(c) == 1:
+                notes.append(f'box "{kept[next(iter(c))]["label"]}" has no arrow the answer states')
+        return Result(False, "too_few_supported_nodes", dropped=failed, notes=notes)
 
     out_ids = {old: f"n{i}" for i, old in enumerate(ids, 1)}
 
@@ -441,7 +652,7 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
     title = None
     t = (g["title"] or "").strip()
     if t and len(t) <= MAX_LABEL:
-        all_words = set().union(*(w for _, _, w, _ in sents)) if sents else set()
+        all_words = set().union(*(s.words for s in sents)) if sents else set()
         if support(strip_numbers_of_dose(t), all_words) >= SUPPORT_MIN and not numbers_in(strip_numbers_of_dose(t)):
             title = strip_numbers_of_dose(t)
     used_facts = {n for nd in nodes for c in nd["cites"] if c["kind"] == "fact" for n in [c["n"]]}

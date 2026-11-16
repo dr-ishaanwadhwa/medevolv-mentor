@@ -15,6 +15,13 @@ describe('when the Flowchart chip shows (D-1, D-16)', () => {
   it('joins a marker-only segment to the sentence before it', () => {
     expect(sentences('First fact. [1]\nSecond fact [2].')).toEqual(['First fact. [1]', 'Second fact [2].']);
   });
+  it('lets list items inherit the marker of a cited lead-in, as the server does', () => {
+    const sof =
+      'The superior orbital fissure transmits [1]:\n\n- Trochlear nerve [IV]\n- Abducent nerve [VI]\n- Superior ophthalmic vein\n\nSee also [3].';
+    expect(citedSentenceCount(sof, [1, 3])).toBe(5);
+    expect(citedSentenceCount(sof.replace('transmits [1]:', 'transmits:'), [1, 3])).toBe(1);
+    expect(sentences(sof)[1]).toBe('Trochlear nerve [IV] [1]');
+  });
   it('counts only markers the answer really has', () => {
     expect(citedSentenceCount(A, [1, 2], [1])).toBe(4);
     expect(citedSentenceCount(A, [1], [])).toBe(2);

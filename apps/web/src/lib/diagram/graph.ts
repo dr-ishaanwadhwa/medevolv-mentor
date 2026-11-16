@@ -24,17 +24,50 @@ export function markersIn(text: string): Set<string> {
   return out;
 }
 
-const stripMarkers = (s: string) => s.replace(MARK, ' ').replace(/\s+/g, ' ').trim();
+/** Removes citation markers only ("[VII]" or "[V1]" is answer text), as api/diagram_validate.strip_markers. */
+const CITE = /\[\s*G?\d+(?:\s*,\s*G?\d+)*\s*\]/gi;
+const stripMarkers = (s: string) => s.replace(CITE, ' ').replace(/\s+/g, ' ').trim();
+const ITEM = /^(\s*)(?:[*\-•+]+|\d+[.)])\s+/;
+const HEADING = /^\s*(?:#{1,6}\s+[^\n]{1,80}|\*\*[^*\n]{1,80}\*\*\s*:?)\s*$/;
+const SPLIT = /(?<=[.!?])\s+(?=[A-Z[(*\-•\d])/;
 
-/** Answer sentences, each with its markers; a marker-only segment joins the sentence before it (as the server does). */
+/**
+ * Answer sentences, each with its markers, as api/diagram_validate.sentences: a marker-only segment joins the sentence
+ * before it, and a list item with no marker of its own carries the markers of the cited line that introduces the list
+ * ("The superior orbital fissure transmits [1]:" or a parent bullet ending in ":"). A plain paragraph line ends the list.
+ */
 export function sentences(answer: string): string[] {
-  const parts = answer.replace(/\r\n?/g, '\n').split(/(?<=[.!?])\s+(?=[A-Z[(*\-•\d])|\n+/);
   const out: string[] = [];
-  for (const raw of parts) {
-    const p = raw.trim().replace(/^\s*(?:[*\-•>#]+|\d+[.)])\s+/, '');
-    if (!p) continue;
-    if (out.length && !stripMarkers(p).replace(/[ .,;:*-]/g, '')) out[out.length - 1] += ` ${p}`;
-    else out.push(p);
+  let leadMarks = '';
+  let sub = null as { indent: number; marks: string } | null;
+  const emit = (body: string, inherit: string) => {
+    for (const raw of body.split(SPLIT)) {
+      const p = raw.trim().replace(/^\s*(?:[*\-•>#]+|\d+[.)])\s+/, '');
+      if (!p) continue;
+      if (out.length && !stripMarkers(p).replace(/[ .,;:*-]/g, '')) out[out.length - 1] += ` ${p}`;
+      else out.push(inherit ? `${p} ${inherit}` : p);
+    }
+  };
+  for (const line of answer.replace(/\r\n?/g, '\n').split('\n')) {
+    if (!line.trim()) continue;
+    const m = ITEM.exec(line);
+    if (m) {
+      const indent = m[1].replace(/\t/g, '    ').length;
+      const body = line.slice(m[0].length).trim();
+      if (sub && indent <= sub.indent) sub = null;
+      const inherit: string = markersIn(body).size ? '' : sub?.marks || leadMarks;
+      emit(body, inherit);
+      if (stripMarkers(body).endsWith(':')) sub = { indent, marks: (body.match(CITE) ?? []).join(' ') || inherit };
+      continue;
+    }
+    if (HEADING.test(line) && !markersIn(line).size) {
+      sub = null;
+      emit(line.trim(), '');
+      continue;
+    }
+    sub = null;
+    leadMarks = stripMarkers(line).endsWith(':') ? (line.match(CITE) ?? []).join(' ') : '';
+    emit(line.trim(), '');
   }
   return out;
 }

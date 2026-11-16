@@ -385,7 +385,7 @@ def test_sequence_verb_survives_inhibitory_mechanism_sentence():
     """'Blocking cross-linking destroys stability' must not count as an antonym of 'leads to' (mechanism text)."""
     from api import diagram_validate as V
     sent = "They inhibit transpeptidases that cross-link peptidoglycan strands; blocking this cross-linking destroys the stability and rigidity of the cell wall [1]."
-    sents = [(s, V.markers_in(s), V.content_words(V.strip_markers(s)), V.tokens(V.strip_markers(s))) for s in V.sentences(sent)]
+    sents = V.parse_answer(sent)
     cs = {V._norm_cite("1")}
     src = {"label": "Inhibit transpeptidases that cross-link peptidoglycan strands"}
     tgt = {"label": "Blocking cross-linking destroys cell wall stability and rigidity"}
@@ -396,7 +396,7 @@ def test_sequence_verb_survives_inhibitory_mechanism_sentence():
 def test_adjacent_sentence_fallback_only_without_shared_sentence():
     from api import diagram_validate as V
     text = "Drug A enters the cell [1]. Then it binds the ribosome [1]."
-    sents = [(s, V.markers_in(s), V.content_words(V.strip_markers(s)), V.tokens(V.strip_markers(s))) for s in V.sentences(text)]
+    sents = V.parse_answer(text)
     cs = {V._norm_cite("1")}
     assert V._adjacent_ok({}, {"label": "Drug A enters the cell"}, {"label": "binds the ribosome"}, cs, sents)
     assert not V._adjacent_ok({}, {"label": "binds the ribosome"}, {"label": "Drug A enters the cell"}, cs, sents)
@@ -405,8 +405,8 @@ def test_adjacent_sentence_fallback_only_without_shared_sentence():
 def test_step_fallback_stops_at_a_heading():
     from api import diagram_validate as V
     text = "Drug A enters the cell [1]. **Other drug** Then it binds the ribosome [1]."
-    sents = [(s, V.markers_in(s), V.content_words(V.strip_markers(s)), V.tokens(V.strip_markers(s))) for s in V.sentences(text)]
-    if len(sents) >= 3 and not sents[1][1]:
+    sents = V.parse_answer(text)
+    if len(sents) >= 3 and not sents[1].mk:
         assert not V._adjacent_ok({}, {"label": "Drug A enters the cell"}, {"label": "binds the ribosome"}, {V._norm_cite("1")}, sents)
 
 
@@ -424,4 +424,31 @@ def test_slightly_long_labels_are_shortened_not_fatal():
     long = "Inhibit transpeptidases blocking cleavage of terminal D-alanine and cross-linking strands"   # 89 chars
     out = V._shorten(long)
     assert len(out) <= V.MAX_LABEL and out.endswith("…") and long.startswith(out[:-1])
-    assert V._shorten("x" * 200) == "x" * 200                                  # far over: left for the schema check
+    assert V._shorten("x" * 200) == "x" * 200                                  # far over: left as is ...
+    g = {"kind": "sequence", "nodes": [{"id": "a", "label": "Angiotensin II", "cites": ["1"]},
+         {"id": "b", "label": "Aldosterone release", "cites": ["1"]}, {"id": "c", "label": "Sodium reabsorption", "cites": ["1"]},
+         {"id": "d", "label": "Blood volume " * 15, "cites": ["2"]}],
+         "edges": [{"from": "a", "to": "b", "cites": ["1"]}, {"from": "b", "to": "c", "cites": ["1"]},
+                   {"from": "c", "to": "d", "cites": ["2"]}]}
+    res = V.validate(g, answer_text=SEQ_A, passage_ns={1, 2}, fact_ns=set())  # ... and dropped as one failed box
+    assert res.ok and res.dropped == 1 and len(res.graph["nodes"]) == 3        # 1 of 4 failed: under the V6 ceiling
+
+
+def test_disconnected_reply_is_a_cached_decline_not_a_generator_error(env):
+    """A faithful drawing of separate features is disconnected; that is a deterministic decline (cached, no Retry),
+    and the retry feedback never asks the model to invent links to connect it."""
+    lone = seq_graph()
+    lone["edges"] = lone["edges"][:1]                                             # c and d float alone
+    env["llm"]([lone, lone])
+    d = post(env, q="RAAS", a=SEQ_A, gcits=[]).json()
+    assert (d["status"], d["reason"]) == ("declined", "too_few_supported_nodes")
+    assert "connected" not in env["calls"][1] and "Do not add new boxes or arrows" in env["calls"][1]
+    assert post(env, q="RAAS", a=SEQ_A, gcits=[]).json() == d and len(env["calls"]) == 2   # served from the cache
+
+
+def test_retry_feedback_names_the_boxes_and_arrows_that_failed(env):
+    bad = seq_graph(e2={"from": "d", "to": "c", "label": "increases", "cites": ["2"]})
+    env["llm"]([bad, seq_graph()])
+    d = post(env, q="RAAS", a=SEQ_A, gcits=[]).json()
+    assert d["status"] == "ok"
+    assert 'arrow "Blood volume" -> "Sodium reabsorption"' in env["calls"][1]
