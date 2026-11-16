@@ -54,7 +54,10 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
                          "scan", "assay", "screen", "xray", "x-ray"),
     "treats": ("treat", "therap", "first-line", "first line", "drug of choice", "manag", "given", "use", "indicat"),
 }
-POS_VERBS = ("activates", "increases", "causes", "leads to")
+# Direction verbs only: an antonym in the sentence (book says "decreases", arrow says "increases") drops the edge.
+# "causes" / "leads to" are sequence verbs, not direction claims: pharmacology mechanisms are full of "blocking X
+# destroys Y", so an inhibitory word there is not an antonym; an unconfirmed sequence verb is just not shown (E2).
+POS_VERBS = ("activates", "increases")
 NEG_VERBS = ("inhibits", "decreases")
 POS_STEMS = ("activat", "stimulat", "increas", "rais", "elevat", "enhanc", "promot", "upregulat", "up-regulat", "caus",
              "lead", "produc", "induc", "trigger", "boost")
@@ -227,25 +230,43 @@ def parse_graph(raw) -> dict:
     title = raw.get("title") if isinstance(raw.get("title"), str) else None
     g = {"kind": kind, "title": title, "nodes": nodes, "edges": edges}
     if not _connected([n["id"] for n in nodes], edges):
-        raise SchemaError("the graph must be connected.")
+        raise SchemaError("the graph must be connected, or up to 3 separate chains of at least 2 nodes each (one per compared item).")
     return g
 
 
-def _connected(ids: list[str], edges: list[dict]) -> bool:
-    if not ids:
-        return False
+MAX_STEP_GAP = 3     # E2 fallback: the target may sit up to 3 sentences after the source, in the same section
+MAX_CHAINS = 3      # a comparison ("A vs B") is honestly drawn as separate chains, one per item; never bridged by an invented edge
+
+
+def _components(ids: list[str], edges: list[dict]) -> list[set]:
     adj: dict[str, set] = {i: set() for i in ids}
     for e in edges:
         if e["from"] in adj and e["to"] in adj:
             adj[e["from"]].add(e["to"])
             adj[e["to"]].add(e["from"])
-    seen, todo = set(), [ids[0]]
-    while todo:
-        x = todo.pop()
-        if x not in seen:
-            seen.add(x)
-            todo.extend(adj[x] - seen)
-    return len(seen) == len(ids)
+    seen: set = set()
+    comps = []
+    for start in ids:
+        if start in seen:
+            continue
+        comp, todo = set(), [start]
+        while todo:
+            x = todo.pop()
+            if x not in comp:
+                comp.add(x)
+                todo.extend(adj[x] - comp)
+        seen |= comp
+        comps.append(comp)
+    return comps
+
+
+def _connected(ids: list[str], edges: list[dict]) -> bool:
+    """Well-formed layout (E4): one connected graph, or up to MAX_CHAINS separate chains of at least 2 nodes each.
+    A lone node is never allowed, so a box whose only supporting edge failed still declines rather than floating."""
+    if not ids:
+        return False
+    comps = _components(ids, edges)
+    return len(comps) == 1 or (len(comps) <= MAX_CHAINS and all(len(c) >= 2 for c in comps))
 
 
 def _first_pos(label_words: set[str], toks: list[str]) -> int | None:
@@ -300,6 +321,25 @@ def _edge_ok(e: dict, src: dict, tgt: dict, carriers: list, kind: str) -> tuple[
     return False, ""
 
 
+def _adjacent_ok(e: dict, src: dict, tgt: dict, cites: set, sents: list) -> bool:
+    """E2 fallback for step-per-sentence answers (bullet lists): the source box is supported by cited sentence i and the
+    target box by a later sentence of the same section (at most MAX_STEP_GAP on), so the arrow only restates the order the answer gives. No verb,
+    never across a gap, and not when either sentence carries a negation the boxes don't."""
+    own = set(tokens(src["label"])) | set(tokens(tgt["label"]))
+
+    def ok_at(i: int, label: str) -> bool:
+        text, mk, words, toks = sents[i]
+        if not (mk & cites) or support(label, words) < SUPPORT_MIN:
+            return False
+        return not ((NEGATION & set(toks) or "n't" in strip_markers(text).lower()) and not (NEGATION & own))
+
+    def same_section(i: int, j: int) -> bool:          # a sentence with no marker (a heading) ends a section
+        return all(sents[k][1] for k in range(i + 1, j))
+
+    return any(ok_at(i, src["label"]) and ok_at(j, tgt["label"]) and same_section(i, j)
+               for i in range(len(sents)) for j in range(i + 1, min(i + 1 + MAX_STEP_GAP, len(sents))))
+
+
 def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) -> Result:
     g = parse_graph(raw)
     kind = g["kind"]
@@ -346,6 +386,12 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
             continue
         label = e["label"] if e["label"] in verbs else ""                                    # V5
         ok, show = _edge_ok({**e, "label": label}, kept[e["from"]], kept[e["to"]], _carriers(cites, sents), kind)
+        src, tgt = kept[e["from"]], kept[e["to"]]
+        one_sentence = any(support(src["label"], w) >= SUPPORT_MIN and support(tgt["label"], w) >= SUPPORT_MIN
+                           for _, w, _ in _carriers(cites, sents))
+        if not ok and kind in DIRECTIONAL_KINDS and not one_sentence:
+            # only when no single sentence holds both boxes; if one does, E2/E3 already judged it and that verdict stands
+            ok, show = _adjacent_ok(e, src, tgt, cites | src["cites"] | tgt["cites"], sents), ""
         if ok:
             edges.append({"from": e["from"], "to": e["to"], "label": show, "cites": cites})
     ids = list(kept)

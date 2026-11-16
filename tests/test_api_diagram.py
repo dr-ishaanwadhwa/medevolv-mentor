@@ -155,7 +155,7 @@ def test_prompt_carries_only_the_answer_and_markers(env):
     ({"from": "c", "to": "d", "label": "decreases", "cites": ["2"]}, "antonym"),
 ])
 def test_bad_edges_are_dropped_and_never_bridged(env, bad_edge, why):
-    env["llm"]([seq_graph(e2=bad_edge)])
+    env["llm"]([seq_graph(e2=bad_edge)] * 2)          # the retry with feedback repeats the mistake
     d = post(env, q="RAAS", a=SEQ_A, gcits=[]).json()
     # the only edge to d fails, d would be disconnected: the diagram declines rather than bridging
     assert d["status"] == "declined" and d["reason"] == "too_few_supported_nodes", why
@@ -194,7 +194,7 @@ def test_uncited_or_unknown_cites_fail_and_too_many_failures_decline(env):
     g = json.loads(json.dumps(CLASSIFY_G))
     for n in g["nodes"][1:4]:
         n["cites"] = ["7"]                                                        # [7] is not in the answer
-    env["llm"]([g])
+    env["llm"]([g, g])                                                       # retry repeats it
     d = post(env).json()
     assert d["status"] == "declined" and d["reason"] == "too_few_supported_nodes"
 
@@ -369,3 +369,51 @@ def test_patient_scoped_or_declined_answers_are_not_signed(monkeypatch):
     assert main._answer_event(ans("answered"), CLASSIFY_Q).answer_sig
     assert main._answer_event(ans("answered"), "My father has asthma, should he take propranolol?").answer_sig is None
     assert main._answer_event(ans("insufficient"), CLASSIFY_Q).answer_sig is None
+
+
+def test_comparison_two_chains_is_well_formed_but_lone_node_is_not():
+    """A vs B is honestly two chains (never bridged by an invented edge); an isolated single box still fails E4."""
+    from api.diagram_validate import _connected
+    two = [{"from": "a", "to": "b"}, {"from": "c", "to": "d"}]
+    assert _connected(["a", "b", "c", "d"], two)
+    assert not _connected(["a", "b", "c", "d", "e"], two)                     # e floats alone
+    four = two + [{"from": "e", "to": "f"}, {"from": "g", "to": "h"}]
+    assert not _connected(list("abcdefgh"), four)                             # more than 3 chains
+
+
+def test_sequence_verb_survives_inhibitory_mechanism_sentence():
+    """'Blocking cross-linking destroys stability' must not count as an antonym of 'leads to' (mechanism text)."""
+    from api import diagram_validate as V
+    sent = "They inhibit transpeptidases that cross-link peptidoglycan strands; blocking this cross-linking destroys the stability and rigidity of the cell wall [1]."
+    sents = [(s, V.markers_in(s), V.content_words(V.strip_markers(s)), V.tokens(V.strip_markers(s))) for s in V.sentences(sent)]
+    cs = {V._norm_cite("1")}
+    src = {"label": "Inhibit transpeptidases that cross-link peptidoglycan strands"}
+    tgt = {"label": "Blocking cross-linking destroys cell wall stability and rigidity"}
+    ok, _ = V._edge_ok({"label": "leads to"}, src, tgt, V._carriers(cs, sents), "sequence")
+    assert ok
+
+
+def test_adjacent_sentence_fallback_only_without_shared_sentence():
+    from api import diagram_validate as V
+    text = "Drug A enters the cell [1]. Then it binds the ribosome [1]."
+    sents = [(s, V.markers_in(s), V.content_words(V.strip_markers(s)), V.tokens(V.strip_markers(s))) for s in V.sentences(text)]
+    cs = {V._norm_cite("1")}
+    assert V._adjacent_ok({}, {"label": "Drug A enters the cell"}, {"label": "binds the ribosome"}, cs, sents)
+    assert not V._adjacent_ok({}, {"label": "binds the ribosome"}, {"label": "Drug A enters the cell"}, cs, sents)
+
+
+def test_step_fallback_stops_at_a_heading():
+    from api import diagram_validate as V
+    text = "Drug A enters the cell [1]. **Other drug** Then it binds the ribosome [1]."
+    sents = [(s, V.markers_in(s), V.content_words(V.strip_markers(s)), V.tokens(V.strip_markers(s))) for s in V.sentences(text)]
+    if len(sents) >= 3 and not sents[1][1]:
+        assert not V._adjacent_ok({}, {"label": "Drug A enters the cell"}, {"label": "binds the ribosome"}, {V._norm_cite("1")}, sents)
+
+
+def test_validation_decline_retries_once_with_feedback_then_succeeds(env):
+    bad = json.loads(json.dumps(CLASSIFY_G))
+    for n in bad["nodes"][1:4]:
+        n["cites"] = ["7"]                                                        # unsupported on the first try
+    env["llm"]([bad, CLASSIFY_G])
+    d = post(env).json()
+    assert d["status"] == "ok", d
