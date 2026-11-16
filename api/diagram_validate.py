@@ -29,6 +29,19 @@ Grounding rules added after red-team round 1 (each only removes boxes or arrows)
 - A direction verb on an arrow is checked against the word on the target itself ("lowering ATP and raising AMP").
 - "A vs B" / "unlike B" / "whereas B": an arrow across a contrast is never stated. "X is based on Y" reverses order.
 - A passive step verb ("is caused by") does not mark the next sentence as the next step.
+
+Round 2/3 (red team round 2; each rule removes boxes or arrows, except the four marked +, which read answer structure):
+- A box is worded as ONE independent clause says it; box numbers (also spelled: "five", "third-") and Greek letters
+  must be in its sentence; a box word whose opposite is in the text instead ("posterior" for "anterior") fails.
+- Inside an arrow's unit a box is a PHRASE (its words within len(label)+2 tokens), never words scattered over the clause.
+- A directional arrow inside one clause needs a linking word between the boxes; items of one comma/"and" list are
+  siblings. A lead that names a place ("After X:") is not a source. A bracketed child belongs to the phrase before it.
+- A direction-verb arrow needs the unit to put that direction on the target; a direction word after an object never
+  crosses "and"/"or". The clause check runs for every kind.
+- (+) A lead-in's clause that does not introduce the list ("X is not fully defined, but the key features are:") is
+  context, not a negation of the items. (+) A negation inside a bracket that no box touches is about that bracket.
+  (+) A clause that announces a sequence ("a proposed sequence includes A, B, C", "a two-step entry: A and B") orders
+  its list. (+) "**X** — ..." is a bold lead like "**X:**".
 """
 from __future__ import annotations
 
@@ -48,7 +61,7 @@ MIN_NODES = 3
 MAX_LABEL = 80
 SUPPORT_MIN = 0.5                                  # V4/E1: share of a label's content words found in the cited sentences
 FAIL_CEILING = 0.30                                # V6: more than this share of failed nodes declines the whole diagram
-RULES_VERSION = 4                                  # part of the diagram cache key: a rules change re-validates cached declines
+RULES_VERSION = 5                                  # part of the diagram cache key: a rules change re-validates cached declines
 
 # Order-sensitive verbs (E2): the source's words must appear before the target's in the cited sentence.
 ORDER_VERBS = ("causes", "leads to", "passes to", "branches to")
@@ -58,7 +71,7 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "includes": ("includ", "such as", "consist", "compris", "divided into", "classif", "types", "e.g", "categor"),
     "subtype of": ("type", "subtype", "class", "variant", "form", "kind", "categor", "group"),
     "is a": (" is a", " are ", "type", "form of", "class", "kind of", "example"),
-    "passes to": ("pass", "run", "travel", "course", "continu", "extend", "project", "relay", "synaps", "proceed",
+    "passes to": ("pass", "transmit", "convey", "run", "travel", "course", "continu", "extend", "project", "relay", "synaps", "proceed",
                   "go ", "goes", "enter", "reach", "terminat", "end "),
     "branches to": ("branch", "give", "gives", "divid", "split", "aris", "emerg", "bifurc", "tributar"),
     "supplies": ("suppl", "innervat", "perfus", "nourish", "vascular"),
@@ -102,6 +115,17 @@ UP_STEMS = ("increas", "rais", "elevat", "enhanc", "promot", "upregulat", "up-re
 DOWN_STEMS = ("decreas", "reduc", "lower", "suppress", "diminish", "inhibit", "block", "deplet", "downregulat",
               "down-regulat", "impair", "attenuat", "slow", "retard")
 DIR_WINDOW = 3                                     # a direction word modifies an object at most 3 tokens away
+_COORD = frozenset({"and", "or", "but", "which", "while", "whereas", "nor"})
+# A directional arrow between two boxes in one clause needs one of these BETWEEN them (plus the kind's verb synonyms):
+# boxes separated only by commas, "and", "or" or a parenthesis are items of one list, not a step or a branch.
+LINK_WORDS = frozenset({"then", "next", "thereby", "thus", "hence", "therefore", "consequently", "which", "that", "via", "into",
+                        "so", "subsequently", "thereafter", "eventually", "finally"})
+LINK_STEMS = ("lead", "result", "caus", "ensu", "initiat", "trigger", "follow", "produc", "induc", "progress", "affect", "allow",
+              "enabl", "permit", "bind", "act", "form", "transmit", "convey", "carr")
+# A list lead that says WHERE ("After the posterior auricular nerve:", "Within the parotid gland:") is not the source
+# of the items under it.
+LOCATORS = frozenset({"after", "within", "at", "beyond", "before", "inside", "near", "below", "above", "behind",
+                      "beneath", "distal", "proximal"})
 # A later sentence that opens with one of these continues the previous step ("This causes ...", "Then it binds ...").
 STEP_OPENERS = frozenset({"then", "next", "subsequently", "thereafter", "thereby", "thus", "hence", "therefore",
                           "consequently", "finally", "this", "these", "which", "so", "eventually", "later"})
@@ -163,8 +187,16 @@ def _stem(w: str) -> str:
     return w
 
 
+_TOK = re.compile(r"[a-z0-9][a-z0-9'\-]*")
+
+
+def _tok_text(text: str) -> str:
+    # an arrow in the answer ("distorts codon recognition → misreading") is the answer's own "then"
+    return re.sub(r"→|⟶|->", " then ", (text or "").lower())
+
+
 def tokens(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9][a-z0-9'\-]*", (text or "").lower())
+    return _TOK.findall(_tok_text(text))
 
 
 def content_words(text: str) -> set[str]:
@@ -173,6 +205,55 @@ def content_words(text: str) -> set[str]:
 
 def numbers_in(text: str) -> list[str]:
     return re.findall(r"\d+(?:\.\d+)?", text or "")
+
+
+_NUM_WORDS = {w: str(i) for i, ws in enumerate((
+    (), ("one", "first", "single"), ("two", "second", "both", "twice", "double"), ("three", "third", "thrice"),
+    ("four", "fourth"), ("five", "fifth"), ("six", "sixth"), ("seven", "seventh"), ("eight", "eighth"),
+    ("nine", "ninth"), ("ten", "tenth"), ("eleven", "eleventh"), ("twelve", "twelfth")), 0) for w in ws}
+_NUM_WORDS.pop("both", None)
+_NUM_WORDS.pop("single", None)
+_GREEK = {"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "κ": "kappa", "μ": "mu", "ε": "epsilon",
+          "θ": "theta", "σ": "sigma", "ω": "omega"}
+_GREEK_WORD = re.compile(r"(?<![a-z])(alpha|beta|gamma|delta|kappa|epsilon|theta|sigma|omega)(?![a-z])")
+
+
+def exact_marks(text: str) -> set[str]:
+    """What a box may only show when its supporting sentence shows it too: numbers (digits or spelled: "Five", "third-
+    generation", "two-thirds") and Greek letters ("β cells" is not "α cells"; "beta" and "β" are the same mark)."""
+    low = (text or "").lower()
+    out = set(numbers_in(low))
+    for part in re.findall(r"[a-z]+", low):
+        if part in _NUM_WORDS:
+            out.add(_NUM_WORDS[part])
+    out |= {f"g:{name}" for ch, name in _GREEK.items() if ch in low}
+    out |= {f"g:{m}" for m in _GREEK_WORD.findall(low)}
+    return out
+
+
+# Words whose opposite in the text means the box says the opposite of the answer (V4 and arrow units): a box word that
+# is not in the text, while its opposite is, is a reworded claim ("posterior two-thirds" for "anterior two-thirds").
+_ANTONYM_PAIRS = (("anterior", "posterior"), ("superior", "inferior"), ("upper", "lower"), ("strong", "weak"),
+                  ("strong", "mild"), ("major", "minor"), ("medial", "lateral"), ("proximal", "distal"),
+                  ("left", "right"), ("afferent", "efferent"), ("internal", "external"), ("deep", "superficial"),
+                  ("acute", "chronic"), ("direct", "indirect"), ("positive", "negative"), ("present", "absent"),
+                  ("agonist", "antagonist"), ("excitatory", "inhibitory"), ("sympathetic", "parasympathetic"),
+                  ("preganglionic", "postganglionic"), ("presynaptic", "postsynaptic"), ("ascending", "descending"),
+                  ("selective", "nonselective"), ("selective", "non-selective"), ("cardioselective", "nonselective"),
+                  ("retained", "lost"), ("retained", "loss"), ("preserved", "lost"), ("preserved", "loss"),
+                  ("maintained", "lost"), ("proven", "unproven"), ("effective", "ineffective"), ("high", "low"),
+                  ("early", "late"), ("reversible", "irreversible"), ("hyperglycemia", "hypoglycemia"),
+                  ("hyperglycaemia", "hypoglycaemia"), ("hyperkalemia", "hypokalemia"))
+ANTONYMS: dict[str, set[str]] = {}
+for _a, _b in _ANTONYM_PAIRS:
+    ANTONYMS.setdefault(_stem(_a), set()).add(_stem(_b))
+    ANTONYMS.setdefault(_stem(_b), set()).add(_stem(_a))
+
+
+def _opposed(label: str, words: set[str]) -> bool:
+    """A box word missing from `words` whose opposite IS in `words`."""
+    lw = content_words(label)
+    return any(ANTONYMS.get(w, set()) & words for w in lw - words)
 
 
 def support(label: str, sentence_words: set[str]) -> float:
@@ -202,8 +283,10 @@ def _polarity_at(toks: list[str], pos: int) -> int:
     for d in range(1, DIR_WINDOW + 1):
         if pos - d >= 0 and _dir(toks[pos - d]):
             return _dir(toks[pos - d])
-    for d in range(1, DIR_WINDOW + 1):
-        if pos + d < len(toks) and _dir(toks[pos + d]):
+    for d in range(1, DIR_WINDOW + 1):          # after the object: never across a coordinator ("flux ... and activates")
+        if pos + d >= len(toks) or toks[pos + d] in _COORD:
+            break
+        if _dir(toks[pos + d]):
             return _dir(toks[pos + d])
     return 0
 
@@ -263,7 +346,8 @@ _ITEM = re.compile(r"^(\s*)(?:[*\-•+]+|\d+[.)])\s+")
 _NUMBERED = re.compile(r"^\s*\d+[.)]\s+")
 _HEADING = re.compile(r"^\s*(?:#{1,6}\s+(?P<h>[^\n]{1,80})|\*\*(?P<b>[^*\n]{1,80})\*\*\s*:?)\s*$")
 _CLAUSE = re.compile(r";|,\s+(?=(?:while|whereas|but)\b)")         # independent clauses of one sentence
-_INLINE_HEAD = re.compile(r"^\*\*([^*\n]{1,80}?(?::\*\*|\*\*\s*:))\s+")     # "**Rate slowing:** ..." / "**X**: ..."
+# "**Rate slowing:** ...", "**X**: ...", "**Penicillins (β-lactams)** — inhibit ...": a bold lead that heads its bullet
+_INLINE_HEAD = re.compile(r"^\*\*([^*\n]{1,80}?(?::\*\*|\*\*\s*(?::|—|–|-\s)))\s*")
 _SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[(*\-•\d])")
 
 
@@ -277,12 +361,22 @@ class Sent:
     words: set = field(default_factory=set)       # content words of ctx + sentence
     toks: list = field(default_factory=list)      # tokens of ctx + sentence, ctx first
     own: set = field(default_factory=set)         # content words of the sentence alone
+    skip: int = 0             # leading ctx tokens from a lead-in clause that does not introduce the list (see _intro)
 
 
-def _sent(text: str, ctx: str, block: int, numbered: bool) -> Sent:
+def _sent(text: str, ctx: str, block: int, numbered: bool, skip: int = 0) -> Sent:
     full = f"{ctx} {strip_markers(text)}".strip()
     return Sent(text, ctx, block, numbered, markers_in(text), content_words(full), tokens(full),
-                content_words(strip_markers(text)))
+                content_words(strip_markers(text)), skip)
+
+
+def _intro_skip(lead: str) -> int:
+    """How many leading tokens of a lead-in come before the clause that introduces its list: "Metformin's mechanism is
+    not fully defined, but the key features are:" introduces the list with "the key features are"; the first clause's
+    "not" is about something else, so E3 does not read it for the items' arrows (the words stay context). A one-clause
+    lead keeps everything, its negation included ("does not give off the following branches:")."""
+    parts = [c for c in _CLAUSE.split(lead) if c.strip()]
+    return len(tokens(lead)) - len(tokens(parts[-1])) if len(parts) > 1 else 0
 
 
 def parse_answer(answer_text: str) -> list[Sent]:
@@ -294,15 +388,15 @@ def parse_answer(answer_text: str) -> list[Sent]:
     sub: tuple[int, str, str] | None = None          # (indent, text, markers) of a parent bullet ending in ":"
     block = 0
 
-    def emit(body: str, ctx: str, inherit: str, numbered: bool) -> None:
+    def emit(body: str, ctx: str, inherit: str, numbered: bool, skip: int = 0) -> None:
         for part in _SPLIT.split(body):
             part = re.sub(r"^\s*(?:[*\-•>#]+|\d+[.)])\s+", "", part.strip())
             if not part:
                 continue
             if out and not strip_markers(part).strip(" .,;:*-"):
-                out[-1] = _sent(out[-1].text + " " + part, out[-1].ctx, out[-1].block, out[-1].numbered)
+                out[-1] = _sent(out[-1].text + " " + part, out[-1].ctx, out[-1].block, out[-1].numbered, out[-1].skip)
                 continue
-            out.append(_sent(f"{part} {inherit}".strip(), ctx, block, numbered))
+            out.append(_sent(f"{part} {inherit}".strip(), ctx, block, numbered, skip))
 
     for line in lines:
         if not line.strip():
@@ -318,7 +412,7 @@ def parse_answer(answer_text: str) -> list[Sent]:
             il = _INLINE_HEAD.match(body)
             ctx = " ".join(x for x in (lead, head, sub[1] if sub else "", il.group(1).strip(" :*") if il else "") if x)
             inherit = "" if markers_in(body) else (sub[2] if sub and sub[2] else lead_marks)
-            emit(body, ctx, inherit, bool(_NUMBERED.match(line)))
+            emit(body, ctx, inherit, bool(_NUMBERED.match(line)), _intro_skip(lead) if lead else 0)
             clean = strip_markers(body).strip()
             if clean.endswith(":"):
                 own = " ".join(sorted({m.group(0) for m in _CITE_MARK.finditer(body)}))
@@ -512,6 +606,7 @@ class Unit(NamedTuple):
     ctx: set                  # content words of the list context alone
     n_ctx: int                # how many leading tokens are context
     cuts: tuple = ()          # token index where each ";"-clause of the unit ends
+    skip: int = 0             # leading context tokens E3 does not read (a lead-in clause that does not introduce the list)
 
 
 def _sup(label: str, u: Unit) -> float:
@@ -526,16 +621,38 @@ def _in_unit(label: str, u: Unit, strict: bool = False) -> bool:
     two-word box is not placed by one generic word ("effects", "nerve")."""
     if not _negations_kept(label, u.toks):
         return False
-    if strict:
-        return node_supported(label, u.own) or node_supported(label, u.ctx)
-    return _sup(label, u) >= SUPPORT_MIN
+    lw = content_words(label)
+    if not lw:
+        return False
+    if (node_supported(label, u.ctx) if strict else support(label, u.ctx) >= SUPPORT_MIN):
+        return True
+    w = _window(lw, label, u.toks, u.n_ctx, len(u.toks))
+    need = 1.0 if strict and len(lw) <= 2 else SUPPORT_MIN
+    return w is not None and w[2] / len(lw) >= need
 
 
-def _units(s: Sent, labels: list[str], strict: bool = False) -> list[Unit]:
+def _cited_part(text: str, cites: set | None) -> str:
+    """The part of a sentence that the given markers cite. "X is shown at the inferior orbital fissure [3], and Y may
+    pass through the superior orbital fissure [4]" is two cited claims: [3] cites only the first. Text after the last
+    marker belongs to that marker's part. With no `cites`, or when no part matches, the whole sentence."""
+    groups = list(re.finditer(r"(?:\s*\[\s*G?\d+(?:\s*,\s*G?\d+)*\s*\])+", text, re.I))
+    cuts = [m.end() for m in groups if re.search(r"[A-Za-z]", text[m.end():])]
+    if not cites or not cuts:
+        return strip_markers(text)
+    parts, last = [], 0
+    for c in cuts + [len(text)]:
+        parts.append(text[last:c])
+        last = c
+    keep = [p for p in parts if markers_in(p) & cites]
+    return strip_markers(" ".join(keep)) if keep else strip_markers(text)
+
+
+def _units(s: Sent, labels: list[str], strict: bool = False, cites: set | None = None) -> list[Unit]:
     """Evidence units of one cited sentence for these boxes: each ";"-clause (read after the item's list context) in
-    which every label reaches SUPPORT_MIN; when no single clause holds them all, the whole sentence. A unit is always a
-    piece of the answer's own text, so it can only lose words, never gain any."""
-    body = strip_markers(s.text)
+    which every label reaches SUPPORT_MIN; when no single clause holds them all, the whole sentence. Only the part of
+    the sentence that `cites` cite is read (see _cited_part). A unit is always a piece of the answer's own text, so it
+    can only lose words, never gain any."""
+    body = _cited_part(s.text, cites)
     ctx_w, n_ctx = content_words(s.ctx), len(tokens(s.ctx))
     clauses = [c for c in _CLAUSE.split(body) if c.strip()]
     out = []
@@ -545,7 +662,7 @@ def _units(s: Sent, labels: list[str], strict: bool = False) -> list[Unit]:
         best = {lb: max(support(lb, content_words(c)) for c in clauses) for lb in labels}
         for c in clauses:
             ut = tokens(f"{s.ctx} {c}")
-            u = Unit(f"{s.ctx} {c}".strip().lower(), ut, content_words(c), ctx_w, n_ctx, (len(ut),))
+            u = Unit(f"{s.ctx} {c}".strip().lower(), ut, content_words(c), ctx_w, n_ctx, (len(ut),), s.skip)
             if all(_in_unit(lb, u, strict) and (support(lb, u.ctx) >= SUPPORT_MIN or support(lb, u.own) >= best[lb])
                    for lb in labels):
                 out.append(u)
@@ -554,33 +671,142 @@ def _units(s: Sent, labels: list[str], strict: bool = False) -> list[Unit]:
         for c in clauses or [body]:
             n += len(tokens(c))
             cuts.append(n)
-        out.append(Unit(f"{s.ctx} {body}".strip().lower(), s.toks, s.own, ctx_w, n_ctx, tuple(cuts)))
+        out.append(Unit(f"{s.ctx} {body}".strip().lower(), tokens(f"{s.ctx} {body}".strip()), content_words(body), ctx_w,
+                        n_ctx, tuple(cuts), s.skip))
     return out
 
 
-def _positions(src_label: str, tgt_label: str, u: Unit) -> tuple[int | None, int | None]:
-    """Where each box sits in the unit. A box supported by its list context (the heading or lead-in) sits in the
-    context, before the item's own words."""
+def _window(words: set[str], label: str, toks: list[str], lo: int, hi: int) -> tuple[int, int, int] | None:
+    """Where a box sits as a PHRASE in toks[lo:hi]: the tightest span of at most len(label)+2 tokens holding the most
+    of `words` (earliest on a tie). (start, end inclusive, words matched). A span with (or right after) the opposite of
+    a box word is not the box ("inferior ophthalmic vein" is not "Superior ophthalmic vein"), and words scattered over
+    the sentence never make up a box."""
+    lw = content_words(label)
+    opp = set().union(*(ANTONYMS.get(w, set()) for w in lw)) - lw
+    cap = len(tokens(label)) + 2
+    stems = [_stem(t) for t in toks]
+    best = None
+    for i in range(lo, hi):
+        if stems[i] not in words:
+            continue
+        seen: set = set()
+        for j in range(i, min(hi, i + cap)):
+            if stems[j] not in words:
+                continue
+            seen.add(stems[j])
+            key = (len(seen), -(j - i), -i)
+            if (best is None or key > best[0]) and not (opp & set(stems[max(lo, i - 1):j + 1])):
+                best = (key, i, j)
+    return None if best is None else (best[1], best[2], best[0][0])
+
+
+def _spans(src_label: str, tgt_label: str, u: Unit) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+    """Where each box sits in the unit, as a phrase (start, end). A box placed by its list context (the heading or
+    lead-in) sits in the context, before the item's own words. Words both boxes share do not place either."""
     sw, tw = content_words(src_label), content_words(tgt_label)
     s_only, t_only = (sw - tw) or sw, (tw - sw) or tw
 
-    starts = (u.n_ctx,) + tuple(u.cuts[:-1])
-    ends = tuple(u.cuts) or (len(u.toks),)
+    def span(label: str, words: set[str]) -> tuple[int, int] | None:
+        lw = content_words(label)
+        full = _window(lw, label, u.toks, u.n_ctx, len(u.toks))
+        # a box that IS the item's heading or lead-in sits there, ahead of the item's words, even when the bullet's
+        # own text repeats its bold lead ("- **Hepatic gluconeogenesis suppression** — ...; it reduces ...")
+        if full and full[2] / len(lw) >= SUPPORT_MIN and support(label, u.ctx) < full[2] / len(lw):
+            lo, hi = full[0], full[1]
+            hits = [k for k in range(lo, hi + 1) if _stem(u.toks[k]) in words]
+            return (hits[0], hits[-1]) if hits else None        # placed only by words the other box shares: not placed
+        w = _window(words, label, u.toks, 0, u.n_ctx)
+        return (w[0], w[1]) if w else None
 
-    def pos(label: str, words: set[str]) -> int | None:
-        if support(label, u.own) >= SUPPORT_MIN:
-            # search the clause that supports the box best (the first, on a tie), not the first stray shared word
-            lw = content_words(label)
-            spans = list(zip(starts, ends))
-            lo, hi = max(spans, key=lambda se: (len(lw & {_stem(t) for t in u.toks[se[0]:se[1]]}), -se[0]))
-            p = _first_pos(words, u.toks[lo:hi])
-            if p is None:
-                p = _first_pos(words, u.toks[u.n_ctx:])
-                return None if p is None else u.n_ctx + p
-            return lo + p
-        return _first_pos(words, u.toks[:u.n_ctx])
+    return span(src_label, s_only), span(tgt_label, t_only)
 
-    return pos(src_label, s_only), pos(tgt_label, t_only)
+
+def _positions(src_label: str, tgt_label: str, u: Unit) -> tuple[int | None, int | None]:
+    sp, tp = _spans(src_label, tgt_label, u)
+    return (sp[0] if sp else None), (tp[0] if tp else None)
+
+
+def _paren_owner(u: Unit) -> list[int | None]:
+    """For each token of the unit: the index of the token right before the "(" that encloses it, or None."""
+    out, stack, last, idx = [], [], 0, 0
+    text = _tok_text(u.low)
+    for m in _TOK.finditer(text):
+        for ch in text[last:m.start()]:
+            if ch == "(":
+                stack.append(idx - 1)
+            elif ch == ")" and stack:
+                stack.pop()
+        out.append(stack[-1] if stack else None)
+        idx, last = idx + 1, m.end()
+    return out
+
+
+def _asides(src_label: str, tgt_label: str, u: Unit) -> set[int]:
+    """Token positions inside a bracket that neither box is in nor is the phrase right before ("Heart rate is decreased
+    ..., partly by extravagal actions (direct depressant action on SA and A-V nodes, not reversed by atropine)"): the
+    bracket qualifies its own phrase, so its negation is not about this arrow (E3 reads it only for arrows that touch it)."""
+    sp, tp = _spans(src_label, tgt_label, u)
+    if sp is None or tp is None:
+        return set()
+    owner = _paren_owner(u)
+    boxes = set(range(sp[0], sp[1] + 1)) | set(range(tp[0], tp[1] + 1))
+    touched = {owner[k] for k in boxes if k < len(owner) and owner[k] is not None} | (boxes & set(owner))
+    return {k for k, o in enumerate(owner) if o is not None and o not in touched}
+
+
+def _clause_of(p: int, u: Unit) -> int:
+    return -1 if p < u.n_ctx else next((i for i, b in enumerate(u.cuts) if p < b), len(u.cuts))
+
+
+def _numbered_pair(src_label: str, tgt_label: str) -> bool:
+    """"Stage 1 ..." -> "Stage 2 ...": both boxes carry the same numbered word, the target's number the next one."""
+    def tag(label: str) -> tuple[str, int] | None:
+        t = tokens(label)
+        hits = [(t[i], int(t[i + 1])) for i in range(len(t) - 1) if t[i].isalpha() and t[i + 1].isdigit()]
+        return hits[0] if hits else None
+    a, b = tag(src_label), tag(tgt_label)
+    return bool(a and b and a[0] == b[0] and b[1] == a[1] + 1)
+
+
+def _arrow_shape_ok(label: str, src_label: str, tgt_label: str, u: Unit, kind: str) -> bool:
+    """What the answer's phrasing says about two boxes found in one unit (both in the item's own words):
+    - directional: a linking word sits BETWEEN them (the verb's synonym, "which", "into", "then", a step or direction
+      verb); items of one list ("A, B and C", "leading to A, B and C") are siblings, not a chain;
+    - directional: the source is not a place the list lead names ("After the posterior auricular nerve:");
+    - classification: a child in brackets belongs to the phrase right before its bracket ("vasodilatory properties
+      (nebivolol) or combined α-blockade (carvedilol)")."""
+    sp, tp = _spans(src_label, tgt_label, u)
+    if sp is None or tp is None:
+        return True
+    if _directional(label, kind):
+        if any(t in LOCATORS for t in u.toks[max(0, sp[0] - 2):sp[0]]):
+            return False
+        if sp[0] >= u.n_ctx and tp[0] >= u.n_ctx and sp[1] < tp[0] and _clause_of(sp[1], u) == _clause_of(tp[0], u):
+            # (across ";"-clauses _clauses_linked decides: the later clause must point back)
+            between = u.toks[sp[1] + 1:tp[0]]
+            stems = tuple(x for v in KINDS[kind][1] for x in SYNONYMS.get(v, ()) if " " not in x) + LINK_STEMS \
+                + UP_STEMS + DOWN_STEMS
+            linked = any(t in LINK_WORDS or t.startswith(stems) for t in between)
+            # "interferes with the respiratory chain, lowering ATP": a participle opening the target right after the
+            # source states the consequence; after "and"/"or" it is one more item of a list ("..., and reducing ATP")
+            head = u.toks[tp[0]]
+            linked = linked or (head.endswith("ing") and head.startswith(stems) and not (set(between) & _COORD))
+            # "secondary changes in membrane integrity (leakage of ions ...)": the bracket spells out the source itself
+            owner = _paren_owner(u)
+            linked = linked or (tp[0] < len(owner) and owner[tp[0]] == sp[1])
+            linked = linked or _numbered_pair(src_label, tgt_label)
+            # "A proposed sequence includes A, B, C and D": the clause itself announces its items as ordered steps
+            lo = max([u.n_ctx] + [c for c in u.cuts if c <= sp[0]])
+            linked = linked or any(x.startswith(_SEQ_LEAD) for t in u.toks[lo:sp[0]] for x in t.split("-"))
+            if not linked:
+                return False
+    elif kind == "classification" and sp[0] >= u.n_ctx and tp[0] >= u.n_ctx:
+        owner = _paren_owner(u)
+        o = owner[tp[0]] if tp[0] < len(owner) else None
+        # the bracket that holds the child belongs to the phrase that ends right before it, not to this parent
+        if o is not None and not (sp[0] <= o <= sp[1] or owner[sp[0]] == o):
+            return False
+    return True
 
 
 def _clauses_linked(src_label: str, tgt_label: str, u: Unit) -> bool:
@@ -644,27 +870,40 @@ def _directional(label: str, kind: str) -> bool:
     return label in ORDER_VERBS or kind in DIRECTIONAL_KINDS
 
 
-def _edge_ok(e: dict, src: dict, tgt: dict, carriers: list[Sent], kind: str) -> tuple[bool, str]:
+def _edge_ok(e: dict, src: dict, tgt: dict, carriers: list[Sent], kind: str, cites: set | None = None) -> tuple[bool, str]:
     """E1-E3 on the evidence units of the sentences that carry the edge's cites. Returns (keep, label to show)."""
     label = e["label"]
     own = tokens(src["label"]) + tokens(tgt["label"]) + tokens(label)
     strict = kind == "classification"
     for s in carriers:
-        for u in _units(s, [src["label"], tgt["label"]], strict):
+        for u in _units(s, [src["label"], tgt["label"]], strict, cites):
             low, toks = u.low, u.toks
             if not (_in_unit(src["label"], u, strict) and _in_unit(tgt["label"], u, strict)):               # E1
                 continue
-            if _negated(low, toks, own):                                                                    # E3
+            if None in _spans(src["label"], tgt["label"], u):       # a box placed only by words the other box shares
+                continue
+            if _negated(low, [t for k, t in enumerate(toks)
+                              if k >= u.skip and k not in _asides(src["label"], tgt["label"], u)], own):   # E3
                 continue
             if _contrasted(src["label"], tgt["label"], u):                                                  # "A vs B"
                 continue
             if _antonym(label, low, toks, tgt["label"], u):                                                 # E2 antonym
                 continue
+            want = 1 if label in POS_VERBS else -1 if label in NEG_VERBS else 0
+            if want and _target_polarity(tgt["label"], u) != want:      # a direction arrow: the unit says it on the target
+                continue
             show = label if label and _has_syn(label, low, toks) else ""                                    # E2 verb
             if _directional(label, kind) and _order(src["label"], tgt["label"], u) != "forward":                    # E2 order
                 continue
-            if _directional(label, kind) and not _clauses_linked(src["label"], tgt["label"], u):            # E2 clauses
+            if not _clauses_linked(src["label"], tgt["label"], u):                                          # E2 clauses
                 continue
+            if not _arrow_shape_ok(label, src["label"], tgt["label"], u, kind):                             # list shape
+                continue
+            if show and _directional(label, kind):
+                sp, tp = _spans(src["label"], tgt["label"], u)
+                if sp and tp and sp[0] >= u.n_ctx and tp[0] >= u.n_ctx and sp[1] < tp[0]:
+                    btw = u.toks[sp[1] + 1:tp[0]]               # the verb shown must be the answer's, between the boxes
+                    show = label if _has_syn(label, " ".join(btw), btw) else ""
             return True, show
     return False, ""
 
@@ -732,7 +971,7 @@ def _adjacent_ok(e: dict, src: dict, tgt: dict, cites: set, sents: list[Sent]) -
         s = sents[i]
         if not (s.mk & cites):
             return False
-        return any(_in_unit(label, u) and not _negated(u.low, u.toks, tokens(label)) for u in _units(s, [label]))
+        return any(_in_unit(label, u) and not _negated(u.low, u.toks, tokens(label)) for u in _units(s, [label], cites=cites))
 
     def same_section(i: int, j: int) -> bool:          # a sentence with no marker (a heading) ends a section
         return all(sents[k].mk for k in range(i + 1, j))
@@ -740,6 +979,26 @@ def _adjacent_ok(e: dict, src: dict, tgt: dict, cites: set, sents: list[Sent]) -
     return any(ok_at(i, src["label"]) and ok_at(j, tgt["label"]) and same_section(i, j) and _continues(sents[j - 1], sents[j])
                and all(_continues(sents[k - 1], sents[k]) for k in range(i + 1, j))
                for i in range(len(sents)) for j in range(i + 1, min(i + 1 + MAX_STEP_GAP, len(sents))))
+
+
+def _box_worded(label: str, s: Sent) -> bool:
+    """V4 for one cited sentence. The box is the sentence's heading/lead-in, or is worded as ONE independent clause of
+    the sentence says it: every box word the sentence has sits in that clause (a box never blends "X has proven benefit;
+    Y has not shown benefit" into "Y has proven benefit"), the clause keeps the box's negations, no box word is the
+    opposite of the text's ("posterior" for "anterior"), and no direction word is flipped."""
+    if not _negations_kept(label, s.toks) or _direction_contradicted(label, s.toks):
+        return False
+    ctx_w = content_words(s.ctx)
+    if node_supported(label, ctx_w) and not _opposed(label, ctx_w):
+        return True
+    if not node_supported(label, s.own) or _opposed(label, s.words):
+        return False
+    clauses = [c for c in _CLAUSE.split(strip_markers(s.text)) if c.strip()]
+    if len(clauses) < 2:
+        return True
+    matched = content_words(label) & s.own
+    return any(matched <= content_words(c) | ctx_w and _negations_kept(label, tokens(f"{s.ctx} {c}"))
+               for c in clauses)
 
 
 def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) -> Result:
@@ -771,15 +1030,13 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
         # sentences), keeps the box's negation words, does not put the opposite direction on its object, and holds
         # every number the box shows.
         carry = _carriers(cites, sents)
-        worded = [s for s in carry if _negations_kept(label, s.toks) and not _direction_contradicted(label, s.toks)
-                  and (node_supported(label, s.own) or node_supported(label, content_words(s.ctx)))]
+        worded = [s for s in carry if _box_worded(label, s)]
         if not worded:
             notes.append(f'box "{label}" is not worded as its cited sentence says it')
             continue
-        worded = [s for s in worded
-                  if all(num in numbers_in(f"{s.ctx} {strip_markers(s.text)}") for num in numbers_in(label))]
+        worded = [s for s in worded if exact_marks(label) <= exact_marks(f"{s.ctx} {strip_markers(s.text)}")]
         if not worded:
-            notes.append(f'box "{label}" has a number its cited sentence does not')
+            notes.append(f'box "{label}" has a number or Greek letter its cited sentence does not')
             continue
         text = " ".join(f"{s.ctx} {strip_markers(s.text)}" for s in worded)
         role = n["role"]
@@ -801,7 +1058,7 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
         cites = cites_of(e["cites"])
         label = e["label"] if e["label"] in verbs else ""                                    # V5
         carriers = _carriers(cites | src["cites"] | tgt["cites"], sents)
-        ok, show = _edge_ok({**e, "label": label}, src, tgt, _carriers(cites, sents), kind) if cites else (False, "")
+        ok, show = _edge_ok({**e, "label": label}, src, tgt, _carriers(cites, sents), kind, cites) if cites else (False, "")
         if not ok and _contradicted(label, src, tgt, carriers, kind):     # boxes' own sentences count as evidence too
             contradicted |= {e["from"], e["to"]}
         elif not ok and cites and kind in DIRECTIONAL_KINDS:

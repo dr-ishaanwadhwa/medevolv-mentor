@@ -272,11 +272,17 @@ SYSTEM = """You restructure ONE cited answer into a flowchart, as JSON. Rules:
 - Every node and every edge must list in "cites" the markers (for example "1" for [1], "G1" for [G1]) of the answer
   sentence it came from; a list item with no marker of its own uses the marker of the line that introduces the list.
   Use only markers that appear in the answer.
-- Node labels copy the answer's own words (at most 80 characters, no paraphrase, no synonyms). No doses, durations or
-  frequencies, and no number the answer's sentence does not contain.
-- Draw an arrow only where the answer itself links the two boxes: in one sentence, under the same heading or lead-in,
-  or as consecutive steps ("This causes ...", "then", numbered steps). Arrows point in the answer's causal order: for
-  "B is a consequence of A" the arrow is A -> B. Edge "label" is one of the allowed verbs for the kind, or "".
+- Node labels copy the answer's own words from ONE clause of ONE sentence (at most 80 characters, no paraphrase, no
+  synonyms, words in the answer's order). Keep "not"/"no", numbers (also spelled: "five", "third"), Greek letters (α, β)
+  and position words (anterior, superior, upper) exactly as the answer has them. No doses, durations or frequencies.
+- Draw an arrow only where the answer itself links the two boxes: a heading, bold lead or lead-in line ("X includes:",
+  "**X:**") to each item under it; a linking word between them in one sentence ("leads to", "which", "via", "causing",
+  "→"); or consecutive steps ("This causes ...", "then", numbered steps, "the sequence is A, B, C"). Items of one
+  comma/"and" list ("A, B and C") are siblings under the list's lead, never a chain A -> B -> C. A place a lead names
+  ("After X:", "Within Y:") is not the source of the items under it. Arrows point in the answer's causal order: for
+  "B is a consequence of A" the arrow is A -> B. Edge "label" is one of the allowed verbs for the kind, or "". Use a
+  direction verb (increases, decreases, activates, inhibits) only when the answer puts that same word on the target
+  ("raising AMP" -> increases); otherwise "".
 - At most the node limit for the kind. Prefer one connected graph. When the answer compares separate things (for
   example two drug classes), draw one chain per item (at most 3 chains, each with at least 2 nodes) and do NOT invent a
   linking box or arrow between them. Leave a box out rather than invent an arrow to it. No self-loops.
