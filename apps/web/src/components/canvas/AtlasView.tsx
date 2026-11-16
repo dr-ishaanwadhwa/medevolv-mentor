@@ -26,6 +26,7 @@ import {
 } from '@/lib/atlas-sex';
 import { ATLAS_TIPS, layerTip, structureTip } from '@/lib/tips/atlas';
 import { useUi } from '@/store/ui';
+import { trackOnce } from '@/lib/api';
 import { useFeature } from '@/components/FeaturesProvider';
 import { ModelCredit } from '@/components/credits/ModelCredit';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -39,6 +40,10 @@ import { FemaleNote, SexToggle } from './SexToggle';
 import { DownloadProgress, FemaleConfirmSheet } from './FemaleDownload';
 
 type SwitchHow = 'user' | 'auto' | 'cancel';
+const UNDO_TIP = {
+  purpose: 'Brings back your selection, Isolate and camera.',
+  effect: 'Undoes Reset view. Shortcut: Ctrl or Cmd + Z while this message shows.',
+};
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const parseSexParamIsFemale = () => new URLSearchParams(window.location.search).get('sex') === 'female';
 
@@ -127,11 +132,14 @@ export function AtlasView() {
   );
 
   const toast = useUi((s) => s.toast);
+  const dismissToast = useUi((s) => s.dismiss);
 
   // ---- model switch ----
   const [pending, setPending] = useState<{ carry: string[]; how: SwitchHow } | null>(null);
   const [dismissedUrlAsk, setDismissedUrlAsk] = useState(false);
   const femaleRadio = useRef<HTMLButtonElement>(null);
+  /** The selection the user said "Not now" to: the auto-switch does not ask again for it on this page. */
+  const declinedAutoFor = useRef<string | null>(null);
 
   /** Switch the scene to `target`, carrying the selection by concept id (F-3). Assumes the female download is confirmed. */
   const switchTo = useRef<(target: Sex, carry: string[], how: SwitchHow) => Promise<void>>(async () => {});
@@ -149,6 +157,7 @@ export function AtlasView() {
     }
     const { keep, dropped } = how === 'auto' ? { keep: carry, dropped: [] as string[] } : partitionSelection(carry, tAtlas, st.indexes[target]);
     writeSexPreference(target);
+    if (how !== 'cancel') trackOnce('atlas_sex_switch', { to: target }); // PRD 2.3 "Female atlas use"
     setPrefs((p) => ({ stored: target, confirmed: p?.confirmed ?? false }));
     replaceQuery(withSexAndSelection(window.location.search, target, keep));
     if (!keep.length) setIsolate(false);
@@ -197,6 +206,7 @@ export function AtlasView() {
     else writeSexPreference('female');
   };
   const onNotNow = () => {
+    declinedAutoFor.current = idsKey;
     if (urlAsks) {
       setDismissedUrlAsk(true);
       replaceQuery(withSex(window.location.search, 'male'));
@@ -207,6 +217,8 @@ export function AtlasView() {
   // Symmetric auto-switch: a `?select=` that names a structure missing here but present in the other model.
   useEffect(() => {
     if (!femaleFlag || !ids.length || !atlas || !index || sheetOpen) return;
+    if (declinedAutoFor.current === idsKey) return;
+    declinedAutoFor.current = null;
     if (ids.some((id) => hasConcept(atlas, index, id))) return;
     const other = otherSex(active);
     let cancelled = false;
@@ -272,13 +284,36 @@ export function AtlasView() {
     setSelection(intent.selection);
     reset(); // store: isolate off + bumps resetNonce; the scene then frames this model's default view
     if (!undoable) return; // nothing to undo, no toast
+    let toastId = 0;
     const undo = () => {
+      undoRef.current = null;
       setSelection(intent.undo.selection);
       setIsolate(intent.undo.isolate);
-      if (intent.undo.goal) cameraApi.current?.setGoal(intent.undo.goal);
+      // The selection reaches the scene a frame or two later; restoreGoal waits for it so its framing does not win.
+      if (intent.undo.goal) cameraApi.current?.restoreGoal(intent.undo.goal, intent.undo.selection);
     };
-    toast('View reset', { ms: 5000, action: { label: 'Undo', onClick: undo } });
-  }, [atlas, ids, isolate, reset, setIsolate, setSelection, toast]);
+    toastId = toast('View reset', { ms: 5000, action: { label: 'Undo', onClick: undo, tip: UNDO_TIP } });
+    // Keyboard route to Undo while the toast is live (focus stays on Reset view, the toast is far away in tab order).
+    undoRef.current = { run: () => { undo(); dismissToast(toastId); }, id: toastId };
+  }, [atlas, ids, isolate, reset, setIsolate, setSelection, toast, dismissToast]);
+
+  const undoRef = useRef<{ run: () => void; id: number } | null>(null);
+  const liveToastIds = useUi((s) => s.toasts.map((t) => t.id).join(','));
+  useEffect(() => {
+    // the Undo toast timed out or was dismissed: the shortcut goes with it
+    if (undoRef.current && !liveToastIds.split(',').includes(String(undoRef.current.id))) undoRef.current = null;
+  }, [liveToastIds]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!undoRef.current || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return; // the field's own undo
+      e.preventDefault();
+      undoRef.current.run();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const onSelect = useCallback((hit: AtlasHit) => setSelection([hit.fmaId]), [setSelection]);
   const hasSelection = ids.length > 0;
@@ -394,7 +429,7 @@ export function AtlasView() {
                 aria-label="Clear search"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setQ('')}
-                className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-surface2"
+                className="absolute right-0 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-surface2 md:right-1.5 md:h-8 md:w-8"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -435,26 +470,26 @@ export function AtlasView() {
             />
           )}
           <Button
-            size="sm"
+            size="md"
             variant={isolate ? 'primary' : 'secondary'}
             onClick={() => setIsolate(!isolate)}
             disabled={!hasSelection}
             aria-pressed={isolate}
             tip={ATLAS_TIPS['atlas.isolate']}
-            className="bg-opacity-95 shadow-card"
+            className="bg-opacity-95 px-3 text-sm shadow-card md:min-h-[32px]"
           >
             <Focus className="h-4 w-4" aria-hidden /> Isolate
           </Button>
-          <Button size="sm" variant="secondary" onClick={doReset} disabled={!atlas} tip={ATLAS_TIPS['atlas.reset']} className="shadow-card">
+          <Button size="md" variant="secondary" onClick={doReset} disabled={!atlas} tip={ATLAS_TIPS['atlas.reset']} className="px-3 text-sm shadow-card md:min-h-[32px]">
             <RotateCcw className="h-4 w-4" aria-hidden /> Reset view
           </Button>
           <Button
-            size="sm"
+            size="md"
             variant={layersOpen ? 'primary' : 'secondary'}
             onClick={() => setLayersOpen((v) => !v)}
             aria-expanded={layersOpen}
             tip={ATLAS_TIPS['atlas.layers']}
-            className="shadow-card"
+            className="px-3 text-sm shadow-card md:min-h-[32px]"
           >
             <Layers className="h-4 w-4" aria-hidden /> Layers
           </Button>
@@ -471,7 +506,7 @@ export function AtlasView() {
             <div className="mb-2 flex items-center justify-between">
               <span className="label-mono">Body systems</span>
               <Tooltip tip={ATLAS_TIPS['atlas.layers.default']}>
-                <button type="button" onClick={resetLayers} className="text-xs text-accent underline-offset-2 hover:underline">
+                <button type="button" onClick={resetLayers} className="min-h-[44px] px-2 text-xs text-accent underline-offset-2 hover:underline md:min-h-0">
                   Default
                 </button>
               </Tooltip>
@@ -486,7 +521,7 @@ export function AtlasView() {
                       aria-pressed={on}
                       onClick={() => toggleSystem(s.id)}
                       className={cn(
-                        'inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                        'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors md:min-h-[36px]',
                         on ? 'border-accent/40 bg-accent-soft text-ink' : 'border-border bg-surface text-muted opacity-70',
                       )}
                     >
@@ -503,7 +538,7 @@ export function AtlasView() {
         {!hasSelection && suggestions.length > 0 && (
           <div className="pointer-events-auto flex flex-wrap gap-1.5">
             {suggestions.slice(0, wide ? 7 : 4).map((c) => (
-              <Chip key={c.id} onClick={() => setSelection([c.id])} tip={structureTip(c.name)} className="min-h-[36px] text-[0.82rem] shadow-card">
+              <Chip key={c.id} onClick={() => setSelection([c.id])} tip={structureTip(c.name)} className="text-[0.82rem] shadow-card">
                 {c.name}
               </Chip>
             ))}
@@ -590,7 +625,7 @@ export function AtlasView() {
                         onClick={() => setActiveIdx(i)}
                         aria-pressed={i === activeIdx}
                         tip={{ purpose: `Shows the details for ${name}.`, effect: 'The highlight stays on every selected structure.' }}
-                        className={cn('min-h-[34px] text-[0.8rem]', i === activeIdx && 'border-accent bg-accent-soft')}
+                        className={cn('text-[0.8rem]', i === activeIdx && 'border-accent bg-accent-soft')}
                       >
                         {name}
                       </Chip>

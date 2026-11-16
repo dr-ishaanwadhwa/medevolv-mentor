@@ -356,7 +356,9 @@ export class LandingScene {
     this.o.onFatal(e);
   }
 
+  /** Idempotent: fail() destroys, and the component's unmount calls it again. */
   destroy() {
+    if (this.dead) return;
     this.dead = true;
     cancelAnimationFrame(this.raf);
     this.io.disconnect();
@@ -369,5 +371,8 @@ export class LandingScene {
       if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose?.();
     });
     this.renderer.dispose();
+    // Free the WebGL context now rather than at GC: browsers cap live contexts (~16) and drop the oldest, which can be
+    // the atlas or /how canvas after a few / <-> /ask round trips.
+    this.renderer.forceContextLoss();
   }
 }

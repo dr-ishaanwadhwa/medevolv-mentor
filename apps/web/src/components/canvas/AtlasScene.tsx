@@ -32,6 +32,11 @@ export interface AtlasResolved {
 export interface AtlasCameraApi {
   getGoal: () => PoseSnapshot;
   setGoal: (p: PoseSnapshot) => void;
+  /**
+   * Restore `p` once the scene shows `highlight` (Undo after Reset view, RV-6). The selection reaches the scene a frame or
+   * two after the URL update and its framing (and the panel inset) would otherwise overwrite the restored pose.
+   */
+  restoreGoal: (p: PoseSnapshot, highlight: string[]) => void;
   /** true once the user has orbited, panned or zoomed since the last framing */
   hasMoved: () => boolean;
 }
@@ -364,6 +369,19 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       dirty = true;
     };
 
+    let pendingGoal: { pose: PoseSnapshot; key: string; created: number; until: number | null } | null = null;
+    const applyGoal = (p: PoseSnapshot) => {
+      goalTarget.copy(p.target);
+      goalPos.copy(p.position);
+      userMoved = true;
+      if (reducedMotion()) {
+        controls.target.copy(goalTarget);
+        camera.position.copy(goalPos);
+        controls.update();
+        tweening = false;
+      } else tweening = true;
+      dirty = true;
+    };
     if (props.cameraApiRef) {
       props.cameraApiRef.current = {
         getGoal: () => ({ target: goalTarget.clone(), position: goalPos.clone() }),
@@ -378,6 +396,9 @@ export default function AtlasScene(props: AtlasCanvasProps) {
             tweening = false;
           } else tweening = true;
           dirty = true;
+        },
+        restoreGoal: (p, highlight) => {
+          pendingGoal = { pose: { target: p.target.clone(), position: p.position.clone() }, key: highlight.join(','), created: performance.now(), until: null };
         },
         hasMoved: () => userMoved,
       };
@@ -556,6 +577,16 @@ export default function AtlasScene(props: AtlasCanvasProps) {
         userMoved = false;
         // Reset frames the whole visible body, never the current selection (PRD 4.4 fix step 3).
         frame3([], true);
+      }
+      // Undo: once the restored selection is in the scene, hold the previous pose for a short settle window so the
+      // selection framing and the panel inset (which can land a few frames later) do not overwrite it.
+      if (pendingGoal) {
+        const now = performance.now();
+        if ((s.highlight ?? []).join(',') === pendingGoal.key) {
+          if (pendingGoal.until === null) pendingGoal.until = now + 700;
+          applyGoal(pendingGoal.pose);
+          if (now >= pendingGoal.until) pendingGoal = null;
+        } else if (now - pendingGoal.created > 3000) pendingGoal = null;
       }
       if (tweening) {
         const k = 1 - Math.exp(-7 * dt);

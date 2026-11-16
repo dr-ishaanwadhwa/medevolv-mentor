@@ -25,6 +25,14 @@ const MODES = {
 
 export const MODE_COPY = MODES[LANDING_MODE];
 
+/** "2026-11-15" -> "15 Nov 2026" (fixed locale so server and client render the same text). */
+function fmtDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m[2]) - 1];
+  return `${Number(m[3])} ${mon} ${m[1]}`;
+}
+
 export const COPY = {
   heroKicker: 'A real answer, with its pages',
   howLink: 'See how it works',
@@ -37,13 +45,18 @@ export const COPY = {
   decline: {
     kicker: 'The honest no',
     title: 'It would rather say no than guess.',
-    body: 'If your book is not in the library yet, it tells you. A study aid you can trust is one that knows where its books end.',
+    // Data-backed only: the pipeline declines when the indexed books don't settle a question. It has no per-book
+    // "this book is missing" detection, so the copy must not imply one (the capture tried two not-yet subjects that
+    // were answered from other books before one declined; public/landing/declined.json candidates_tried).
+    body: "When the books in the library don't settle a question, it says so instead of guessing. Check the coverage list above for subjects not yet covered.",
     card: "The books don't settle this.",
+    caption: (date: string) => `A real decline, captured ${fmtDate(date)}`,
   },
   body: {
     kicker: 'Body and books, linked',
     title: 'Answers know where things are.',
-    body: 'Jump from a sentence to the structure in 3D. The model below is the same one the Atlas opens.',
+    body: 'Jump from a sentence to the structure in 3D. The 3D chiasm here comes from the same BodyParts3D model the Atlas opens.',
+    staticCaption: 'Schematic, not the 3D model.',
     cta: 'View in 3D',
   },
   more: {

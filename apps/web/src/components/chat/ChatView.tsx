@@ -7,6 +7,7 @@ import { Button, Tag, Tooltip } from '@/components/ui';
 import { DEMO_PROMPTS } from '@/lib/demo';
 import { demoTip } from '@/lib/tips/answer';
 import { useChat } from '@/store/chat';
+import { trackOnce } from '@/lib/api';
 import { AnswerCard } from './AnswerCard';
 import { Composer } from './Composer';
 import { SourceDrawer } from './SourceDrawer';
@@ -93,6 +94,15 @@ export function ChatView() {
   const lastId = turns[turns.length - 1]?.id;
   const lastHasAnswer = !!turns[turns.length - 1]?.answer;
   const lastDone = turns[turns.length - 1]?.phase === 'done';
+
+  // Arrived from a landing CTA (PRD 2.3 "First question" denominator). The marker stays for question_sent_from_landing.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('from_landing')) trackOnce('ask_from_landing');
+    } catch {
+      /* storage blocked */
+    }
+  }, []);
 
   // new question: bring the thread to the bottom; answer arrival: show the top of the answer
   useEffect(() => {

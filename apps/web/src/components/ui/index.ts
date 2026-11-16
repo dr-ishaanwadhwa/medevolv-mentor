@@ -8,3 +8,4 @@ export { Drawer } from './Drawer';
 export { Toaster } from './Toast';
 export { Tooltip, useTip } from './Tooltip';
 export { CoachMark } from './CoachMark';
+export { Popover } from './Popover';

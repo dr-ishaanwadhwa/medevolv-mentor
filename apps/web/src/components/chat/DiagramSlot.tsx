@@ -45,9 +45,9 @@ export function FlowchartChip({ turnId, answer, diagram }: { turnId: string; ans
   const reason = diagramPaused ? COPY.paused : cooling ? COPY.wait : COPY.working;
   return (
     <Button
-      size="sm"
+      size="md"
       variant="secondary"
-      className="rounded-full"
+      className="rounded-full px-3 text-sm md:min-h-[32px]"
       disabled={disabled}
       onClick={() => drawDiagram(turnId)}
       tip={{ ...T['answer.flowchart'], disabled: reason }}
@@ -105,7 +105,7 @@ export function DiagramSlot({
       {(ux.retry || suggestion) && (
         <div className="mt-2.5 flex flex-wrap gap-2">
           {ux.retry && (
-            <Button size="sm" variant="secondary" onClick={() => drawDiagram(turnId)} tip={T['answer.flowchart.retry']}>
+            <Button size="md" variant="secondary" className="px-3 text-sm md:min-h-[32px]" onClick={() => drawDiagram(turnId)} tip={T['answer.flowchart.retry']}>
               <RotateCcw className="h-4 w-4" aria-hidden /> Retry
             </Button>
           )}

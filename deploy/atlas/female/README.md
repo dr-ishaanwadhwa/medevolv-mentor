@@ -110,8 +110,9 @@ capitalised. Corrected source typos (listed in the converter output): jejenum, e
 Concept names use the file's `label` (the official FMA/UBERON wording) when present.
 
 ## Known gaps and decisions for the lead
-- **Allen brain licence unverified** (PRD): the DOI page read on 2026-11-15 does not say. Ship with the brain only after
-  checking, or rebuild with `--exclude-allen` (17.0 MB).
+- **Allen brain licence unverified** (PRD): the DOI page read on 2026-11-15 does not say. Rebuilt with `--exclude-allen`
+  on 2026-11-16 (606 meshes, 832 concepts, 17.0 MB gzip; `id_map.csv` now lists the 606). Ship with the brain only after
+  the licence is checked, and add the Allen Institute credit to `apps/web/src/components/credits/models.ts` then.
 - The 8 pregnancy items lie in front of the body, so a camera framed on "all non-skin parts" (`AtlasScene` `wanted`) gets
   a deeper z box even with the layer off. Effect: slightly farther default distance for the female model. Fix when the
   female switch is built (frame only visible layers).

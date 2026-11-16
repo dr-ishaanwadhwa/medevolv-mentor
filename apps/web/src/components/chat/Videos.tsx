@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ExternalLink, Flag, MoreVertical } from 'lucide-react';
-import { Tooltip } from '@/components/ui';
+import { Popover, Tooltip } from '@/components/ui';
 import { useFeature } from '@/components/FeaturesProvider';
 import { fetchVideos, sendFeedback, trackOnce, type VideoCard, type VideosResponse } from '@/lib/api';
 import { QUICK_REVISION_S, VIDEOS_COPY as C, captionLine, cardLinkName, youtubeSearchUrl } from '@/lib/copy/videos';
@@ -140,6 +140,8 @@ function VideoItem({ v }: { v: VideoCard }) {
   const toast = useUi((s) => s.toast);
   const [menu, setMenu] = useState(false);
   const [reported, setReported] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menuId = `vmenu${useId().replace(/:/g, '')}`;
   const report = async () => {
     setMenu(false);
     try {
@@ -182,9 +184,10 @@ function VideoItem({ v }: { v: VideoCard }) {
       <div className="absolute right-0 top-[calc(56.25%+0.25rem)]">
         <Tooltip tip={T['answer.videos.menu']} iconOnly>
           <button
+            ref={trigger}
             type="button"
-            aria-haspopup="menu"
             aria-expanded={menu}
+            aria-controls={menu ? menuId : undefined}
             aria-label={`Options for ${v.title}`}
             onClick={() => setMenu((m) => !m)}
             className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted hover:bg-surface hover:text-ink"
@@ -192,12 +195,11 @@ function VideoItem({ v }: { v: VideoCard }) {
             <MoreVertical className="h-4 w-4" aria-hidden />
           </button>
         </Tooltip>
-        {menu && (
-          <div role="menu" className="absolute right-0 z-10 mt-1 w-48 rounded-xl border border-border bg-surface p-1 shadow-lg">
+        {/* portalled and fixed-positioned: the card row scrolls horizontally and would clip an absolute menu */}
+        <Popover id={menuId} anchor={trigger} open={menu} onClose={() => setMenu(false)} label={`Options for ${v.title}`}>
             <Tooltip tip={T['answer.videos.report']}>
               <button
                 type="button"
-                role="menuitem"
                 disabled={reported}
                 onClick={report}
                 className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-left text-sm hover:bg-surface2 disabled:opacity-50"
@@ -205,8 +207,7 @@ function VideoItem({ v }: { v: VideoCard }) {
                 <Flag className="h-4 w-4" aria-hidden /> {reported ? 'Reported' : C.report}
               </button>
             </Tooltip>
-          </div>
-        )}
+        </Popover>
       </div>
     </li>
   );

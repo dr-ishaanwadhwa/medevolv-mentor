@@ -188,15 +188,20 @@ def _cache_get(key: str) -> dict | None:
     return json.loads(row[0]) if row else None
 
 
-def _cache_put(key: str, resp: dict) -> None:
+def _cache_put(key: str, resp: dict) -> dict:
+    """Store `resp` unless a concurrent identical request already did; return the stored response either way, so two
+    racing callers get the same diagram_id (a REPLACE would delete the first caller's id and break its share link)."""
     con = _conn()
     try:
         with con:
             _purge(con)
-            con.execute("INSERT OR REPLACE INTO diagram_cache (key, id, json, created_at) VALUES (?,?,?,?)",
+            con.execute("INSERT INTO diagram_cache (key, id, json, created_at) VALUES (?,?,?,?) "
+                        "ON CONFLICT(key) DO NOTHING",
                         (key, resp.get("diagram_id"), json.dumps(resp, ensure_ascii=False), time.time()))
+            row = con.execute("SELECT json FROM diagram_cache WHERE key=?", (key,)).fetchone()
     finally:
         con.close()
+    return json.loads(row[0]) if row else resp
 
 
 def _new_id() -> str:
@@ -370,7 +375,7 @@ async def make_diagram(req: DiagramRequest):
     if resp["status"] == "ok":
         resp["diagram_id"] = await asyncio.to_thread(_new_id)
         _event("diagram_ok", {"kind": resp["kind"]})
-    await asyncio.to_thread(_cache_put, key, resp)
+    resp = await asyncio.to_thread(_cache_put, key, resp)
     return JSONResponse(resp)
 
 

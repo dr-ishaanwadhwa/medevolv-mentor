@@ -109,13 +109,13 @@ export async function fetchConcept(labelOrId: string, signal?: AbortSignal): Pro
 
 const spatialCache = new Map<string, SpatialResolve>();
 
-/** `sex` is the model the structure was tapped in. Only 'female' adds a query param, so male requests are unchanged. */
+/** `sex` is the model the structure was tapped in. It is always sent, so the server can skip crosswalk rows drawn only
+ * in the other model (a male tap never gets a female-only AtlasLink). */
 export async function fetchSpatial(fma: string, signal?: AbortSignal, sex: 'male' | 'female' = 'male'): Promise<SpatialResolve> {
-  const key = sex === 'female' ? `${fma}|female` : fma;
+  const key = `${fma}|${sex}`;
   const hit = spatialCache.get(key);
   if (hit) return hit;
-  const q = sex === 'female' ? '&sex=female' : '';
-  const r = await getJson<SpatialResolve>(`/api/spatial/resolve?fma=${encodeURIComponent(fma)}${q}`, signal);
+  const r = await getJson<SpatialResolve>(`/api/spatial/resolve?fma=${encodeURIComponent(fma)}&sex=${sex}`, signal);
   spatialCache.set(key, r);
   return r;
 }

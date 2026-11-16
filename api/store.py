@@ -65,11 +65,22 @@ def get_answer(aid: str) -> dict | None:
                                      "payload": json.loads(row[3]), "created_at": row[4]}
 
 
+# A "Report this video" keeps the YouTube video id for 30 days, then the id is cleared and the report row stays
+# (YouTube API data retention, PRD V-3; purged on every write so no scheduler is needed).
+VIDEO_ID_TTL_S = 30 * 86400
+
+
+def purge_video_ids(con: sqlite3.Connection, now: float | None = None) -> None:
+    con.execute("UPDATE feedback SET target_id=NULL WHERE kind='video_bad' AND target_id IS NOT NULL AND created_at < ?",
+                ((now if now is not None else time.time()) - VIDEO_ID_TTL_S,))
+
+
 def add_feedback(answer_id: str | None, question: str | None, kind: str, note: str | None,
                  target_id: str | None = None) -> None:
     con = _conn()
     try:
         with con:
+            purge_video_ids(con)
             con.execute("INSERT INTO feedback (answer_id, question, kind, note, created_at, target_id) VALUES (?,?,?,?,?,?)",
                         (answer_id, question, kind, note, time.time(), target_id))
     finally:

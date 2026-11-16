@@ -151,22 +151,25 @@ export function LandingStage({
       track('landing_cta');
     };
     el.addEventListener('click', onClick);
-    // shown once the hero CTA has scrolled away, until the last scene (it has the final CTA and sits above the footer)
+    // shown whenever the hero CTA is off screen (scrolled away, or still below the fold on a short phone screen, so the
+    // first screen always has a primary CTA), until the last scene (it has the final CTA and sits above the footer)
     const hero = el.querySelector('[data-landing-cta="hero"]');
     const last = el.querySelector('#landing-more');
     let heroGone = false;
     let lastReached = false;
+    const update = () => setSticky(heroGone && !lastReached);
+    // the hero CTA counts as on screen only when fully visible above the mobile tab bar (3.5rem)
+    const heroIo = new IntersectionObserver((entries) => {
+      for (const e of entries) heroGone = !(e.isIntersecting && e.intersectionRatio >= 0.99);
+      update();
+    }, { rootMargin: '0px 0px -56px 0px', threshold: 1 });
     const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        const above = e.boundingClientRect.top < 0;
-        if (e.target === hero) heroGone = !e.isIntersecting && above;
-        if (e.target === last) lastReached = e.isIntersecting || above;
-      }
-      setSticky(heroGone && !lastReached);
+      for (const e of entries) lastReached = e.isIntersecting || e.boundingClientRect.top < 0;
+      update();
     });
-    if (hero) io.observe(hero);
+    if (hero) heroIo.observe(hero);
     if (last) io.observe(last);
-    return () => { el.removeEventListener('click', onClick); io.disconnect(); };
+    return () => { el.removeEventListener('click', onClick); io.disconnect(); heroIo.disconnect(); };
   }, []);
 
   return (

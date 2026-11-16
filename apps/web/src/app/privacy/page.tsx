@@ -41,7 +41,8 @@ export default function PrivacyPage() {
       <LegalSection id="feedback" title="Feedback">
         <p>
           If you send feedback on an answer, we store the question, the answer id, the kind of feedback you chose and
-          any note you typed.
+          any note you typed, and, for a video or flowchart report, the id of that video or flowchart. A reported
+          YouTube video id is cleared after 30 days; the report itself is kept.
         </p>
       </LegalSection>
 

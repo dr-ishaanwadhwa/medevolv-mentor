@@ -30,7 +30,7 @@ Adaptations (CC BY 4.0 requires changes to be indicated): the GLB is metres, Y-u
 
 This is a reference assembly with the whole-body skin surface and selected organs, including the female reproductive tract and breast. It is not a complete model of every human structure and not a female twin of BodyParts3D: the skeleton (91 structures: pelvis, lower limb, vertebrae) and muscles (16) are partial, there is no skull, rib cage or arm skeleton, and no vulva, clitoris or labia. Eight placenta and umbilical structures are classified under Pregnancy reference and hidden by default; they sit outside the body surface in the source file. Whether the model comes from one subject is not stated on the pages read; the interface does not claim it.
 
-**Open licence check before the model is shown to users**: the Allen brain meshes' licence was known only second hand when the PRD was written. Either confirm it on the HRA dataset page, or build without them (`FEMALE_ARGS="--exclude-allen"`, see `deploy/atlas/female/README.md`).
+**Allen brain meshes left out (2026-11-16)**: their licence was known only second hand when the PRD was written and the DOI page does not state it, so the shipped build is `FEMALE_ARGS="--exclude-allen"` (606 of 888 meshes, 832 concepts, 17.0 MB gzip; see `deploy/atlas/female/README.md`). The /credits page names the NLM Visible Human Project. If the Allen licence is later confirmed and the brain is rebuilt in, add the Allen Institute for Brain Science credit to `apps/web/src/components/credits/models.ts` in the same change.
 
 ## Historical assets (superseded)
 

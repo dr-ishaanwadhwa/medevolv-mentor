@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LinkButton, Tooltip } from '@/components/ui';
 import { renderMarkdown } from '@/components/ui/Markdown';
+import { ModelCredit } from '@/components/credits/ModelCredit';
 import HowClassic from '@/app/how/HowClassic';
 import { CHAPTERS, RAIL_LABELS } from './narration';
 import { bookNick, loadStory, type StoryData } from './data';
@@ -186,7 +187,14 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
             <div className="md" dangerouslySetInnerHTML={{ __html: answerHtml }} />
           </div>
           <div className="st-abs" data-atlas-still><div className="st-still">Optic chiasm · 3D model loading…</div></div>
-          <div className="st-abs" data-atlas-tag><div className="st-atag"><span>Optic chiasm · FMA62045</span><span className="st-nav-tag">Navigation only</span></div></div>
+          <div className="st-abs" data-atlas-tag>
+            <div className="st-atag">
+              <span>Optic chiasm · FMA62045</span>
+              <span className="st-nav-tag">Navigation only</span>
+              {/* C1 / G4: the chiasm mesh is BodyParts3D (CC BY 4.0), so its credit sits with it while it is on screen */}
+              <ModelCredit model="bodyparts3d" className="pointer-events-auto font-sans" />
+            </div>
+          </div>
           <div className="st-cue" data-cue>Scroll<i /></div>
 
           <Tooltip tip="story.skip">

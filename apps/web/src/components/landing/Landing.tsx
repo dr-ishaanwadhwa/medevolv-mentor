@@ -8,15 +8,20 @@ import { BOOK_SHORT, BOOKS, EXAMPLES, FACTS, NOT_YET, askHref, coverage } from '
 import { ChiasmIllustration, FlowIllustration, LibraryIllustration } from './Illustrations';
 import { LandingStage } from './LandingStage';
 
-/** Replace "[2][4]" markers with small superscripts a screen reader reads as "source 2". */
+/** Replace "[2][4]" markers with small superscripts a screen reader reads as "source 2, source 4". The spoken words
+ * are real (visually hidden) text: aria-label on a role-less <sup> is ignored by VoiceOver and NVDA. */
 function Marked({ text }: { text: string }) {
-  const parts = text.split(/(\[\d+\])/g);
+  const parts = text.split(/(\[\d+\])/g).filter((p) => p !== '');
   return (
     <>
       {parts.map((p, i) => {
         const m = /^\[(\d+)\]$/.exec(p);
+        const afterMarker = i > 0 && /^\[\d+\]$/.test(parts[i - 1]);
         return m ? (
-          <sup key={i} className="ml-0.5 font-mono text-[0.68em] text-accent" aria-label={`source ${m[1]}`}>{m[1]}</sup>
+          <sup key={i} className="ml-0.5 font-mono text-[0.68em] text-accent">
+            <span className="sr-only">{afterMarker ? ', source ' : ' source '}</span>
+            {m[1]}
+          </sup>
         ) : (
           <span key={i}>{p}</span>
         );
@@ -54,7 +59,7 @@ function Hero() {
             <h1 id="landing-h1" className="text-[1.9rem] font-bold leading-[1.1] tracking-tight sm:text-4xl">{MODE_COPY.headline}</h1>
             <p className="mt-3 text-[1.02rem] leading-relaxed text-muted">{MODE_COPY.sub}</p>
 
-            <div className="mt-5 rounded-xl border border-border bg-bg/70 p-4" aria-label="A real answer">
+            <div className="mt-5 rounded-xl border border-border bg-bg/70 p-4" role="group" aria-label="A real answer">
               <p className="label-mono !text-accent">{COPY.heroKicker}</p>
               <p className="mt-2 text-sm font-medium text-ink">{journey.question}</p>
               <p className="mt-2 text-[0.95rem] leading-relaxed text-ink">
@@ -65,23 +70,29 @@ function Hero() {
               <Pointers cites={hero.used} />
             </div>
 
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <LinkButton href="/ask" variant="primary" size="lg" data-landing-cta="hero" tip="landing.cta">{MODE_COPY.cta}</LinkButton>
+              <LinkButton href="/how" size="lg" tip="landing.how">{COPY.howLink}</LinkButton>
+            </div>
+
             <div className="mt-5">
               <p className="label-mono">Try one</p>
               <ul className="mt-2 flex flex-wrap gap-2">
                 {EXAMPLES.map((e) => (
                   <li key={e.id}>
-                    <Chip href={askHref(e.q)} data-landing-cta={`example-${e.id}`} tip="landing.example">
-                      <span className="font-mono text-[0.68rem] uppercase tracking-wider text-accent">{e.year}</span>
-                      <span className="max-w-[26ch] truncate sm:max-w-[34ch]">{e.q}</span>
+                    {/* the whole question is visible (it wraps): a truncated chip hides what the student is about to send */}
+                    <Chip
+                      href={askHref(e.q)}
+                      data-landing-cta={`example-${e.id}`}
+                      tip="landing.example"
+                      className="items-start whitespace-normal rounded-2xl py-2 text-left"
+                    >
+                      <span className="shrink-0 whitespace-nowrap pt-0.5 font-mono text-[0.68rem] uppercase tracking-wider text-accent">{e.year}</span>
+                      <span>{e.q}</span>
                     </Chip>
                   </li>
                 ))}
               </ul>
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <LinkButton href="/ask" variant="primary" size="lg" data-landing-cta="hero" tip="landing.cta">{MODE_COPY.cta}</LinkButton>
-              <LinkButton href="/how" size="lg" tip="landing.how">{COPY.howLink}</LinkButton>
             </div>
           </div>
 
@@ -172,11 +183,12 @@ function DeclineScene() {
             <p className="label-mono !text-accent">{COPY.decline.kicker}</p>
             <h2 id="landing-decline-h" className={h2}>{COPY.decline.title}</h2>
             <p className="mt-2 text-muted">{COPY.decline.body}</p>
-            <div className="mt-4 rounded-xl border border-border bg-bg/70 p-4">
-              <p className="text-sm font-medium">{declined.question}</p>
+            <figure className="mt-4 rounded-xl border border-border bg-bg/70 p-4">
+              <figcaption className="label-mono">{COPY.decline.caption(declined.captured_at)}</figcaption>
+              <p className="mt-2 text-sm font-medium">{declined.question}</p>
               <p className="mt-3 text-lg font-semibold">{COPY.decline.card}</p>
               <p className="mt-1 text-sm text-muted">{declined.text}</p>
-            </div>
+            </figure>
           </div>
         </div>
       </div>
@@ -194,7 +206,10 @@ function BodyScene() {
             <p className="label-mono !text-accent">{COPY.body.kicker}</p>
             <h2 id="landing-body-h" className={h2}>{COPY.body.title}</h2>
             <p className="mt-2 text-muted">{COPY.body.body}</p>
-            <ChiasmIllustration className="only-static mt-4 w-full max-w-sm" />
+            <figure className="only-static mt-4">
+              <ChiasmIllustration className="w-full max-w-sm" />
+              <figcaption className="mt-1 text-xs text-muted">{COPY.body.staticCaption}</figcaption>
+            </figure>
             {loc && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <LinkButton href={`/atlas?select=${CHIASM_FMA}`} variant="secondary" data-landing-cta="view3d" tip="landing.view3d">

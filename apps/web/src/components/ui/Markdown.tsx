@@ -75,7 +75,11 @@ export function Markdown({
   const openId = useSyncExternalStoreOpen();
   const [, bump] = useState(0);
 
-  const describe = (n: number) => citeTip?.(n) || `Source ${n}. Opens the source.`;
+  // Held in a ref so an inline `citeTip` (a new function every render) does not re-run the chip effect, which bumps
+  // state and would otherwise loop forever.
+  const tipRef = useRef(citeTip);
+  tipRef.current = citeTip;
+  const describe = (n: number) => tipRef.current?.(n) || `Source ${n}. Opens the source.`;
 
   // Give every generated chip a key, a persistent description and an aria-describedby.
   useLayoutEffect(() => {
@@ -102,8 +106,8 @@ export function Markdown({
       map.clear();
       host.querySelectorAll('span.sr-only[id^="tip"]').forEach((d) => d.remove());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- describe is derived from citeTip
-  }, [html, citeTip, uid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- describe reads citeTip through tipRef
+  }, [html, uid]);
 
   const find = (target: EventTarget | null) => {
     const el = (target as HTMLElement | null)?.closest?.<HTMLElement>('[data-tip-key]');

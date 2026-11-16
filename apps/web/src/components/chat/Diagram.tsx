@@ -5,9 +5,9 @@
  * initial /ask bundle (D-8). Boxes are HTML laid over an SVG of the arrows: labels are text nodes (LLM output is never
  * markup), citation chips are real buttons, colours are theme tokens. Exports are a separate light-palette SVG.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BookMarked, Download, Maximize2, Minus, MoreHorizontal, Plus, X } from 'lucide-react';
-import { Button, CitationChip, Drawer, StatusPill, Tooltip } from '@/components/ui';
+import { Button, CitationChip, Drawer, Popover, StatusPill, Tooltip } from '@/components/ui';
 import { sendFeedback, type AnswerCitation, type DiagramCite, type DiagramResponse, type GraphCitation } from '@/lib/api';
 import { BADGE, STUDY_AID_LINE } from '@/lib/copy/diagram';
 import { exportSvg, sourcePointers } from '@/lib/diagram/export';
@@ -55,6 +55,8 @@ export default function Diagram({
   const [full, setFull] = useState(false);
   const [menu, setMenu] = useState(false);
   const [reported, setReported] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const menuId = `dmenu${useId().replace(/:/g, '')}`;
   const narrow = width > 0 && width < NARROW_PX;
   const collapsible = diagram.kind === 'classification' && narrow;
 
@@ -70,7 +72,9 @@ export default function Diagram({
   const fullLayout = useMemo(() => layoutDiagram(diagram), [diagram]);
   const order = useMemo(() => readingOrder(diagram.nodes, diagram.edges), [diagram]);
   const facts = diagram.fact_sources;
-  const scale = width ? Math.max(MIN_SCALE, Math.min(1, width / layout.width)) : 1;
+  // Narrow screens keep 1:1 and scroll sideways inside the card: shrinking would take the chips and the + toggle far
+  // below a usable touch size (and the box text below readable size).
+  const scale = narrow ? 1 : width ? Math.max(MIN_SCALE, Math.min(1, width / layout.width)) : 1;
 
   const toggle = (id: string) =>
     setExpanded((s) => {
@@ -150,30 +154,27 @@ export default function Diagram({
           <Button size="sm" variant="ghost" onClick={() => setFull(true)} tip={T['answer.diagram.fullscreen']} iconOnly aria-label="Full screen">
             <Maximize2 className="h-4 w-4" aria-hidden />
           </Button>
-          <div className="relative">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setMenu((m) => !m)}
-              tip={T['answer.diagram.more']}
-              iconOnly
-              aria-label="More"
-              aria-haspopup="menu"
-              aria-expanded={menu}
-            >
-              <MoreHorizontal className="h-4 w-4" aria-hidden />
-            </Button>
-            {menu && (
-              <div role="menu" className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-border bg-surface p-1 shadow-lg">
-                <MenuItem tip={T['answer.diagram.svg']} onClick={saveSvg}>
-                  Save as SVG
-                </MenuItem>
-                <MenuItem tip={T['answer.diagram.report']} onClick={report} disabled={reported || !diagram.diagram_id}>
-                  {reported ? 'Reported' : 'Report a problem'}
-                </MenuItem>
-              </div>
-            )}
-          </div>
+          <Button
+            ref={moreRef}
+            size="sm"
+            variant="ghost"
+            onClick={() => setMenu((m) => !m)}
+            tip={T['answer.diagram.more']}
+            iconOnly
+            aria-label="More"
+            aria-expanded={menu}
+            aria-controls={menu ? menuId : undefined}
+          >
+            <MoreHorizontal className="h-4 w-4" aria-hidden />
+          </Button>
+          <Popover id={menuId} anchor={moreRef} open={menu} onClose={() => setMenu(false)} label="More flowchart actions">
+            <MenuItem tip={T['answer.diagram.svg']} onClick={saveSvg}>
+              Save as SVG
+            </MenuItem>
+            <MenuItem tip={T['answer.diagram.report']} onClick={report} disabled={reported || !diagram.diagram_id}>
+              {reported ? 'Reported' : 'Report a problem'}
+            </MenuItem>
+          </Popover>
         </div>
       </div>
       {diagram.title && <h4 className="mt-2 text-[0.95rem] font-semibold leading-snug">{diagram.title}</h4>}
@@ -220,7 +221,6 @@ function MenuItem({ tip, onClick, disabled, children }: { tip: (typeof T)[keyof 
     <Tooltip tip={tip}>
       <button
         type="button"
-        role="menuitem"
         disabled={disabled}
         onClick={onClick}
         className="flex min-h-[44px] w-full items-center rounded-lg px-3 text-left text-sm hover:bg-surface2 disabled:opacity-50 md:min-h-[36px]"
@@ -258,8 +258,10 @@ function Canvas({
 }) {
   return (
     <div style={{ width: layout.width * scale, height: layout.height * scale }} className="relative mx-auto">
+      {/* a group, not role=img: the boxes hold real buttons (source chips, branch toggles) that must stay reachable */}
       <div
-        role="img"
+        role="group"
+        aria-roledescription="flowchart"
         aria-label={label}
         style={{ width: layout.width, height: layout.height, transform: `scale(${scale})`, transformOrigin: '0 0' }}
         className="absolute left-0 top-0"
@@ -330,10 +332,17 @@ function Box({
   onFact: (n: number) => void;
 }) {
   const warn = n.role === 'warning';
+  // A collapsed classification box opens on a tap anywhere on it (the + alone is a small target); the + button stays the
+  // keyboard and screen-reader route.
+  const expandOnTap = !!onToggle && hiddenKids > 0 && !open;
   return (
     <div
+      role="group"
+      aria-label={n.label}
+      onClick={expandOnTap ? (e) => !(e.target as HTMLElement).closest('button') && onToggle(n.id) : undefined}
       style={{ left: n.x, top: n.y, width: n.w, height: n.h }}
       className={cn(
+        expandOnTap && 'cursor-pointer',
         'absolute flex flex-col justify-between rounded-[10px] border px-3 py-[9px] text-[13px] text-ink',
         warn ? 'border-bad bg-bad-soft' : 'border-border bg-surface2',
         n.role === 'start' && 'border-2 font-semibold',
@@ -358,7 +367,7 @@ function Box({
                 aria-expanded={open}
                 aria-label={open ? `Hide the boxes under ${n.label}` : `Show ${hiddenKids} more under ${n.label}`}
                 onClick={() => onToggle(n.id)}
-                className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-surface px-1 text-[11px] text-muted"
+                className="relative ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-surface px-1 text-[11px] text-muted after:absolute after:-inset-x-1 after:-inset-y-3 after:content-['']"
               >
                 {open ? <Minus className="h-3 w-3" aria-hidden /> : `+${hiddenKids}`}
               </button>
@@ -403,7 +412,7 @@ function Cite({
         type="button"
         onClick={() => onFact(c.n)}
         aria-label={`Open fact ${label}`}
-        className="inline-flex h-5 items-center rounded border border-accent/50 bg-surface px-1 font-mono text-[10.5px] font-semibold text-accent"
+        className="relative inline-flex h-5 items-center rounded border border-accent/50 bg-surface px-1 font-mono text-[10.5px] font-semibold text-accent after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']"
       >
         {label}
       </button>
@@ -442,18 +451,37 @@ function FactList({ facts, source, active }: { facts: GraphCitation[]; source: D
 function FullScreen({ onClose, title, children }: { onClose: () => void; title: string; children: (zoom: number) => ReactNode }) {
   const [zoom, setZoom] = useState(1);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeFn = useRef(onClose);
+  closeFn.current = onClose;
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return closeFn.current();
+      if (e.key !== 'Tab') return;
+      // aria-modal alone does not keep Tab inside: wrap focus over the dialog's own controls
+      const f = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])') ?? [])];
+      if (!f.length) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      const inside = dialogRef.current?.contains(document.activeElement);
+      if (e.shiftKey && (document.activeElement === first || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   return (
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex flex-col bg-bg">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-50 flex flex-col bg-bg">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <span className="truncate text-sm font-semibold">{title}</span>
         <div className="ml-auto flex items-center gap-1">

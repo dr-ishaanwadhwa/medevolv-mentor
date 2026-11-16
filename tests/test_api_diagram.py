@@ -257,6 +257,16 @@ def test_get_stored_diagram_and_404(env):
     assert env["c"].get("/api/diagram/nope").status_code == 404
 
 
+def test_racing_identical_requests_share_one_diagram_id(env, monkeypatch):
+    # both requests miss the cache (as two tabs posting at once would); the second must not replace the first's row
+    monkeypatch.setattr(diagram, "_cache_get", lambda key: None)
+    env["llm"]([CLASSIFY_G, CLASSIFY_G])
+    d1 = post(env).json()
+    d2 = post(env).json()
+    assert d1["diagram_id"] == d2["diagram_id"]
+    assert env["c"].get(f"/api/diagram/{d1['diagram_id']}").status_code == 200
+
+
 def test_expired_rows_are_gone(env, monkeypatch):
     env["llm"]([CLASSIFY_G])
     d = post(env).json()

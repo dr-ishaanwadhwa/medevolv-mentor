@@ -1,11 +1,17 @@
 'use client';
 
 import { useUi } from '@/store/ui';
-import { Tooltip } from './Tooltip';
+import { Button } from './Button';
 
+/**
+ * Toasts. The dismiss timer pauses while the pointer or keyboard focus is on a toast, and the action is a kit Button
+ * (44 px target, its own tip) so callers can say what it does, for example Undo after Reset view.
+ */
 export function Toaster() {
   const toasts = useUi((s) => s.toasts);
   const dismiss = useUi((s) => s.dismiss);
+  const pause = useUi((s) => s.pause);
+  const resume = useUi((s) => s.resume);
   return (
     <div
       aria-live="polite"
@@ -14,22 +20,28 @@ export function Toaster() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="pointer-events-auto flex animate-fade-up items-center gap-3 rounded-xl bg-ink px-4 py-2.5 text-sm text-bg shadow-pop"
+          onPointerEnter={() => pause(t.id)}
+          onPointerLeave={() => resume(t.id)}
+          onFocus={() => pause(t.id)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) resume(t.id);
+          }}
+          className="pointer-events-auto flex animate-fade-up items-center gap-3 rounded-xl bg-ink px-4 py-1.5 text-sm text-bg shadow-pop"
         >
-          <span>{t.text}</span>
+          <span className="py-1">{t.text}</span>
           {t.action && (
-            <Tooltip tip="shell.toast.action">
-            <button
-              type="button"
+            <Button
+              size="md"
+              variant="ghost"
+              tip={t.action.tip ?? 'shell.toast.action'}
               onClick={() => {
                 t.action?.onClick();
                 dismiss(t.id);
               }}
-              className="-my-1 -mr-2 min-h-[36px] rounded-lg px-3 text-sm font-semibold underline underline-offset-2 hover:bg-bg/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-bg"
+              className="-my-1 -mr-2 px-3 text-sm font-semibold text-bg underline underline-offset-2 hover:bg-bg/10 hover:text-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-bg"
             >
               {t.action.label}
-            </button>
-            </Tooltip>
+            </Button>
           )}
         </div>
       ))}

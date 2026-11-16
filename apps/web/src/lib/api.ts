@@ -280,7 +280,8 @@ export async function fetchVideos(topic: string, signal?: AbortSignal): Promise<
 
 // ---- anonymous daily counters (api/events.py): at most once per page load per name (PRD 5.3)
 const sentEvents = new Set<string>();
-export function trackOnce(name: 'video_click' | 'question_sent_from_landing', props?: Record<string, string>) {
+export type TrackedEvent = 'video_click' | 'question_sent_from_landing' | 'ask_from_landing' | 'atlas_sex_switch';
+export function trackOnce(name: TrackedEvent, props?: Record<string, string>) {
   const k = `${name}|${JSON.stringify(props ?? {})}`;
   if (sentEvents.has(k)) return;
   sentEvents.add(k);
