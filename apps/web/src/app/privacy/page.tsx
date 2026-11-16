@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Tooltip } from '@/components/ui';
 import { BulletList, ExtLink, LegalPage, LegalSection } from '@/components/credits/LegalPage';
 
 export const metadata: Metadata = { title: 'Privacy' };
@@ -132,13 +133,17 @@ export default function PrivacyPage() {
 
       <p className="text-sm text-muted">
         See also the{' '}
-        <Link href="/terms" className="text-accent underline underline-offset-2">
-          Terms
-        </Link>{' '}
+        <Tooltip tip="shell.legal.terms">
+          <Link href="/terms" className="text-accent underline underline-offset-2">
+            Terms
+          </Link>
+        </Tooltip>{' '}
         and{' '}
-        <Link href="/credits" className="text-accent underline underline-offset-2">
-          Credits
-        </Link>
+        <Tooltip tip="shell.legal.credits">
+          <Link href="/credits" className="text-accent underline underline-offset-2">
+            Credits
+          </Link>
+        </Tooltip>
         .
       </p>
     </LegalPage>

@@ -1,6 +1,7 @@
 /**
  * Central tip registry. One file per feature (each owned by that feature's workstream),
- * merged here into a single `TipId` type. Add new files to the spread below.
+ * merged here into a single `TipId` type. Add new files to `TIP_SOURCES` and the spread below
+ * (registry.test.ts fails if an id appears in two files, since the spread would silently drop one).
  *
  * Copy rules (checked in review):
  * 1. Never repeat the visible label ("Send: Sends" is not allowed).
@@ -15,6 +16,19 @@ import { WHY_TIPS } from './why';
 import { EXPLORE_TIPS } from './explore';
 import { STORY_TIPS } from './story';
 import { LANDING_TIPS } from './landing';
+import { ATLAS_TIPS } from './atlas';
+import { ANSWER_TIPS } from './answer';
+
+/** Each feature file, by name. Used by registry.test.ts to catch an id defined twice. */
+export const TIP_SOURCES = {
+  shell: SHELL_TIPS,
+  why: WHY_TIPS,
+  explore: EXPLORE_TIPS,
+  story: STORY_TIPS,
+  landing: LANDING_TIPS,
+  atlas: ATLAS_TIPS,
+  answer: ANSWER_TIPS,
+} as const;
 
 export type { Tip } from './types';
 export { NO_TIP } from './types';
@@ -25,6 +39,8 @@ export const TIPS = {
   ...EXPLORE_TIPS,
   ...STORY_TIPS,
   ...LANDING_TIPS,
+  ...ATLAS_TIPS,
+  ...ANSWER_TIPS,
 } as const satisfies Record<string, Tip>;
 
 export type TipId = keyof typeof TIPS;

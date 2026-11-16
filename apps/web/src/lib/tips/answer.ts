@@ -41,6 +41,28 @@ export const ANSWER_TIPS = {
   'answer.legal.terms': { purpose: 'Our terms, including the video suggestions.', effect: 'Opens the Terms page.' },
   'answer.legal.privacy': { purpose: 'What we store and what YouTube receives.', effect: 'Opens the Privacy page.' },
   'answer.shared.ask': { purpose: 'Opens Mentor to ask a question of your own.', effect: 'Answers cite book, chapter and page.' },
+  'answer.demo': { purpose: 'A sample question the textbooks cover.', effect: 'Asks it now; the answer appears below with citations.' },
+  'answer.clear': { purpose: 'Starts a fresh conversation.', effect: 'Removes every question and answer from this screen.' },
+  'answer.send': {
+    purpose: 'Sends your question to the textbooks.',
+    effect: 'The answer is written below with book, chapter and page.',
+    disabled: 'Type a question first.',
+  },
+  'answer.stop': { purpose: 'Stops the answer being written.', effect: 'Whatever has arrived so far stays on screen.' },
+  'answer.retry': { purpose: 'Asks the same question again.', effect: 'A fresh attempt replaces this message.' },
+  'answer.next.edit': { purpose: 'Puts your question back in the box.', effect: 'Change the wording, then send it again.' },
+  'answer.sources.item': { purpose: 'Reads the cited textbook passage.', effect: 'Opens it in a side panel with book, chapter and page.' },
+  'answer.sources.uncited': { purpose: 'Passages the search found that the answer did not use.', effect: 'Opens them in the side panel.' },
+  'answer.sources.closest': {
+    purpose: 'The nearest passages the search found, though none answered the question.',
+    effect: 'Opens them in the side panel.',
+  },
+  'answer.trace': { purpose: 'Shows each step taken to build this answer.', effect: 'Opens or folds the list here.' },
 } as const satisfies Record<string, Tip>;
+
+/** A demo-question button whose full text is not on screen (the short tag is). */
+export function demoTip(question: string): Tip {
+  return { purpose: `Asks: \u201c${question}\u201d`, effect: 'The answer appears below with citations.' };
+}
 
 export type AnswerTipId = keyof typeof ANSWER_TIPS;

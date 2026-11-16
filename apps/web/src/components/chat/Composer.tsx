@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowUp, Square } from 'lucide-react';
+import { Tooltip } from '@/components/ui';
 import { useChat } from '@/store/chat';
 
 /** `above`: rendered inside the pinned area, so it stays visible while a long answer scrolls. */
@@ -51,6 +52,7 @@ export function Composer({ above }: { above?: ReactNode } = {}) {
           className="max-h-[168px] min-h-[44px] flex-1 resize-none bg-transparent px-3 py-[11px] text-base leading-snug outline-none placeholder:text-muted/70"
         />
         {busy ? (
+          <Tooltip tip="answer.stop" iconOnly>
           <button
             type="button"
             onClick={stop}
@@ -59,7 +61,9 @@ export function Composer({ above }: { above?: ReactNode } = {}) {
           >
             <Square className="h-4 w-4 fill-current" />
           </button>
+          </Tooltip>
         ) : (
+          <Tooltip tip="answer.send" iconOnly disabled={!draft.trim()}>
           <button
             type="submit"
             disabled={!draft.trim()}
@@ -68,6 +72,7 @@ export function Composer({ above }: { above?: ReactNode } = {}) {
           >
             <ArrowUp className="h-5 w-5" />
           </button>
+          </Tooltip>
         )}
       </form>
       <p className="mt-1.5 hidden px-1 text-[0.72rem] text-muted sm:block">

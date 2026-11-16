@@ -26,7 +26,7 @@ bottom space is already reserved (`.pb-tabbar`). Use the `.h-page` class for a f
 ## Tooltips (R3)
 
 - Copy lives in `@/lib/tips/<feature>.ts` (`shell`, `why`, `explore`, `story`; `atlas`, `answer`, `landing` belong to their workstreams) and is merged in `@/lib/tips/index.ts`. Rules are in that file's header: do not repeat the label, state purpose and effect, plain words, about 20 words.
-- `Button`, `LinkButton`, `Chip` and `CitationChip` take an optional `tip`. A disabled `Button` whose tip has a `disabled` reason stays focusable (`aria-disabled`) so the reason can be read; its click is suppressed.
+- `Button`, `LinkButton` and `Chip` require a `tip` (TypeScript enforces it; use `NO_TIP` plus a comment only when a control truly needs none). `CitationChip`'s `tip` is optional and falls back to "Source n. Opens the source." A disabled `Button` whose tip has a `disabled` reason stays focusable (`aria-disabled`) so the reason can be read; its click is suppressed.
 - Remove native `title` where a tip exists.
-- `pnpm check` runs `scripts/check-tips.mjs`: it fails on a control without a tip that is not in `scripts/tips-baseline.json`. After removing gaps run `node scripts/check-tips.mjs --update` so the baseline shrinks.
+- `node scripts/check-tips.mjs` fails on any control without a tip that is not in `scripts/tips-baseline.json`. The baseline is empty, so every new raw `<button>`, `<a>`, `<Link>` or role control needs a `<Tooltip>` wrapper or `data-tip-id`. `src/lib/tips/registry.test.ts` fails on an empty tip, an id defined in two feature files, or two ids with the same copy.
 - `<Markdown citeTip={(n) => ...}>` gives the inline `[n]` chips a delegated tooltip with the real source pointer.

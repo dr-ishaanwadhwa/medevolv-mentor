@@ -5,6 +5,7 @@ import { AlertTriangle, Check, ChevronDown, OctagonX } from 'lucide-react';
 import type { StepEvent } from '@/lib/api';
 import { fmtMs } from '@/lib/format';
 import { cn } from '@/lib/cn';
+import { Tooltip } from '@/components/ui';
 
 const tone = {
   ok: 'bg-accent-soft text-accent',
@@ -69,6 +70,7 @@ export function TraceDisclosure({ steps, ms }: { steps: StepEvent[]; ms?: number
   if (!steps.length) return null;
   return (
     <div className="rounded-xl border border-border">
+      <Tooltip tip="answer.trace">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -83,6 +85,7 @@ export function TraceDisclosure({ steps, ms }: { steps: StepEvent[]; ms?: number
         </span>
         <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
+      </Tooltip>
       {open && (
         <div className="border-t border-border px-3.5 py-3.5">
           <StepList steps={steps} detail />

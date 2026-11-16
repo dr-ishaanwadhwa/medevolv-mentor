@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Tooltip } from '@/components/ui';
 import { ExtLink, LegalPage, LegalSection } from '@/components/credits/LegalPage';
 import { MODELS, MODEL_ORDER } from '@/components/credits/models';
 
@@ -62,7 +63,7 @@ export default function CreditsPage() {
       <LegalSection title="Not a clinical tool">
         <p>
           These models are reference anatomy for study. Real anatomy varies, and nothing here is for decisions about a
-          real patient. See the <Link href="/terms" className="text-accent underline underline-offset-2">Terms</Link>.
+          real patient. See the <Tooltip tip="shell.legal.terms"><Link href="/terms" className="text-accent underline underline-offset-2">Terms</Link></Tooltip>.
         </p>
       </LegalSection>
     </LegalPage>

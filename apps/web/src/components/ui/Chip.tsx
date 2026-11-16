@@ -16,7 +16,7 @@ export function Chip({
   className,
   tip,
   ...rest
-}: { href?: string; children: ReactNode; className?: string; tip?: TipProp } & ButtonHTMLAttributes<HTMLButtonElement>) {
+}: { href?: string; children: ReactNode; className?: string; tip: TipProp } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const t = useTip(tip);
   if (href) {
     // ARIA and data props now reach the link (they used to be dropped).

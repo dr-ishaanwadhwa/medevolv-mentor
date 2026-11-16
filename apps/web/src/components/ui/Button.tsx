@@ -32,7 +32,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   /** What this control is for and what it does: a registry id or a plain {purpose, effect, disabled?}. */
-  tip?: TipProp;
+  tip: TipProp;
   /** Icon-only buttons get touch long-press to show the tip. Never set it for text buttons or links. */
   iconOnly?: boolean;
 }
@@ -70,7 +70,7 @@ export function LinkButton({
   children,
   tip,
   ...rest
-}: { href: string; variant?: Variant; size?: Size; className?: string; children: React.ReactNode; tip?: TipProp } & Omit<
+}: { href: string; variant?: Variant; size?: Size; className?: string; children: React.ReactNode; tip: TipProp } & Omit<
   React.ComponentProps<typeof Link>,
   'href' | 'className'
 >) {

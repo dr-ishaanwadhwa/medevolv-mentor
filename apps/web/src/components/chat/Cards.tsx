@@ -3,6 +3,7 @@
 import { RotateCcw, ServerCrash } from 'lucide-react';
 import { Button, Chip } from '@/components/ui';
 import { DEMO_PROMPTS } from '@/lib/demo';
+import { demoTip } from '@/lib/tips/answer';
 
 export function ErrorCard({ message, onRetry }: { message?: string; onRetry?: () => void }) {
   return (
@@ -14,7 +15,7 @@ export function ErrorCard({ message, onRetry }: { message?: string; onRetry?: ()
           <p className="mt-1 text-sm leading-relaxed">{message || 'The server could not answer right now.'}</p>
           <p className="mt-1 text-xs text-muted">Nothing was answered, so there is nothing to trust or cite here.</p>
           {onRetry && (
-            <Button size="sm" variant="secondary" className="mt-3" onClick={onRetry}>
+            <Button size="sm" variant="secondary" className="mt-3" onClick={onRetry} tip="answer.retry">
               <RotateCcw className="h-4 w-4" /> Try again
             </Button>
           )}
@@ -49,13 +50,13 @@ export function NextSteps({
       </ul>
       <div className="flex flex-wrap gap-2">
         {onEdit && (
-          <Chip onClick={onEdit}>
+          <Chip onClick={onEdit} tip="answer.next.edit">
             Edit and re-ask
           </Chip>
         )}
         {onPick &&
           DEMO_PROMPTS.slice(0, 3).map((d) => (
-            <Chip key={d.text} onClick={() => onPick(d.text)} className="max-w-full">
+            <Chip key={d.text} onClick={() => onPick(d.text)} className="max-w-full" tip={demoTip(d.text)}>
               <span className="truncate">{d.tag}</span>
             </Chip>
           ))}

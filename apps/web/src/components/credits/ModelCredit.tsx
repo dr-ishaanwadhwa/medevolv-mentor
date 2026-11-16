@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { cn } from '@/lib/cn';
+import { Tooltip } from '@/components/ui';
 import { MODELS, type ModelId } from './models';
 
 /**
@@ -24,9 +25,11 @@ export function ModelCredit({
         </span>
       ))}
       {' · '}
-      <Link href="/credits" className="underline underline-offset-2 hover:text-ink">
-        Credits
-      </Link>
+      <Tooltip tip="shell.credit.model">
+        <Link href="/credits" className="underline underline-offset-2 hover:text-ink">
+          Credits
+        </Link>
+      </Tooltip>
     </p>
   );
 }

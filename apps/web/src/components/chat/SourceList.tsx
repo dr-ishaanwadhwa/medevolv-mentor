@@ -3,6 +3,7 @@
 import { BookOpen } from 'lucide-react';
 import type { AnswerCitation } from '@/lib/api';
 import { citationWhere } from '@/lib/format';
+import { Tooltip } from '@/components/ui';
 
 /** Compact "where this comes from" list: book · chapter · pages. Opens the drawer on click. */
 export function SourceList({ citations, onOpen }: { citations: AnswerCitation[]; onOpen: (n: number) => void }) {
@@ -12,6 +13,7 @@ export function SourceList({ citations, onOpen }: { citations: AnswerCitation[];
   if (!cited.length) {
     // Declined answers: no evidence was cited, so don't dress retrieval up as sources.
     return (
+      <Tooltip tip="answer.sources.closest">
       <button
         type="button"
         onClick={() => onOpen(citations[0].index)}
@@ -19,6 +21,7 @@ export function SourceList({ citations, onOpen }: { citations: AnswerCitation[];
       >
         See the closest passages the search found ({citations.length}), none were cited
       </button>
+      </Tooltip>
     );
   }
   return (
@@ -32,6 +35,7 @@ export function SourceList({ citations, onOpen }: { citations: AnswerCitation[];
             const w = citationWhere(c);
             return (
               <li key={c.index}>
+                <Tooltip tip="answer.sources.item">
                 <button
                   type="button"
                   onClick={() => onOpen(c.index)}
@@ -45,6 +49,7 @@ export function SourceList({ citations, onOpen }: { citations: AnswerCitation[];
                     </span>
                   </span>
                 </button>
+                </Tooltip>
               </li>
             );
           })}
@@ -53,6 +58,7 @@ export function SourceList({ citations, onOpen }: { citations: AnswerCitation[];
         <p className="text-sm text-muted">No passage was cited.</p>
       )}
       {rest > 0 && (
+        <Tooltip tip="answer.sources.uncited">
         <button
           type="button"
           onClick={() => onOpen((citations.find((c) => !c.cited) ?? citations[0]).index)}
@@ -60,6 +66,7 @@ export function SourceList({ citations, onOpen }: { citations: AnswerCitation[];
         >
           {rest} more retrieved, not cited
         </button>
+        </Tooltip>
       )}
     </div>
   );

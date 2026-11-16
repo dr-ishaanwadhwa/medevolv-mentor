@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Tooltip } from '@/components/ui';
 import { BulletList, ExtLink, LegalPage, LegalSection } from '@/components/credits/LegalPage';
 
 export const metadata: Metadata = { title: 'Terms' };
@@ -45,9 +46,11 @@ export default function TermsPage() {
       <LegalSection id="shared" title="Sharing">
         <p>
           A shared answer is readable by anyone with its link. Share only what you are happy for others to read. See the{' '}
-          <Link href="/privacy" className="text-accent underline underline-offset-2">
-            Privacy
-          </Link>{' '}
+          <Tooltip tip="shell.legal.privacy">
+            <Link href="/privacy" className="text-accent underline underline-offset-2">
+              Privacy
+            </Link>
+          </Tooltip>{' '}
           page.
         </p>
       </LegalSection>
@@ -68,9 +71,11 @@ export default function TermsPage() {
       <LegalSection id="models" title="3D models">
         <p>
           The 3D models are open datasets used under their own licences, listed with their changes on the{' '}
-          <Link href="/credits" className="text-accent underline underline-offset-2">
-            Credits
-          </Link>{' '}
+          <Tooltip tip="shell.legal.credits">
+            <Link href="/credits" className="text-accent underline underline-offset-2">
+              Credits
+            </Link>
+          </Tooltip>{' '}
           page. They are reference anatomy, and real anatomy varies.
         </p>
       </LegalSection>

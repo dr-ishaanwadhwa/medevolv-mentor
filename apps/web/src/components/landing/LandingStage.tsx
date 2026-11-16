@@ -191,7 +191,7 @@ export function LandingStage({
       )}
       <div className="ld-scenes">{children}</div>
       <div className="ld-sticky" data-show={sticky ? 'true' : 'false'} inert={!sticky || undefined} aria-hidden={!sticky || undefined}>
-        <LinkButton href="/ask" variant="primary" className="w-full" data-landing-cta="sticky" tip="landing.sticky">
+        <LinkButton href="/ask" variant="primary" className="w-full" data-landing-cta="sticky" tip="landing.cta">
           {ctaLabel}
         </LinkButton>
       </div>

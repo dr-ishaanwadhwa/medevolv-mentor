@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn';
+import { Tooltip } from '@/components/ui';
 
 /** Shared page frame for /credits, /privacy and /terms. */
 export function LegalPage({
@@ -45,14 +46,16 @@ export function LegalSection({
 
 export function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-accent underline underline-offset-2 hover:opacity-80"
-    >
-      {children}
-    </a>
+    <Tooltip tip="shell.legal.external">
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-accent underline underline-offset-2 hover:opacity-80"
+      >
+        {children}
+      </a>
+    </Tooltip>
   );
 }
 

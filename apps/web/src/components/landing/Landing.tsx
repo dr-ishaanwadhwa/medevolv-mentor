@@ -247,7 +247,7 @@ function MoreScene({ features }: { features: Features }) {
             <p className="mt-1 text-xs leading-relaxed text-muted">{f.caveats[1]}</p>
             <p className="mt-5 text-ink">{COPY.measured.cta}</p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <LinkButton href="/ask" variant="primary" size="lg" data-landing-cta="final" tip="landing.final">{MODE_COPY.cta}</LinkButton>
+              <LinkButton href="/ask" variant="primary" size="lg" data-landing-cta="final" tip="landing.cta">{MODE_COPY.cta}</LinkButton>
               <LinkButton href="/how" size="lg" tip="landing.how">{COPY.howLink}</LinkButton>
             </div>
           </div>

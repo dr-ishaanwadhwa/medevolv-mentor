@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowUpRight, Trash2 } from 'lucide-react';
-import { Button, Tag } from '@/components/ui';
+import { Button, Tag, Tooltip } from '@/components/ui';
 import { DEMO_PROMPTS } from '@/lib/demo';
+import { demoTip } from '@/lib/tips/answer';
 import { useChat } from '@/store/chat';
 import { AnswerCard } from './AnswerCard';
 import { Composer } from './Composer';
@@ -26,8 +27,8 @@ function Hero() {
       </p>
       <div className="mt-7 grid gap-2.5 sm:grid-cols-2">
         {DEMO_PROMPTS.map((d) => (
+          <Tooltip key={d.text} tip="answer.demo">
           <button
-            key={d.text}
             type="button"
             onClick={() => ask(d.text)}
             className="card group flex min-h-[44px] flex-col items-start gap-1.5 p-4 text-left transition-colors hover:border-accent/50 hover:bg-accent-soft/40"
@@ -38,6 +39,7 @@ function Hero() {
             </span>
             <span className="text-[0.93rem] leading-snug">{d.text}</span>
           </button>
+          </Tooltip>
         ))}
       </div>
     </div>
@@ -52,16 +54,16 @@ function TryRow() {
     <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:none]" aria-label="Try a demo question">
       <span className="label-mono shrink-0">Try</span>
       {DEMO_PROMPTS.map((d) => (
+        <Tooltip key={d.text} tip={demoTip(d.text)}>
         <button
-          key={d.text}
           type="button"
           disabled={streaming}
-          title={d.text}
           onClick={() => ask(d.text)}
           className="shrink-0 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/50 hover:text-ink disabled:opacity-50"
         >
           {d.tag}
         </button>
+        </Tooltip>
       ))}
     </div>
   );
@@ -116,7 +118,7 @@ export function ChatView() {
         ) : (
           <div className="space-y-8 pt-6">
             <div className="flex justify-end">
-              <Button size="sm" variant="ghost" onClick={clear}>
+              <Button size="sm" variant="ghost" onClick={clear} tip="answer.clear">
                 <Trash2 className="h-4 w-4" /> Clear chat
               </Button>
             </div>
