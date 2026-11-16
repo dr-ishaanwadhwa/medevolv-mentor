@@ -22,7 +22,7 @@ Body `{question: str (1..3000), options: str[] (2..6), chosen: int}`; `chosen` i
 | event | data |
 |---|---|
 | `step` | `{stage, title, detail, status: "ok"\|"warn"\|"stop", ms}` |
-| `answer` | `{text, status, route, citations: AnswerCitation[]}` (chat only) |
+| `answer` | `{text, status, route, citations: AnswerCitation[], graph_citations: GraphCitation[], answer_sig: str \| null}` (chat only) |
 | `spatial` | `{actions: [{action:"highlight", fma_ids, label, tier:"navigation"}]}` (chat only) |
 | `topic` | `{topic: str \| null, related: [{id, label, predicate, tier: "certified"}]}` (chat only), below |
 | `verdict` | `VerdictEvent` (why only), below |
@@ -36,6 +36,12 @@ ontology concept (`api/topic.py`). `related` is at most 6 certified `links_out` 
 Declined answers (`status != "answered"`) and patient-scoped questions (`api/safety_cues.patient_scoped`, which also
 includes the `rag.answer.PERSONAL` regex) always get `{topic: null, related: []}`. A failure computing it also gives
 that; it never turns an answer into an `error`.
+
+`graph_citations` (additive) are pointers for the `[G#]` graph facts the text cites: `{n, fact_id, book, edition,
+chapter, pages}`, parsed from the fact line's own "(Book, Chapter, pp. a-b)" cite; no fact text. `answer_sig` is
+`HMAC-SHA256(DIAGRAM_SIG_SECRET, sha256(canonical_answer_bytes))` in hex, set only on `status == "answered"` and only
+when `DIAGRAM_SIG_SECRET` is set (otherwise null, and the web Flowchart chip stays hidden). The client echoes the four
+fields to `POST /api/diagram` unchanged; it never computes a signature (one implementation, `api/diagram.py`).
 
 `AnswerCitation`: `{index, cited, book, edition, chapter, pages, section_id, excerpt}`. `index` is the `[n]` used in the
 text; `excerpt` is at most 300 chars (+ an ellipsis). Pointers only, never full passages.
@@ -81,13 +87,51 @@ direction.
 Unchanged: concept + atlas links + pointer citations + related concepts.
 
 ### POST /api/answers  ->  `{id}`
-Body `{kind: "chat"|"why", question: str (<=3000), payload: object}`. Payload over 200 KB -> 413. `id` is a short
+Body `{kind: "chat"|"why", question: str (<=3000), payload: object}`. Payload over 200 KB -> 413. YouTube metadata
+fields (`videos`, `video_id`, `thumbnail_url`, `watch_url`, ...) are stripped at any depth before saving: a chat share
+keeps `topic` (and `related`, `diagram_id`), never video data (PRD V-12). `id` is a short
 url-safe token (`secrets.token_urlsafe(6)`).
 ### GET /api/answers/{id}
 `{id, kind, question, payload, created_at (unix seconds)}`, or 404 `{"detail": "Unknown answer"}`.
 
 ### POST /api/feedback  ->  `{ok: true}`
-Body `{answer_id?: str, question?: str, kind: "wrong_citation"|"unhelpful"|"other", note?: str (<=1000)}`. Bad input -> 422.
+Body `{answer_id?: str, question?: str, kind: "wrong_citation"|"unhelpful"|"other"|"diagram_wrong"|"video_bad",
+note?: str (<=1000), target_id?: str (<=32, the diagram_id or video_id)}`. Bad input -> 422.
+
+### POST /api/diagram  (api/diagram.py, flag `diagram`)
+Body `{question, answer_text (<=8000), citations: [{index, book, edition, chapter, pages, section_id}],
+graph_citations: [{n, fact_id, book, edition, chapter, pages}], answer_sig, condition?}`: the fields of the `answer`
+event, echoed. The server rebuilds the canonical bytes (NFC strings, `\n` line endings, documented keys only, extra keys
+dropped) and checks `answer_sig`: mismatch -> 403 `bad_signature`; float or string `index`/`n`, or citations not
+sorted -> 422; flag off -> 503 `diagram_unavailable`; over 10/min per client IP -> 429 `rate_limited`.
+
+Response 200 (`version: 2`): `{status: "ok"|"declined", diagram_id, source: "ontology"|"answer"|null, kind, subject,
+title, groups: [{id, title}], nodes: [{id, label, role, group, cites: [{kind: "passage"|"fact", n}]}],
+edges: [{from, to, label, cites}], fact_sources: [{n, fact_id, book, edition, chapter, pages}], dropped, reason,
+version}`. Paths: (1) the certified ontology graph (`rag.diagrams.build_graph`) when the question names a condition or
+drug that the answer mentions with at least 3 of its fact labels; (2) else DeepSeek restructures the answer and
+`api/diagram_validate.py` keeps only boxes and arrows the cited sentences support (V1-V6, E1-E5). Decline reasons:
+`too_few_supported_nodes`, `patient_scoped`, `generator_error` (LLM failure or the 30 s budget; never cached, retry
+may work), `budget` (global daily cap `DIAGRAM_DAILY_CAP`, default 300; never cached). Fact and quote text never
+leave the server. Results are cached in `diagram_cache` under a hash (the raw question is not stored), 90-day TTL.
+
+### GET /api/diagram/{diagram_id}
+The stored `ok` response (shared pages; reading refreshes the TTL), 404 when missing or expired, 503 when the flag is off.
+
+### POST /api/videos  (api/videos.py, flag `videos`)
+Body `{topic: str (1..120), subject?: str}`; `topic` is the label from the `topic` event, never question text.
+Response `{topic, videos: [{video_id, title, channel_title, channel_id, thumbnail_url, duration_seconds,
+duration_label, view_count, watch_url, allowlisted, long_lecture}], fallback_url, fetched_at, source:
+"cache"|"api"|"fallback", label}`. Keyless mode: without `YOUTUBE_API_KEY` the response is `source: "fallback"` with
+no videos and the `youtube.com/results` link built from the topic label. With a key a cache miss makes exactly one
+`search.list` (part=snippet, type=video, q="<topic> lecture MBBS", order=relevance, safeSearch=strict,
+relevanceLanguage=en, regionCode=IN, maxResults=15) and one `videos.list`. Filters: 4 min to any length (over 90 min
+flagged `long_lecture`), at least 5,000 views, clickbait titles, blocklist (`api/data/video_blocklist.json`).
+Ranking: allowlisted channels (`api/data/video_channels.json`, team-verified, empty today) first, at most 4 cards and
+at most 2 not allowlisted. Quota trouble (403), timeouts (3 s), any upstream error, or 80 searches in the last
+rolling 24 h -> `source: "fallback"` with HTTP 200. Errors: 422 bad topic, 429 over 30/min per IP, 503 flag off.
+Storage: `video_cache` (7-day refresh, rows older than 14 days purged on every write and at startup) and
+`video_search_log` (timestamps only). YouTube data is stored nowhere else.
 
 ### GET /api/health
 `{status:"ok", llm_backend, atlas_enabled, ontology_loaded}`
@@ -143,8 +187,9 @@ Body `{question: str}` (1..300 characters after trimming; blank or longer -> 422
 
 ## Storage
 SQLite at `$APP_DB`, default `var/app.db` in the repo root (gitignored; never under the symlinked `data/`).
-Tables `answers` and `feedback` are created on first use.
+Tables `answers`, `feedback` (+ `target_id`, added in place), `events`, `diagram_cache`, `video_cache` and
+`video_search_log` are created on first use.
 
 ## Tests
-`pytest -q tests/test_api.py tests/test_api_v2.py tests/test_api_features.py tests/test_api_events.py tests/test_ratelimit.py tests/test_safety_cues.py` (LLM and retrieval are mocked; the concept-page tests read the real
+`pytest -q tests/test_api.py tests/test_api_v2.py tests/test_api_features.py tests/test_api_events.py tests/test_ratelimit.py tests/test_safety_cues.py tests/test_api_diagram.py tests/test_api_videos.py` (LLM, YouTube and retrieval are mocked; the concept-page tests read the real
 ontology and skip if it is missing).

@@ -4,8 +4,13 @@ import { useEffect, useState } from 'react';
 import { SearchX } from 'lucide-react';
 import { LinkButton, Markdown, SkeletonLines, StatusPill, statusMeta } from '@/components/ui';
 import { VerdictCard } from '@/components/why/VerdictCard';
-import { getAnswer, type AnswerRecord, type ChatPayload, type WhyPayload } from '@/lib/api';
+import { getAnswer, getDiagram, type AnswerRecord, type ChatPayload, type DiagramResponse, type WhyPayload } from '@/lib/api';
+import { askHref } from '@/lib/related';
+import { ANSWER_TIPS as T } from '@/lib/tips/answer';
 import { SpatialChips } from './AnswerCard';
+import { ReadyDiagram } from './DiagramSlot';
+import { RelatedTopics } from './RelatedTopics';
+import { Videos } from './Videos';
 import { SourceDrawer } from './SourceDrawer';
 import { SourceList } from './SourceList';
 
@@ -14,6 +19,18 @@ type State = { s: 'loading' } | { s: 'missing' } | { s: 'error' } | { s: 'ok'; r
 export function SharedAnswer({ id }: { id: string }) {
   const [st, setSt] = useState<State>({ s: 'loading' });
   const [src, setSrc] = useState<number | null>(null);
+  const [diagram, setDiagram] = useState<DiagramResponse | null>(null);
+
+  // A stored, server-issued flowchart, read-only; dropped silently when missing, expired or switched off (PRD 4.1).
+  const diagramId = st.s === 'ok' && st.rec.kind === 'chat' ? (st.rec.payload as Partial<ChatPayload>).diagram_id : null;
+  useEffect(() => {
+    if (!diagramId) return;
+    let live = true;
+    void getDiagram(diagramId).then((d) => live && setDiagram(d));
+    return () => {
+      live = false;
+    };
+  }, [diagramId]);
 
   useEffect(() => {
     let live = true;
@@ -68,7 +85,11 @@ export function SharedAnswer({ id }: { id: string }) {
           <Markdown text={a.text} onCite={setSrc} />
           <SourceList citations={a.citations} onOpen={setSrc} />
           <SpatialChips actions={p.spatial ?? []} />
+          {!meta.declined && <RelatedTopics related={p.related} hrefFor={askHref} />}
+          {diagram && <ReadyDiagram diagram={diagram} citations={a.citations} onOpenSource={setSrc} />}
         </article>
+        {/* Videos are fetched live from the stored topic label; the share never stores YouTube data (V-12). */}
+        {!meta.declined && <div className="mt-3"><Videos topic={p.topic} /></div>}
         <SourceDrawer citations={a.citations} active={src} onClose={() => setSrc(null)} />
       </>
     );
@@ -84,7 +105,7 @@ export function AskYourOwn() {
         <div className="font-semibold">Ask your own question</div>
         <p className="text-sm text-muted">Answers cite the book, chapter and page, or decline.</p>
       </div>
-      <LinkButton href="/" variant="primary">
+      <LinkButton href="/ask" variant="primary" tip={T['answer.shared.ask']}>
         Open MedEvolv Mentor
       </LinkButton>
     </div>

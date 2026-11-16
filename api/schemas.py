@@ -1,6 +1,6 @@
 """Wire contracts for the API. Citations are pointers (+ one short excerpt), never passage text.
 
-Server-Sent Events from POST /api/chat/stream, in order: step (0..n), answer, spatial, done  |  error (ends the stream).
+Server-Sent Events from POST /api/chat/stream, in order: step (0..n), answer, spatial, topic, done  |  error (ends the stream).
 POST /api/why/stream: step (0..n), verdict, done  |  error. See api/README.md.
 """
 from __future__ import annotations
@@ -40,11 +40,23 @@ class AnswerCitation(Citation):
     cited: bool                     # False = retrieved but not cited in the text
 
 
+class GraphCitation(BaseModel):
+    """Pointer for a [G#] graph fact the answer cites (no fact text): where the textbook says it."""
+    n: int
+    fact_id: str
+    book: str
+    edition: str = ""
+    chapter: str = ""
+    pages: str = ""
+
+
 class AnswerEvent(BaseModel):
     text: str
     status: str
     route: str
     citations: list[AnswerCitation] = []
+    graph_citations: list[GraphCitation] = []     # [G#] facts the text cites (additive; old clients ignore)
+    answer_sig: str | None = None                  # HMAC for POST /api/diagram (api/diagram.py); None without DIAGRAM_SIG_SECRET
 
 
 class SpatialAction(BaseModel):
@@ -258,8 +270,9 @@ class AnswerRecord(BaseModel):
 class FeedbackRequest(BaseModel):
     answer_id: str | None = Field(default=None, max_length=32)
     question: str | None = Field(default=None, max_length=3000)
-    kind: Literal["wrong_citation", "unhelpful", "other"]
+    kind: Literal["wrong_citation", "unhelpful", "other", "diagram_wrong", "video_bad"]
     note: str | None = Field(default=None, max_length=1000)
+    target_id: str | None = Field(default=None, max_length=32)      # diagram_id or video_id the report is about
 
 
 class FeedbackOk(BaseModel):

@@ -31,6 +31,8 @@ def _conn() -> sqlite3.Connection:
     p.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(p)
     con.executescript(_SCHEMA)
+    if "target_id" not in {r[1] for r in con.execute("PRAGMA table_info(feedback)")}:     # added with diagram/video reports
+        con.execute("ALTER TABLE feedback ADD COLUMN target_id TEXT")
     return con
 
 
@@ -63,11 +65,12 @@ def get_answer(aid: str) -> dict | None:
                                      "payload": json.loads(row[3]), "created_at": row[4]}
 
 
-def add_feedback(answer_id: str | None, question: str | None, kind: str, note: str | None) -> None:
+def add_feedback(answer_id: str | None, question: str | None, kind: str, note: str | None,
+                 target_id: str | None = None) -> None:
     con = _conn()
     try:
         with con:
-            con.execute("INSERT INTO feedback (answer_id, question, kind, note, created_at) VALUES (?,?,?,?,?)",
-                        (answer_id, question, kind, note, time.time()))
+            con.execute("INSERT INTO feedback (answer_id, question, kind, note, created_at, target_id) VALUES (?,?,?,?,?,?)",
+                        (answer_id, question, kind, note, time.time(), target_id))
     finally:
         con.close()

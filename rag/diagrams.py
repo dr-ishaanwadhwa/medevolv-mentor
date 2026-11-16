@@ -24,9 +24,11 @@ from pathlib import Path
 
 from rag import ontology_facts as onto
 
-VERSION = 2
+VERSION = 3                                    # 3: structured nodes/edges/groups beside the DOT, new case title
 CACHE_DIR = Path("data/ontology/diagrams")
 MAX_PER_SECTION = 5
+GRAPH_PER_SECTION = 4                          # the JSON graph (web flowchart) shows at most 4 facts per section
+GRAPH_NODE_CAP = 14                            # node cap of kind case/drug in the JSON graph (PRD 4.1)
 
 PHARM_WORDS = re.compile(r"\b(mechanism|moa|mode of action|how does|act(s|ion)?|pharmacolog\w*|adverse|side.?effects?|"
                          r"contraindicat\w*|drug|dose|target)\b", re.I)
@@ -97,23 +99,43 @@ def _wrap(s: str, width: int = 26) -> str:
 class _Dot:
     """Accumulates nodes/edges and the numbered source list."""
 
-    def __init__(self, highlight: frozenset):
+    def __init__(self, highlight: frozenset, only_mentioned: bool = False, budget: int | None = None):
         self.lines: list[str] = []
         self.sources: list[dict] = []          # [{n, fact_id, fact, cite, quote}]
         self._src_index: dict[str, int] = {}
         self._n = 0
         self.highlight = highlight
+        # Structure beside the DOT (the JSON graph the web flowchart draws). Section headings become groups, not nodes.
+        self.only_mentioned = only_mentioned   # keep only facts whose object label the answer mentions
+        self.budget = budget                   # max structural nodes still allowed (None = unlimited)
+        self.g_nodes: list[dict] = []          # [{id, label, fact_n | None, role, group}]
+        self.g_edges: list[tuple[str, str]] = []
+        self.g_groups: list[dict] = []         # [{id, title}]
+        self._alias: dict[str, str] = {}       # non-structural node (the "Treatment" box) -> structural node it stands for
 
     def source(self, f: dict) -> int:
         if f["id"] not in self._src_index:
+            prov = f["provenance"]
+            pages = prov.get("pages") or []
             self.sources.append({"n": len(self.sources) + 1, "fact_id": f["id"], "fact": f.get("nl_fact", ""),
-                                 "cite": onto.cite(f), "quote": f["provenance"].get("verbatim_quote", "")})
+                                 "cite": onto.cite(f), "quote": prov.get("verbatim_quote", ""),
+                                 # structured pointer for the web "Diagram sources" list (no fact or quote text)
+                                 "prov": {"book": prov.get("book_title", prov.get("book_id", "")),
+                                          "edition": str(prov.get("edition", "") or ""),
+                                          "chapter": re.sub(r"^\d+\.?\s*", "", prov.get("chapter", "")),
+                                          "pages": (str(pages[0]) if len(pages) == 1 else f"{pages[0]}–{pages[-1]}") if pages else ""}})
             self._src_index[f["id"]] = len(self.sources)
         return self._src_index[f["id"]]
 
-    def node(self, label: str, *, fact: dict | None = None, **attrs) -> str:
+    def node(self, label: str, *, fact: dict | None = None, struct: bool = True, role: str = "step", group: str | None = None,
+             **attrs) -> str:
         self._n += 1
         nid = f"n{self._n}"
+        if struct:
+            self.g_nodes.append({"id": nid, "label": label, "fact_n": self.source(fact) if fact is not None else None,
+                                 "role": role, "group": group})
+            if self.budget is not None:
+                self.budget -= 1
         text = _wrap(label)
         if fact is not None:
             text += f" [{self.source(fact)}]"
@@ -135,23 +157,47 @@ class _Dot:
 
         Boxes sit in a row under the title, or stacked in a column (column=True). Returns (exit node, cluster
         name) for chaining the next section below this one, or None when there are no facts."""
-        facts = facts[:MAX_PER_SECTION]
+        if self.only_mentioned:
+            facts = [f for f in facts if _words(f["object_label"]) and _words(f["object_label"]) <= self.highlight]
+        facts = facts[:GRAPH_PER_SECTION if self.only_mentioned else MAX_PER_SECTION]
+        if self.budget is not None:
+            facts = facts[:max(self.budget, 0)]
         if not facts:
             return None
         self._n += 1
         cluster = f"cluster_{self._n}"
-        head = self.node(title, shape="plaintext", fontcolor=color, fontsize="13")
+        gid = f"g{len(self.g_groups) + 1}"
+        self.g_groups.append({"id": gid, "title": title})
+        warn = title.startswith("⚠")
+        head = self.node(title, struct=False, shape="plaintext", fontcolor=color, fontsize="13")
         self.lines.append(f'  subgraph {cluster} {{ style="rounded,filled"; color="{color}"; fillcolor="{fill}"; '
                           f'label=""; {head};')
-        ids = [self.node(f["object_label"], fact=f, shape="box", style="rounded,filled", fillcolor="white",
-                         color=color, width="1.9") for f in facts]
+        ids = [self.node(f["object_label"], fact=f, role="warning" if warn else "step", group=gid, shape="box",
+                         style="rounded,filled", fillcolor="white", color=color, width="1.9") for f in facts]
         self.lines.append("  }")
         for prev, i in zip([head] + ids, ids):
             self.edge(head if not column else prev, i, style="invis")
         src, src_cluster = parent
+        for i in ids:                          # structure: the parent points at every fact box of this section
+            self.g_edges.append((self._alias.get(src, src), i))
         extra = {"ltail": src_cluster} if src_cluster else {}
         self.edge(src, head, style=edge_style, color=edge_color, **extra)
         return (ids[-1] if column else ids[len(ids) // 2]), cluster
+
+    def graph(self, title: str) -> dict:
+        """The same diagram as nodes, edges and groups (no DOT). Every non-root node cites one fact; the root cites the
+        first fact (each fact is a statement about the root subject). Fact numbers are the DOT's [n] source numbers."""
+        first = next((n["fact_n"] for n in self.g_nodes if n["fact_n"]), None)
+        nodes = [{"id": n["id"], "label": n["label"], "role": n["role"], "group": n["group"],
+                  "cites": [{"kind": "fact", "n": n["fact_n"] or first}] if (n["fact_n"] or first) else []}
+                 for n in self.g_nodes]
+        by_n = {s["n"]: s for s in self.sources}
+        edges = []
+        nfact = {n["id"]: n["fact_n"] or first for n in self.g_nodes}
+        for a, b in self.g_edges:
+            edges.append({"from": a, "to": b, "label": "", "cites": [{"kind": "fact", "n": nfact[b]}]})
+        return {"title": title, "groups": self.g_groups, "nodes": nodes, "edges": edges,
+                "facts": [by_n[n] for n in sorted(by_n)]}
 
     def render(self, title: str) -> str:
         return ("digraph G {\n"
@@ -185,20 +231,20 @@ def _merged_profile(condition: str) -> dict:
     return out
 
 
-def case_flowchart(condition: str, highlight_text: str = "") -> tuple[str, list[dict]] | None:
+def _case_dot(condition: str, d: _Dot) -> tuple[_Dot, str] | None:
     p = _merged_profile(condition)
     if not any(p.get(k) for k in ("presentation", "diagnostics", "therapy")):
         return None
-    d = _Dot(_words(highlight_text))
-    root = d.node(condition, shape="box", style="rounded,filled,bold", fillcolor="#1f3b57", fontcolor="white",
+    root = d.node(condition, role="start", shape="box", style="rounded,filled,bold", fillcolor="#1f3b57", fontcolor="white",
                   fontsize="14")
     prev = (root, None)
     for title, key, color, fill in (("Presentation", "presentation", "#2b6cb0", "#ebf4ff"),
                                     ("Differentials to exclude", "differentials", "#6b46c1", "#f3efff"),
                                     ("Workup / confirmation", "diagnostics", "#2c7a7b", "#e6fffa")):
         prev = d.section(title, p.get(key, []), prev, color=color, fill=fill) or prev
-    treat = d.node("Treatment", shape="box", style="rounded,filled", fillcolor="#276749", fontcolor="white",
-                   fontsize="13")
+    treat = d.node("Treatment", struct=False, shape="box", style="rounded,filled", fillcolor="#276749",
+                   fontcolor="white", fontsize="13")
+    d._alias[treat] = d._alias.get(prev[0], prev[0])      # the Treatment box is a heading: its facts hang off the last real box
     d.edge(prev[0], treat, **({"ltail": prev[1]} if prev[1] else {}))
     for line in ("First line", "Second line", "Adjunct", "Refractory", "Supportive"):
         d.section(line, p["therapy"].get(line, []), (treat, None), color="#276749", fill="#f0fff4", column=True)
@@ -209,10 +255,15 @@ def case_flowchart(condition: str, highlight_text: str = "") -> tuple[str, list[
               edge_style="dashed", edge_color="#c53030")
     d.section("⚠ Use with caution", caution, (treat, None), color="#c05621", fill="#fffaf0", column=True,
               edge_style="dashed", edge_color="#c05621")
-    return d.render(f"{condition}: clinical decision flow (certified textbook facts)"), d.sources
+    return d, f"{condition}: textbook overview for revision"
 
 
-def drug_mechanism(drug: str, highlight_text: str = "") -> tuple[str, list[dict]] | None:
+def case_flowchart(condition: str, highlight_text: str = "") -> tuple[str, list[dict]] | None:
+    made = _case_dot(condition, _Dot(_words(highlight_text)))
+    return None if made is None else (made[0].render(made[1]), made[0].sources)
+
+
+def _drug_dot(drug: str, d: _Dot) -> tuple[_Dot, str] | None:
     low = drug.lower()
     about = [f for f in onto.facts() if f["subject_label"].lower() == low]
     targets = onto._dedupe([f for f in about if f["predicate"] == "TARGETS_MECHANISM"])
@@ -233,8 +284,7 @@ def drug_mechanism(drug: str, highlight_text: str = "") -> tuple[str, list[dict]
                 out.append({**f, "object_label": f["subject_label"]})
         return out
 
-    d = _Dot(_words(highlight_text))
-    root = d.node(about[0]["subject_label"], shape="box", style="rounded,filled,bold", fillcolor="#1f3b57",
+    root = d.node(about[0]["subject_label"], role="start", shape="box", style="rounded,filled,bold", fillcolor="#1f3b57",
                   fontcolor="white", fontsize="14")
     mech = d.section("Acts on (mechanism)", targets, (root, None), color="#2b6cb0", fill="#ebf4ff")
     under = mech or (root, None)
@@ -243,7 +293,42 @@ def drug_mechanism(drug: str, highlight_text: str = "") -> tuple[str, list[dict]
               edge_style="dashed", edge_color="#c05621")
     d.section("⚠ Contraindicated in", by_subject(avoid), under, color="#c53030", fill="#fff5f5", column=True,
               edge_style="dashed", edge_color="#c53030")
-    return d.render(f"{about[0]['subject_label']}: mechanism of action (certified textbook facts)"), d.sources
+    return d, f"{about[0]['subject_label']}: mechanism of action (certified textbook facts)"
+
+
+def drug_mechanism(drug: str, highlight_text: str = "") -> tuple[str, list[dict]] | None:
+    made = _drug_dot(drug, _Dot(_words(highlight_text)))
+    return None if made is None else (made[0].render(made[1]), made[0].sources)
+
+
+def build_graph(question: str, answer_text: str, condition: str | None = None, drug: str | None = None) -> dict | None:
+    """The CERTIFIED path of the flowchart maker (PRD 4.1): a JSON graph of ontology facts, or None.
+
+    Used only when the question names a condition or drug AND the answer mentions that subject AND at least 3 fact
+    boxes survive the overlap filter (a fact box is kept only when the answer mentions its object label). At most 4
+    facts per section and 14 nodes in all. Section headings are group titles, never nodes. Never raises, never caches
+    (the API caches under $APP_DB; the relative data/ cache of build() is not persisted there).
+
+    Returns {kind, subject, title, groups, nodes, edges, facts}; `facts` are the numbered sources WITH `fact` and
+    `quote` text, which the API layer reduces to pointers before anything leaves the server."""
+    try:
+        if not onto.available() or not answer_text:
+            return None
+        subj = pick_subject(question, condition, drug)
+        if not subj:
+            return None
+        kind, name = subj
+        ans_words = _words(answer_text)
+        if not _words(name) or not _words(name) <= ans_words:
+            return None
+        d = _Dot(ans_words, only_mentioned=True, budget=GRAPH_NODE_CAP)
+        made = (_case_dot if kind == "case" else _drug_dot)(name, d)
+        if made is None or sum(1 for n in d.g_nodes if n["fact_n"]) < 3:
+            return None
+        g = made[0].graph(made[1])
+        return {"kind": kind, "subject": name, **g}
+    except Exception:  # a diagram is a garnish: never break the answer
+        return None
 
 
 # ---------------------------------------------------------------- public API

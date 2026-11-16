@@ -6,6 +6,7 @@ GET  /api/concepts/{label_or_id}   concept page (404 JSON when unknown)
 POST /api/answers, GET /api/answers/{id}   save / fetch a shared answer;  POST /api/feedback
 GET  /api/spatial/resolve  ?fma=FMA... | ?label=Name   concept + atlas link(s) + pointer citations + related concepts
 GET  /api/concepts/search  ?q=prefix
+POST /api/diagram, GET /api/diagram/{id}   flowchart maker (flag `diagram`);  POST /api/videos   suggested videos (flag `videos`)
 GET  /api/health;  GET /api/features (runtime flags);  POST /api/events + GET /api/events/summary (api/events.py)
 
 answer_multihop runs unchanged in a worker thread; its trace steps are forwarded live. Settings come from rag.config.
@@ -20,7 +21,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from api import concept_page, events, features, spatial, store, story, topic, why
+from api import concept_page, diagram, events, features, spatial, store, story, topic, videos, why
+from api.safety_cues import patient_scoped
 from api.schemas import (AnswerEvent, AnswerRecord, AnswerSave, AnswerSaved, ChatRequest, ConceptHit, ConceptPage, DoneEvent,
                          ErrorEvent, FeedbackOk, FeedbackRequest, HealthResponse, NotFound, SpatialEvent,
                          SpatialResolveResponse, StepEvent, TopicEvent, WhyRequest)
@@ -61,11 +63,19 @@ def _step_event(s: trace.Step) -> StepEvent:
     return StepEvent(stage=s.stage, title=s.title, detail=s.detail, status=s.status, ms=round(s.ms, 1))
 
 
-def _answer_event(a) -> AnswerEvent:
+def _answer_event(a, question: str = "") -> AnswerEvent:
     cited = set(a.cited)
     route = getattr(a.plan, "route", None) or ("single" if a.status != "personal_refusal" else "refused")
-    return AnswerEvent(text=a.text, status=a.status, route=route,
-                       citations=[spatial.pointer_from_hit(i, h, i in cited) for i, h in enumerate(a.hits, 1)])
+    cits = [spatial.pointer_from_hit(i, h, i in cited) for i, h in enumerate(a.hits, 1)]
+    gfacts = getattr(a.plan, "graph_facts", None) or []
+    gcits = diagram.graph_citation_pointers(gfacts, getattr(a, "graph_cited", None) or []) if a.status == "answered" else []
+    sig = None
+    if a.status == "answered" and not patient_scoped(question):   # only these may offer a flowchart (D-1, D-16)
+        try:
+            sig = diagram.sign_answer(question, a.text, [c.model_dump() for c in cits], gcits)
+        except Exception:                           # noqa: BLE001 - a signing problem only means no Flowchart chip
+            sig = None
+    return AnswerEvent(text=a.text, status=a.status, route=route, citations=cits, graph_citations=gcits, answer_sig=sig)
 
 
 async def chat_events(question: str):
@@ -97,7 +107,7 @@ async def chat_events(question: str):
             else:
                 break
         try:
-            yield sse("answer", _answer_event(payload))
+            yield sse("answer", _answer_event(payload, question))
             actions = await asyncio.to_thread(spatial.spatial_actions, payload, question)
             yield sse("spatial", SpatialEvent(actions=actions))
             try:                                    # best effort: no topic must never fail an answer that already streamed
@@ -187,7 +197,8 @@ async def concept_get(label_or_id: str):
 @app.post("/api/answers", response_model=AnswerSaved)
 async def answers_save(req: AnswerSave):
     try:
-        return AnswerSaved(id=await asyncio.to_thread(store.save_answer, req.kind, req.question, req.payload))
+        payload = videos.strip_youtube(req.payload)          # a share keeps the topic, never YouTube data (V-12)
+        return AnswerSaved(id=await asyncio.to_thread(store.save_answer, req.kind, req.question, payload))
     except store.PayloadTooLarge as e:
         raise HTTPException(413, str(e))
 
@@ -202,7 +213,7 @@ async def answers_get(answer_id: str):
 
 @app.post("/api/feedback", response_model=FeedbackOk)
 async def feedback(req: FeedbackRequest):
-    await asyncio.to_thread(store.add_feedback, req.answer_id, req.question, req.kind, req.note)
+    await asyncio.to_thread(store.add_feedback, req.answer_id, req.question, req.kind, req.note, req.target_id)
     return FeedbackOk()
 
 
@@ -214,4 +225,6 @@ async def health():
 
 app.include_router(features.router)   # GET /api/features (api/features.py)
 app.include_router(events.router)     # POST /api/events, GET /api/events/summary (api/events.py)
+app.include_router(diagram.router)    # POST /api/diagram, GET /api/diagram/{id} (api/diagram.py)
+app.include_router(videos.router)     # POST /api/videos (api/videos.py)
 app.include_router(story.router)     # POST /api/story/explore (api/story.py)

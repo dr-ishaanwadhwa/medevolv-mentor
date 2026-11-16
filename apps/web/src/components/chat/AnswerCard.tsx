@@ -7,8 +7,11 @@ import { atlasHref } from '@/lib/format';
 import { useChat, type Turn } from '@/store/chat';
 import { FeedbackButton, ShareButton } from './Actions';
 import { ErrorCard, NextSteps } from './Cards';
+import { DiagramSlot, FlowchartChip } from './DiagramSlot';
+import { RelatedTopics } from './RelatedTopics';
 import { SourceList } from './SourceList';
 import { LiveTrace, TraceDisclosure } from './StepTrace';
+import { Videos } from './Videos';
 
 const ROUTE: Record<string, string> = {
   graph: 'Clinical case · graph route',
@@ -28,7 +31,11 @@ export function SpatialChips({ actions }: { actions: SpatialAction[] }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {usable.map((a) => (
-          <Chip key={a.fma_ids.join()} href={atlasHref(a.fma_ids)}>
+          <Chip
+            key={a.fma_ids.join()}
+            href={atlasHref(a.fma_ids)}
+            tip={{ purpose: `Shows ${a.label} in the 3D atlas.`, effect: 'Opens the atlas at that structure.' }}
+          >
             <Box className="h-4 w-4 text-accent" aria-hidden />
             {a.label}
           </Chip>
@@ -96,6 +103,8 @@ export function AnswerCard({ turn, onOpenSource }: { turn: Turn; onOpenSource: (
 
         {a.citations.length > 0 && a.status !== 'not_in_sources' && <SourceList citations={a.citations} onOpen={open} />}
         <SpatialChips actions={turn.spatial} />
+        {!meta?.declined && <RelatedTopics related={turn.related} onAsk={ask} disabled={busy} />}
+        <DiagramSlot turnId={turn.id} answer={a} diagram={turn.diagram} subject={turn.topic} onOpenSource={open} />
         {turn.phase === 'done' && <TraceDisclosure steps={turn.steps} ms={turn.ms} />}
 
         {turn.phase === 'done' && (
@@ -103,15 +112,24 @@ export function AnswerCard({ turn, onOpenSource }: { turn: Turn; onOpenSource: (
             <ShareButton
               shareId={turn.shareId}
               onShare={async () => {
-                const id = await saveAnswer('chat', turn.question, { answer: a, spatial: turn.spatial });
+                // The share keeps the topic label, related topics and a server-issued diagram id; never video data.
+                const id = await saveAnswer('chat', turn.question, {
+                  answer: a,
+                  spatial: turn.spatial,
+                  topic: turn.topic ?? null,
+                  related: turn.related ?? [],
+                  diagram_id: turn.diagram?.s === 'ok' ? turn.diagram.d.diagram_id : null,
+                });
                 patch(turn.id, { shareId: id });
                 return id;
               }}
             />
+            <FlowchartChip turnId={turn.id} answer={a} diagram={turn.diagram} />
             <FeedbackButton question={turn.question} answerId={turn.shareId} />
           </div>
         )}
       </article>
+      {turn.phase === 'done' && !meta?.declined && <Videos topic={turn.topic} />}
       {turn.phase === 'error' && <ErrorCard message={turn.error} onRetry={busy ? undefined : () => retry(turn.id)} />}
     </div>
   );

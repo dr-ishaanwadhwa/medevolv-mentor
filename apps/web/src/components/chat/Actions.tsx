@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { Check, Flag, Link2, Loader2, Send } from 'lucide-react';
-import { Button, Chip } from '@/components/ui';
+import { Button, Chip, Tooltip } from '@/components/ui';
 import { sendFeedback, type FeedbackKind } from '@/lib/api';
 import { useUi } from '@/store/ui';
 import { cn } from '@/lib/cn';
+import { ANSWER_TIPS as T } from '@/lib/tips/answer';
 
 export function ShareButton({ shareId, onShare }: { shareId?: string; onShare: () => Promise<string> }) {
   const toast = useUi((s) => s.toast);
@@ -28,7 +29,7 @@ export function ShareButton({ shareId, onShare }: { shareId?: string; onShare: (
     }
   };
   return (
-    <Chip onClick={click} disabled={busy} aria-label="Copy a share link">
+    <Chip onClick={click} disabled={busy} aria-label="Copy a share link" tip={T['answer.share']}>
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
       Share
     </Chip>
@@ -70,15 +71,15 @@ export function FeedbackButton({ question, answerId }: { question: string; answe
     );
   return (
     <>
-      <Chip onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+      <Chip onClick={() => setOpen((o) => !o)} aria-expanded={open} tip={T['answer.feedback']}>
         <Flag className="h-4 w-4" /> Report a problem
       </Chip>
       {open && (
         <div className="basis-full animate-fade-up rounded-xl border border-border bg-surface2/50 p-3.5">
           <div className="mb-2.5 flex flex-wrap gap-2" role="radiogroup" aria-label="What went wrong">
             {KINDS.map((k) => (
+              <Tooltip key={k.v} tip={T['answer.feedback.kind']}>
               <button
-                key={k.v}
                 type="button"
                 role="radio"
                 aria-checked={kind === k.v}
@@ -90,6 +91,7 @@ export function FeedbackButton({ question, answerId }: { question: string; answe
               >
                 {k.label}
               </button>
+              </Tooltip>
             ))}
           </div>
           <textarea
@@ -102,10 +104,10 @@ export function FeedbackButton({ question, answerId }: { question: string; answe
             className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-base placeholder:text-muted/70 md:text-sm"
           />
           <div className="mt-2.5 flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} tip={T['answer.feedback.cancel']}>
               Cancel
             </Button>
-            <Button size="sm" variant="primary" disabled={!kind || state === 'sending'} onClick={send}>
+            <Button size="sm" variant="primary" disabled={!kind || state === 'sending'} onClick={send} tip={T['answer.feedback.send']}>
               <Send className="h-3.5 w-3.5" /> Send
             </Button>
           </div>
