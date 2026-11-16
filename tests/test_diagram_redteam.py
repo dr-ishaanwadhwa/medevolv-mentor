@@ -227,3 +227,211 @@ def test_without_isa_does_not_include_pindolol():
                                 ("b", "Pindolol", [3]), ("c", "Propranolol, sotalol, timolol", [3])],
                                [("r", "a", "includes", [3]), ("a", "b", "includes", [3]), ("a", "c", "includes", [3])]))
     assert_arrow_declined(res, "Without intrinsic sympathomimetic activity", "Pindolol")
+
+
+# ---------------------------------------------------------------- round 2: what the fixes must still ACCEPT, each next to
+# a matching adversarial case. A rule that only ever declines is not a fix.
+
+def _shown(res):
+    if not res.ok:
+        return set()
+    lab = {n["id"]: n["label"] for n in res.graph["nodes"]}
+    return {(lab[e["from"]], lab[e["to"]], e["label"]) for e in res.graph["edges"]}
+
+
+def test_stage_numbers_from_their_own_sentence_are_kept():
+    res = run(T1D, g("sequence",
+                     [("a", "Stage 1 autoantibody positivity", [6]), ("b", "Stage 2 dysglycemia", [6]),
+                      ("c", "Stage 3 hyperglycemia", [6])],
+                     [("a", "b", "then", [6]), ("b", "c", "then", [6])]))
+    assert res.ok and node_labels(res) == {"Stage 1 autoantibody positivity", "Stage 2 dysglycemia",
+                                           "Stage 3 hyperglycemia"}
+
+
+def test_box_is_not_blended_from_two_sentences():
+    """"Monozygotic twins" is in one [3] sentence and "juvenile-onset" in another: no single sentence says the box."""
+    res = run(T1D, g("sequence",
+                     [("a", "Genetic susceptibility", [3]), ("b", "Juvenile-onset monozygotic twins", [3]),
+                      ("c", "Failure of self-tolerance", [3])],
+                     [("a", "b", "leads to", [3]), ("a", "c", "leads to", [3])]))
+    assert_box_declined(res, "Juvenile-onset monozygotic twins")
+
+
+def test_based_on_is_drawn_in_its_stated_direction():
+    """"Cidal action is based on secondary changes in membrane integrity": changes -> cidal action is what it says."""
+    res = run(COMPARISON, g("sequence",
+                            [("a", "Secondary changes in membrane integrity", [6]), ("b", "Cidal action", [6]),
+                             ("c", "Leakage of ions, amino acids, proteins", [6])],
+                            [("a", "b", "causes", [6]), ("a", "c", "leads to", [6])]))
+    assert ("Secondary changes in membrane integrity", "Cidal action") in edge_labels(res)
+
+
+def test_same_side_of_a_contrast_is_still_linked():
+    """Both boxes before "unlike ...": the contrast does not separate them."""
+    res = run(COMPARISON, g("sequence",
+                            [("a", "Secondary changes in membrane integrity", [6]),
+                             ("b", "Leakage of ions, amino acids, proteins", [6]), ("c", "Cidal action", [6])],
+                            [("a", "b", "leads to", [6]), ("a", "c", "causes", [6])]))
+    assert ("Secondary changes in membrane integrity", "Leakage of ions, amino acids, proteins") in edge_labels(res)
+
+
+def test_direction_verb_matching_the_target_is_shown():
+    """"lowering intracellular ATP": "decreases" onto ATP is what the answer says, and is shown with its verb."""
+    res = run(METFORMIN, g("sequence",
+                           [("a", "Interference with mitochondrial respiratory chain", [1]),
+                            ("b", "Intracellular ATP", [1]), ("c", "AMP", [1])],
+                           [("a", "b", "decreases", [1]), ("a", "c", "increases", [1])]))
+    assert ("Interference with mitochondrial respiratory chain", "Intracellular ATP", "decreases") in _shown(res)
+    assert ("Interference with mitochondrial respiratory chain", "AMP", "increases") in _shown(res)
+
+
+def test_box_with_the_stated_direction_is_kept():
+    res = run(DIGOXIN, g("sequence",
+                         [("a", "Digitalized failing heart", [1]), ("b", "Reduced end-diastolic volume", [1]),
+                          ("c", "Increased cardiac output", [1])],
+                         [("a", "b", "leads to", [1]), ("a", "c", "leads to", [1])]))
+    assert {"Reduced end-diastolic volume", "Increased cardiac output"} <= node_labels(res)
+
+
+def test_negated_box_with_its_own_negation_is_kept():
+    """A box may carry the answer's negation ("Does not stimulate pancreatic β cells") when the arrow adds none."""
+    res = run(BETA_BLOCKERS, g("classification",
+                               [("r", "Nonselective (β1 and β2)", [3]),
+                                ("a", "Without intrinsic sympathomimetic activity", [3]),
+                                ("b", "With intrinsic sympathomimetic activity", [3]),
+                                ("c", "Propranolol, sotalol, timolol", [3]), ("d", "Pindolol", [3])],
+                               [("r", "a", "includes", [3]), ("r", "b", "includes", [3]),
+                                ("a", "c", "includes", [3]), ("b", "d", "includes", [3])]))
+    assert {("Without intrinsic sympathomimetic activity", "Propranolol, sotalol, timolol"),
+            ("With intrinsic sympathomimetic activity", "Pindolol")} <= edge_labels(res)
+
+
+def test_box_dropping_the_answers_negation_is_declined():
+    """"It does **not stimulate pancreatic β cells**": a box "Stimulates pancreatic β cells" loses the "not"."""
+    res = run(METFORMIN, g("sequence",
+                           [("a", "Metformin", [1]), ("b", "Pancreatic β cells stimulation", [1]),
+                            ("c", "Insulin release", [1])],
+                           [("a", "b", "activates", [1]), ("b", "c", "causes", [1])]))
+    assert ("Metformin", "Pancreatic β cells stimulation") not in edge_labels(res)
+    assert ("Pancreatic β cells stimulation", "Insulin release") not in edge_labels(res)
+
+
+def test_inline_bold_lead_heads_every_sentence_of_its_bullet():
+    """"- **Rate slowing:** Heart rate is decreased ... [1]. Vagal tone is increased reflexly ... [1]"."""
+    res = run(DIGOXIN, g("classification",
+                         [("r", "Rate slowing", [1]), ("a", "Heart rate is decreased", [1]),
+                          ("b", "Vagal tone is increased reflexly", [1])],
+                         [("r", "a", "includes", [1]), ("r", "b", "includes", [1])]))
+    assert ("Rate slowing", "Vagal tone is increased reflexly") in edge_labels(res)
+
+
+def test_inline_bold_lead_does_not_head_another_bullet():
+    res = run(DIGOXIN, g("classification",
+                         [("r", "Positive inotropy", [1]), ("a", "Systole is shortened and diastole prolonged", [1]),
+                          ("b", "Vagal tone is increased reflexly", [1])],
+                         [("r", "a", "includes", [1]), ("r", "b", "includes", [1])]))
+    assert ("Positive inotropy", "Vagal tone is increased reflexly") not in edge_labels(res)
+
+
+def test_step_opener_is_active_not_passive():
+    p = V.parse_answer("Insulin deficiency develops [1]. This causes hyperglycaemia [1]. Hyperglycaemia is caused by "
+                       "insulin deficiency [1]. Leading to ketoacidosis [1].")
+    assert V._continues(p[0], p[1]) and V._continues(p[2], p[3])
+    assert not V._continues(p[1], p[2])
+
+
+def test_backward_connective_inside_a_box_is_the_boxs_own_claim():
+    """"Cidal action is attributed to secondary changes ...; this augments EDP2 entry": the "attributed to" is inside the
+    source box, so it does not reverse the arrow to the next clause. The same words as two boxes still reverse."""
+    ans = ("Cidal action is attributed to secondary changes in membrane integrity, with defective proteins incorporated "
+           "into the cell membrane; this augments energy-dependent phase II entry [6].")
+    ok = run(ans, g("sequence",
+                    [("a", "Cidal action is attributed to secondary changes in membrane integrity", [6]),
+                     ("b", "This augments energy-dependent phase II entry", [6]),
+                     ("c", "Defective proteins incorporated into the cell membrane", [6])],
+                    [("a", "b", "leads to", [6]), ("c", "b", "leads to", [6])]))
+    assert ("Cidal action is attributed to secondary changes in membrane integrity",
+            "This augments energy-dependent phase II entry") in edge_labels(ok)
+    rev = run(ans, g("sequence",
+                     [("a", "Cidal action", [6]), ("b", "Secondary changes in membrane integrity", [6]),
+                      ("c", "Defective proteins incorporated into the cell membrane", [6])],
+                     [("a", "b", "causes", [6]), ("a", "c", "causes", [6])]))
+    assert_arrow_declined(rev, "Cidal action", "Secondary changes in membrane integrity")
+
+
+RATE = """- **Rate slowing:** Heart rate is decreased, more markedly in CHF patients [1]. Vagal tone is increased reflexly via baroreceptor sensitization and vagal centre stimulation, while the extravagal component is a direct depressant action on SA and A-V nodes not reversed by atropine [1].
+- **Neurohormonal effects:** Digitalis glycosides are sympatho-inhibitory, decreasing serum norepinephrine and plasma renin [2]."""
+
+
+def test_negation_in_another_while_clause_does_not_block():
+    """", while ... not reversed by atropine" is a separate clause: it does not negate the vagal-tone item."""
+    res = run(RATE, g("classification",
+                      [("r", "Rate slowing", [1]), ("a", "Heart rate is decreased", [1]),
+                       ("b", "Vagal tone is increased reflexly", [1])],
+                      [("r", "a", "includes", [1]), ("r", "b", "includes", [1])]))
+    assert ("Rate slowing", "Vagal tone is increased reflexly") in edge_labels(res)
+
+
+def test_negation_in_the_same_while_clause_still_blocks():
+    """The box drops the clause's "not": "SA and A-V node depression reversed by atropine" is declined."""
+    res = run(RATE, g("classification",
+                      [("r", "Rate slowing", [1]), ("a", "Heart rate is decreased", [1]),
+                       ("b", "Depressant action on SA and A-V nodes reversed by atropine", [1])],
+                      [("r", "a", "includes", [1]), ("r", "b", "includes", [1])]))
+    assert ("Rate slowing", "Depressant action on SA and A-V nodes reversed by atropine") not in edge_labels(res)
+
+
+def test_trailing_direction_word_is_not_read_backwards():
+    """"weak inhibitor of mitochondrial respiration, increasing intracellular AMP": a label cut after "increasing…" has no
+    object for it, so "inhibitor of ... respiration" in front of it is not read as a contradiction."""
+    ans = "At the molecular level it acts as a weak inhibitor of mitochondrial respiration, increasing intracellular AMP and reducing ATP [2]."
+    assert not V._direction_contradicted("It acts as a weak inhibitor of mitochondrial respiration, increasing…",
+                                         V.tokens(ans))
+    assert V._direction_contradicted("Increasing mitochondrial respiration", V.tokens(ans))
+    assert V._direction_contradicted("Increased ATP", V.tokens(ans))
+
+
+FREEZE = ("They freeze initiation of protein synthesis, prevent polysome formation and promote disaggregation to "
+          "monosomes; binding at the 30S–50S juncture distorts mRNA codon recognition, causing misreading [4][6]. "
+          "Cidal action is attributed to membrane damage; this augments energy-dependent phase II entry [6].")
+
+
+def test_parallel_clauses_are_not_a_cause():
+    """"A; B" lists two facts: "Freeze initiation" -causes-> "distorts mRNA codon recognition" is not stated."""
+    res = run(FREEZE, g("sequence",
+                        [("a", "Freeze initiation of protein synthesis", [4]),
+                         ("b", "Distorts mRNA codon recognition", [4]), ("c", "Misreading", [4])],
+                        [("a", "b", "causes", [4]), ("b", "c", "causes", [4])]))
+    assert_arrow_declined(res, "Freeze initiation of protein synthesis", "Distorts mRNA codon recognition")
+
+
+def test_clause_that_points_back_is_linked():
+    """"...; this augments EDP2 entry": the later clause refers back, so the order across ";" is stated."""
+    res = run(FREEZE, g("sequence",
+                        [("a", "Cidal action", [6]), ("b", "Membrane damage", [6]),
+                         ("c", "Augments energy-dependent phase II entry", [6])],
+                        [("b", "a", "causes", [6]), ("b", "c", "leads to", [6])]))
+    assert ("Membrane damage", "Augments energy-dependent phase II entry") in edge_labels(res)
+
+
+STAGES = ("A temporal model describes a trigger initiating autoimmunity: Stage 1 = islet autoantibodies with "
+          "normoglycemia; Stage 2 = continued autoimmunity with dysglycemia; Stage 3 = hyperglycemia meeting diagnostic "
+          "criteria [6].")
+
+
+def test_numbered_stage_clauses_are_ordered_steps():
+    res = run(STAGES, g("sequence",
+                        [("a", "Stage 1 = islet autoantibodies with normoglycemia", [6]),
+                         ("b", "Stage 2 = continued autoimmunity with dysglycemia", [6]),
+                         ("c", "Stage 3 = hyperglycemia meeting diagnostic criteria", [6])],
+                        [("a", "b", "then", [6]), ("b", "c", "then", [6])]))
+    assert res.ok and len(res.graph["edges"]) == 2
+
+
+def test_numbered_stage_clauses_are_not_reversed():
+    res = run(STAGES, g("sequence",
+                        [("a", "Stage 1 = islet autoantibodies with normoglycemia", [6]),
+                         ("b", "Stage 2 = continued autoimmunity with dysglycemia", [6]),
+                         ("c", "Stage 3 = hyperglycemia meeting diagnostic criteria", [6])],
+                        [("c", "b", "then", [6]), ("b", "a", "then", [6])]))
+    assert not res.ok
