@@ -10,7 +10,7 @@ import { LETTERS } from '@/lib/format';
 import { useWhy, type WhyForm } from '@/store/why';
 
 const exploreHref = (q: string) => `/explore?q=${encodeURIComponent(q.slice(0, 80))}`;
-const askHref = (q: string, go = true) => `/?q=${encodeURIComponent(q)}${go ? '&go=1' : ''}`;
+const askHref = (q: string, go = true) => `/ask?q=${encodeURIComponent(q)}${go ? '&go=1' : ''}`;
 
 export function VerdictCard({
   v,

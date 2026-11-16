@@ -14,6 +14,7 @@ import { SHELL_TIPS } from './shell';
 import { WHY_TIPS } from './why';
 import { EXPLORE_TIPS } from './explore';
 import { STORY_TIPS } from './story';
+import { LANDING_TIPS } from './landing';
 
 export type { Tip } from './types';
 export { NO_TIP } from './types';
@@ -23,6 +24,7 @@ export const TIPS = {
   ...WHY_TIPS,
   ...EXPLORE_TIPS,
   ...STORY_TIPS,
+  ...LANDING_TIPS,
 } as const satisfies Record<string, Tip>;
 
 export type TipId = keyof typeof TIPS;

@@ -113,10 +113,10 @@ export default function HowClassic() {
       </Card>
 
       <div className="flex flex-wrap gap-3 pt-2">
-        <LinkButton href="/" variant="primary" size="lg">
+        <LinkButton href="/ask" variant="primary" size="lg" tip="shell.nav.ask">
           Ask a question
         </LinkButton>
-        <LinkButton href="/why" size="lg">
+        <LinkButton href="/why" size="lg" tip="shell.nav.why">
           Why was I wrong?
         </LinkButton>
       </div>

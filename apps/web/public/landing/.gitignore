@@ -1,0 +1,5 @@
+# Build-time captures of the real pipeline (scripts/build_landing_captures.py). Pointers only, no passage text, but the
+# answer prose is generated from the textbooks, so like public/story/ they stay out of git and ship via deploy/v2/push.sh.
+journey.json
+declined.json
+why.json

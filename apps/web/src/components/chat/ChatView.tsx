@@ -78,7 +78,7 @@ function QueryPrefill() {
     done.current = true;
     if (sp.get('go') === '1') ask(q);
     else setDraft(q);
-    window.history.replaceState(null, '', '/');
+    window.history.replaceState(null, '', '/ask');
     document.getElementById('composer')?.focus();
   }, [sp, ask, setDraft]);
   return null;

@@ -244,8 +244,8 @@ function Scene({ data, mobile, onFail }: { data: StoryData; mobile: boolean; onF
                   <p className="st-caveat">Results on our own question sets, not a clinical-safety guarantee. Retrieval is not yet measured for every book. A study aid, not medical advice.</p>
                   <TryQuestion live={active === 9} books={books} dark={dark} result={explore} onResult={setExplore} />
                   <div className="st-cta">
-                    <LinkButton href="/" variant="primary" size="lg">Ask a question</LinkButton>
-                    <LinkButton href="/why" size="lg">Why was I wrong?</LinkButton>
+                    <LinkButton href="/ask" variant="primary" size="lg" tip="shell.nav.ask">Ask a question</LinkButton>
+                    <LinkButton href="/why" size="lg" tip="shell.nav.why">Why was I wrong?</LinkButton>
                   </div>
                 </>
               )}

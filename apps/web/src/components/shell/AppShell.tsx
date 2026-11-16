@@ -4,28 +4,31 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BookOpen } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { Toaster } from '@/components/ui';
+import { Toaster, Tooltip } from '@/components/ui';
+import type { Tip } from '@/lib/tips';
 import { NAV, isActive } from './nav';
 import { Wordmark } from './Logo';
 import { ThemeToggle } from './ThemeToggle';
 
-const FOOTER_LINKS = [
-  { href: '/credits', label: 'Credits' },
-  { href: '/privacy', label: 'Privacy' },
-  { href: '/terms', label: 'Terms' },
+const FOOTER_LINKS: { href: string; label: string; tip: Tip }[] = [
+  { href: '/?tour=1', label: 'Take the tour', tip: { purpose: 'A one-minute look at what Mentor does.', effect: 'Opens the front page tour.' } },
+  { href: '/credits', label: 'Credits', tip: { purpose: 'Who made the 3D models and data.', effect: 'Opens the credits and licences.' } },
+  { href: '/privacy', label: 'Privacy', tip: { purpose: 'What is stored and sent, and where.', effect: 'Opens the privacy page.' } },
+  { href: '/terms', label: 'Terms', tip: { purpose: 'The rules for using Mentor.', effect: 'Opens the terms page.' } },
 ];
+
+/** The logo is home for people using the app, so it opens Ask (PRD 4.L, D-6); the landing is "Take the tour". */
+const LOGO_TIP: Tip = { purpose: 'Home for asking questions.', effect: 'Opens Ask, with your earlier answers kept.' };
 
 function FooterLinks({ className }: { className?: string }) {
   return (
     <nav aria-label="About" className={className}>
       {FOOTER_LINKS.map((l) => (
-        <Link
-          key={l.href}
-          href={l.href}
-          className="py-1 text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
-        >
-          {l.label}
-        </Link>
+        <Tooltip key={l.href} tip={l.tip}>
+          <Link href={l.href} className="py-1 text-xs text-muted underline-offset-2 hover:text-ink hover:underline">
+            {l.label}
+          </Link>
+        </Tooltip>
       ))}
     </nav>
   );
@@ -35,35 +38,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? '/';
   return (
     <div className="min-h-dvh md:pl-[var(--rail-w)]">
-      <a
-        href="#main"
-        className="sr-only z-[70] rounded-lg bg-accent px-3 py-2 text-accent-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
-      >
-        Skip to content
-      </a>
+      <Tooltip tip="shell.skip">
+        <a
+          href="#main"
+          className="sr-only z-[70] rounded-lg bg-accent px-3 py-2 text-accent-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+        >
+          Skip to content
+        </a>
+      </Tooltip>
 
       {/* Desktop rail */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[var(--rail-w)] flex-col border-r border-border bg-surface/60 px-3 py-5 backdrop-blur md:flex">
-        <Link href="/" className="mb-6 rounded-xl px-2 py-1" aria-label="MedEvolv Mentor home">
-          <Wordmark />
-        </Link>
+        <Tooltip tip={LOGO_TIP}>
+          <Link href="/ask" className="mb-6 rounded-xl px-2 py-1" aria-label="MedEvolv Mentor home">
+            <Wordmark />
+          </Link>
+        </Tooltip>
         <nav aria-label="Main" className="flex flex-col gap-1">
           {NAV.map((item) => {
             const active = isActive(item, pathname);
             const Icon = item.icon;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-[0.93rem] font-medium transition-colors',
-                  active ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-surface2 hover:text-ink',
-                )}
-              >
-                <Icon className="h-[18px] w-[18px]" aria-hidden />
-                {item.label}
-              </Link>
+              <Tooltip key={item.href} tip={item.tip}>
+                <Link
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-[0.93rem] font-medium transition-colors',
+                    active ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-surface2 hover:text-ink',
+                  )}
+                >
+                  <Icon className="h-[18px] w-[18px]" aria-hidden />
+                  {item.label}
+                </Link>
+              </Tooltip>
             );
           })}
         </nav>
@@ -81,17 +89,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile top bar */}
       <header className="sticky top-0 z-30 flex h-[var(--topbar-h)] items-center justify-between border-b border-border bg-bg/85 px-3 backdrop-blur md:hidden">
-        <Link href="/" aria-label="MedEvolv Mentor home" className="rounded-lg">
-          <Wordmark />
-        </Link>
-        <div className="flex items-center">
-          <Link
-            href="/how"
-            aria-label="How it works"
-            className="grid h-11 w-11 place-items-center rounded-xl text-muted hover:bg-surface2 hover:text-ink"
-          >
-            <BookOpen className="h-[18px] w-[18px]" />
+        <Tooltip tip={LOGO_TIP}>
+          <Link href="/ask" aria-label="MedEvolv Mentor home" className="rounded-lg">
+            <Wordmark />
           </Link>
+        </Tooltip>
+        <div className="flex items-center">
+          <Tooltip tip="shell.nav.how" iconOnly>
+            <Link
+              href="/how"
+              aria-label="How it works"
+              className="grid h-11 w-11 place-items-center rounded-xl text-muted hover:bg-surface2 hover:text-ink"
+            >
+              <BookOpen className="h-[18px] w-[18px]" />
+            </Link>
+          </Tooltip>
           <ThemeToggle />
         </div>
       </header>
@@ -110,18 +122,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           const active = isActive(item, pathname);
           const Icon = item.icon;
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? 'page' : undefined}
-              className={cn(
-                'flex h-[var(--tabbar-h)] flex-col items-center justify-center gap-0.5 text-[0.7rem] font-medium',
-                active ? 'text-accent' : 'text-muted',
-              )}
-            >
-              <Icon className={cn('h-5 w-5', active && 'stroke-[2.4]')} aria-hidden />
-              {item.short}
-            </Link>
+            <Tooltip key={item.href} tip={item.tip}>
+              <Link
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex h-[var(--tabbar-h)] flex-col items-center justify-center gap-0.5 text-[0.7rem] font-medium',
+                  active ? 'text-accent' : 'text-muted',
+                )}
+              >
+                <Icon className={cn('h-5 w-5', active && 'stroke-[2.4]')} aria-hidden />
+                {item.short}
+              </Link>
+            </Tooltip>
           );
         })}
       </nav>

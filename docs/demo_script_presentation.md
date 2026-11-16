@@ -7,6 +7,12 @@ One presenter drives; everything happens in the browser.
 Live URL: **https://mentor.medevolv.in** (v2, since 16 Nov). Streamlit (the minimum requirement) is the backup at **https://atlas.medevolv.in**.
 The static 3D atlas moved to https://3d.130-210-60-153.sslip.io (both apps' 3D links point there).
 
+**Routes after the landing release:** Ask lives at **`/ask`**. `/` is the landing page (a one-minute scroll story for new
+students). A browser that has had one answer is sent straight from `/` to `/ask` (the `mm_asked` cookie), so after the
+warm-up in pre-flight step 2, `/` on the demo laptop opens Ask; use **`/?tour=1`** to show the landing on purpose. Old
+`/?q=...` links still work (they redirect to `/ask?q=...`). If the landing is not deployed yet, `/` is still Ask and
+`/ask` may not exist: check with one click during pre-flight. The core timings below are unchanged; only the Ask tab's URL moved.
+
 Timings below were measured on the live v2 host on 16 Nov (warm server):
 - Comparison question: 4.0–4.1 s, decompose route, 4–5 citations.
 - Off-topic decline: 0.3 s. Personal-dosing refusal: 0.3 s.
@@ -15,7 +21,7 @@ Timings below were measured on the live v2 host on 16 Nov (warm server):
 ## Pre-flight (T-10 min)
 1. Open four tabs, in this order:
    - `/how`
-   - `/` (Ask)
+   - `/ask` (Ask)
    - `/why`
    - `/c/MED%3AOKF%2Fanatomicalstructure%2Foptic-chiasm`
 2. **Warm the server:** ask one question on the Ask tab. The first question after a restart takes ~11 s; after that ~3–4 s. Then press *Clear chat*.
@@ -93,7 +99,7 @@ Rule of thumb: if they're asking questions, answer them. Questions beat modules,
 | E3 | 1:00 | **Knowledge graph:** Explore, then *pheochromocytoma* (the richest page: 8 sections, 58 outgoing links). Show the tier tags (certified / derived / suggested). Click a graph node, then press Back. | Shows the quote-verified ontology (~25.9k facts) behind the answers |
 | E4 | 1:00 | **3D exploration:** on `/atlas`, tap any structure. The side panel lists where the books discuss it. Use *Isolate* and *Layers*. | The wow moment, if the room responds to it |
 | E5 | 0:45 | **Share + feedback:** *Share* on an answer copies an `/a/...` link (open it: a read-only card that keeps citation pointers, not textbook text). *Report a problem* sends a wrong-citation flag. | Shows it's a product, with a quality loop |
-| E6 | 0:30 | **Mobile:** open the URL on a phone (bottom tabs Ask · Why · Explore · 3D). | Students study on phones |
+| E6 | 0:30 | **Mobile:** open the URL on a phone (bottom tabs Ask · Why · Explore · 3D). A phone that has never asked lands on the landing page: scroll once, then tap *Ask your first question*. | Students study on phones |
 | E7 | 1:30 | **Where it goes next** (talk, no clicks): direct-to-student is small; distribution through colleges or publishers is the route. The moat is the verification layer, not the model. Two gates before selling: content rights, and the clinician review getting to zero "major" (12/18 today). | Answers "is this a business?" without overclaiming. Source: docs/strategy_review_2026-11-14.md |
 | E8 | 1:00 | **Failure analysis, deeper:** docs/failure_cases.md, cases 3–4. A graph data gap ranked lung abscess over TB, and a treatment hop borrowed an unrelated passage; fixed by requiring the passage to name the condition. | The rubric asks for failures *and fixes*; the room likes honesty |
 

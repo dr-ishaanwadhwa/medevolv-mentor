@@ -6,8 +6,12 @@ export default function NotFound() {
       <div className="label-mono !text-accent">404</div>
       <h1 className="text-3xl font-bold tracking-tight">That page is not in the books.</h1>
       <p className="max-w-[50ch] text-muted">The link may be mistyped or the page may have moved.</p>
-      <LinkButton href="/" variant="primary">
-        Back to Ask
+      <LinkButton
+        href="/"
+        variant="primary"
+        tip={{ purpose: 'Takes you to the front page.', effect: 'Shows what Mentor does and where to start.' }}
+      >
+        Go to the front page
       </LinkButton>
     </div>
   );
