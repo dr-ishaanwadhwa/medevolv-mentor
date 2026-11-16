@@ -6,35 +6,99 @@ import { ChevronDown, Focus, Layers, RotateCcw, Search, X } from 'lucide-react';
 import { SYSTEMS, searchStructures, SUGGESTED_STRUCTURES, conceptName, normalizeFma } from '@/lib/anatomy';
 import { useAtlasStore } from '@/lib/atlas-store';
 import { hasSomethingToUndo, resetIntent, withSelection, type ViewState } from '@/lib/atlas-reset';
+import {
+  autoSwitchTarget,
+  decideTarget,
+  gzipTotalBytes,
+  hasConcept,
+  isConstrainedConnection,
+  milestoneCrossed,
+  otherSex,
+  partitionSelection,
+  readFemaleConfirmed,
+  readSexPreference,
+  sexLabel,
+  withSex,
+  withSexAndSelection,
+  writeFemaleConfirmed,
+  writeSexPreference,
+  type Sex,
+} from '@/lib/atlas-sex';
+import { ATLAS_TIPS, layerTip, structureTip } from '@/lib/tips/atlas';
 import { useUi } from '@/store/ui';
+import { useFeature } from '@/components/FeaturesProvider';
+import { ModelCredit } from '@/components/credits/ModelCredit';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { NO_TIP } from '@/lib/tips/types';
 import { cn } from '@/lib/cn';
 import { Button, Chip } from '@/components/ui';
 import AtlasCanvas, { type AtlasHit, type AtlasResolved } from './AtlasCanvas';
 import type { AtlasCameraApi } from './AtlasScene';
 import { SelectionPanel } from './SelectionPanel';
+import { FemaleNote, SexToggle } from './SexToggle';
+import { DownloadProgress, FemaleConfirmSheet } from './FemaleDownload';
+
+type SwitchHow = 'user' | 'auto' | 'cancel';
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const parseSexParamIsFemale = () => new URLSearchParams(window.location.search).get('sex') === 'female';
 
 export function AtlasView() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const selectParam = params.get('select') ?? '';
+  const sexParam = params.get('sex');
   const ids = useMemo(
     () => selectParam.split(',').map((s) => s.trim()).filter(Boolean).map(normalizeFma),
     [selectParam],
   );
   const idsKey = ids.join(',');
 
-  const { atlas, index, loadManifest, isolate, setIsolate, resetNonce, reset, visible, toggleSystem, resetLayers, progress } =
-    useAtlasStore();
+  // ---- which model (PRD 4.5 / D-8). Everything female is gated by the flag (F-9). ----
+  const femaleFlag = useFeature('female_atlas');
+  // localStorage is read after mount so server and client render the same markup.
+  const [prefs, setPrefs] = useState<{ stored: Sex | null; confirmed: boolean } | null>(null);
+  useEffect(() => setPrefs({ stored: readSexPreference(), confirmed: readFemaleConfirmed() }), []);
+  const decision = decideTarget({ param: sexParam, hasSelect: ids.length > 0, flag: femaleFlag, stored: prefs?.stored ?? null });
+  const confirmed = prefs?.confirmed ?? false;
+  /** The model in the scene. A female request waits for the first-download confirm (F-8) and shows Male meanwhile. */
+  const active: Sex = decision.target === 'female' && confirmed ? 'female' : 'male';
+
+  const {
+    atlases,
+    indexes,
+    statuses,
+    loadManifest,
+    isolate,
+    setIsolate,
+    resetNonce,
+    reset,
+    visible,
+    toggleSystem,
+    resetLayers,
+    progress,
+    progressSex,
+    modelReady,
+    sceneError,
+  } = useAtlasStore();
+  const atlas = atlases[active];
+  const index = indexes[active];
   useEffect(() => {
-    void loadManifest();
-  }, [loadManifest]);
+    void loadManifest(active);
+  }, [loadManifest, active]);
+
+  const replaceQuery = useCallback((q: string) => router.replace(`${pathname}${q}`, { scroll: false }), [router, pathname]);
+
+  // Flag off: `?sex=` is ignored and removed, Male loads, no toast.
+  useEffect(() => {
+    if (decision.stripParam) replaceQuery(withSex(window.location.search, null));
+  }, [decision.stripParam, replaceQuery]);
 
   // Layers lists only the systems the loaded model actually has (the female model adds two, the male has neither).
   const presentSystems = useMemo(() => new Set(atlas?.parts.map((p) => p.system) ?? []), [atlas]);
 
   const [resolved, setResolved] = useState<AtlasResolved | null>(null);
-  const [active, setActive] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [layersOpen, setLayersOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [wide, setWide] = useState(true);
@@ -42,7 +106,7 @@ export function AtlasView() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setActive(0);
+    setActiveIdx(0);
     setCollapsed(false);
   }, [idsKey]);
 
@@ -57,21 +121,156 @@ export function AtlasView() {
   const setSelection = useCallback(
     (next: string[]) => {
       // Replace only `select`; every other query param (e.g. ?sex=) is kept.
-      const q = withSelection(window.location.search, next);
-      router.replace(`${pathname}${q}`, { scroll: false });
+      replaceQuery(withSelection(window.location.search, next));
     },
-    [router, pathname],
+    [replaceQuery],
   );
 
-  const cameraApi = useRef<AtlasCameraApi | null>(null);
   const toast = useUi((s) => s.toast);
+
+  // ---- model switch ----
+  const [pending, setPending] = useState<{ carry: string[]; how: SwitchHow } | null>(null);
+  const [dismissedUrlAsk, setDismissedUrlAsk] = useState(false);
+  const femaleRadio = useRef<HTMLButtonElement>(null);
+
+  /** Switch the scene to `target`, carrying the selection by concept id (F-3). Assumes the female download is confirmed. */
+  const switchTo = useRef<(target: Sex, carry: string[], how: SwitchHow) => Promise<void>>(async () => {});
+  switchTo.current = async (target, carry, how) => {
+    await loadManifest(target);
+    const st = useAtlasStore.getState();
+    const tAtlas = st.atlases[target];
+    if (!tAtlas) {
+      if (target === 'female') {
+        toast("Couldn't load the female model.");
+        writeSexPreference('male');
+        replaceQuery(withSex(window.location.search, 'male'));
+      }
+      return;
+    }
+    const { keep, dropped } = how === 'auto' ? { keep: carry, dropped: [] as string[] } : partitionSelection(carry, tAtlas, st.indexes[target]);
+    writeSexPreference(target);
+    setPrefs((p) => ({ stored: target, confirmed: p?.confirmed ?? false }));
+    replaceQuery(withSexAndSelection(window.location.search, target, keep));
+    if (!keep.length) setIsolate(false);
+    const from = otherSex(target);
+    if (how === 'auto') {
+      const name = conceptName(tAtlas, st.indexes[target], carry.find((id) => hasConcept(tAtlas, st.indexes[target], id)) ?? carry[0]);
+      toast(`${cap(name)} is only in the ${sexLabel(target)} model, so it opened there.`, {
+        action: { label: 'Switch back', onClick: () => requestSwitch(from, carry, 'user') },
+      });
+    } else if (dropped.length && how === 'user') {
+      const name = conceptName(st.atlases[from], st.indexes[from], dropped[0]);
+      toast(`${cap(name)} is only in the ${sexLabel(from)} model.`, {
+        action: { label: 'Switch back', onClick: () => requestSwitch(from, carry, 'user') },
+      });
+    }
+  };
+
+  /** Entry point for every switch: the first female download asks first. */
+  const requestSwitch = (target: Sex, carry: string[], how: SwitchHow) => {
+    if (!femaleFlag) return;
+    if (target === 'female' && !readFemaleConfirmed()) {
+      void loadManifest('female'); // the sheet shows the size from the manifest
+      setPending({ carry, how });
+      return;
+    }
+    void switchTo.current(target, carry, how);
+  };
+
+  // A URL (link, stored choice) that asks for Female before the first download was confirmed also asks first.
+  const urlAsks = femaleFlag && prefs !== null && decision.target === 'female' && !confirmed && !dismissedUrlAsk;
+  const sheetOpen = femaleFlag && (pending !== null || urlAsks);
+  useEffect(() => {
+    if (urlAsks) void loadManifest('female');
+  }, [urlAsks, loadManifest]);
+
+  const closeSheet = () => {
+    setPending(null);
+    requestAnimationFrame(() => femaleRadio.current?.focus());
+  };
+  const onDownload = () => {
+    writeFemaleConfirmed();
+    setPrefs((p) => ({ stored: p?.stored ?? null, confirmed: true }));
+    const p = pending;
+    closeSheet();
+    if (p) void switchTo.current('female', p.carry, p.how);
+    else writeSexPreference('female');
+  };
+  const onNotNow = () => {
+    if (urlAsks) {
+      setDismissedUrlAsk(true);
+      replaceQuery(withSex(window.location.search, 'male'));
+    }
+    closeSheet();
+  };
+
+  // Symmetric auto-switch: a `?select=` that names a structure missing here but present in the other model.
+  useEffect(() => {
+    if (!femaleFlag || !ids.length || !atlas || !index || sheetOpen) return;
+    if (ids.some((id) => hasConcept(atlas, index, id))) return;
+    const other = otherSex(active);
+    let cancelled = false;
+    void loadManifest(other).then(() => {
+      if (cancelled) return;
+      const st = useAtlasStore.getState();
+      const t = autoSwitchTarget(active, ids, { atlas, index }, { atlas: st.atlases[other], index: st.indexes[other] });
+      if (t) requestSwitch(t, ids, 'auto');
+    });
+    return () => {
+      cancelled = true;
+    };
+    // requestSwitch is a fresh closure each render; the inputs that matter are listed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [femaleFlag, idsKey, atlas, index, active, sheetOpen, loadManifest]);
+
+  // Female manifest or geometry failed: say so and stay on Male (never the male model labelled Female).
+  const femaleFailed = active === 'female' && (statuses.female === 'error' || sceneError?.sex === 'female');
+  useEffect(() => {
+    if (!femaleFailed) return;
+    toast("Couldn't load the female model.");
+    writeSexPreference('male');
+    setPrefs((p) => ({ stored: 'male', confirmed: p?.confirmed ?? false }));
+    replaceQuery(withSex(window.location.search, 'male'));
+  }, [femaleFailed, toast, replaceQuery]);
+
+  // The female manifest failed while the confirm sheet waits for its size: close the sheet, stay on Male.
+  const sheetManifestFailed = sheetOpen && statuses.female === 'error';
+  useEffect(() => {
+    if (!sheetManifestFailed) return;
+    toast("Couldn't load the female model.");
+    setPending(null);
+    setDismissedUrlAsk(true);
+    if (parseSexParamIsFemale()) replaceQuery(withSex(window.location.search, 'male'));
+  }, [sheetManifestFailed, toast, replaceQuery]);
+
+  // ---- female download progress + milestone announcements (25/50/75, then ready) ----
+  const downloading = active === 'female' && modelReady !== 'female' && !femaleFailed;
+  const femalePct = progressSex === 'female' ? progress : 0;
+  const [announce, setAnnounce] = useState('');
+  const lastPct = useRef(0);
+  const wasDownloading = useRef(false);
+  useEffect(() => {
+    if (!downloading) {
+      if (wasDownloading.current && modelReady === 'female') setAnnounce('Female model ready');
+      wasDownloading.current = false;
+      lastPct.current = 0;
+      return;
+    }
+    wasDownloading.current = true;
+    const m = milestoneCrossed(lastPct.current, femalePct);
+    lastPct.current = femalePct;
+    if (m) setAnnounce(`Female model ${m}% downloaded`);
+  }, [downloading, femalePct, modelReady]);
+
+  // ---- Reset view (R4) ----
+  const cameraApi = useRef<AtlasCameraApi | null>(null);
   const doReset = useCallback(() => {
     if (!atlas) return; // RV-7: nothing to reset before the manifest has loaded
     const prev: ViewState = { selection: ids, isolate, goal: cameraApi.current?.getGoal() ?? null };
     const intent = resetIntent(prev);
     const undoable = hasSomethingToUndo(prev, cameraApi.current?.hasMoved() ?? false);
     setSelection(intent.selection);
-    reset(); // store: isolate off + bumps resetNonce; the scene then frames the whole visible body
+    reset(); // store: isolate off + bumps resetNonce; the scene then frames this model's default view
     if (!undoable) return; // nothing to undo, no toast
     const undo = () => {
       setSelection(intent.undo.selection);
@@ -118,22 +317,40 @@ export function AtlasView() {
   }, [atlas]);
 
   const unmatched = resolved?.unmatched ?? [];
-  const activeId = ids[Math.min(active, ids.length - 1)] ?? '';
+  const activeId = ids[Math.min(activeIdx, ids.length - 1)] ?? '';
+  const constrained = typeof navigator !== 'undefined' && isConstrainedConnection((navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection);
 
   return (
     <div className="relative h-page overflow-hidden bg-[radial-gradient(ellipse_at_50%_35%,rgb(var(--c-surface))_0%,rgb(var(--c-bg))_72%)]">
-      <AtlasCanvas
-        className="absolute inset-0"
-        highlight={ids}
-        isolate={isolate}
-        resetNonce={resetNonce}
-        cameraApiRef={cameraApi}
-        visibleSystems={visible}
-        inset={inset}
-        onSelect={onSelect}
-        onResolved={setResolved}
-        autoRotate={false}
-      />
+      {prefs !== null && (
+        <AtlasCanvas
+          key={active /* one model in the scene at a time: a switch disposes the old scene */}
+          className="absolute inset-0"
+          sex={active}
+          hideLoading={active === 'female'}
+          highlight={ids}
+          isolate={isolate}
+          resetNonce={resetNonce}
+          cameraApiRef={cameraApi}
+          visibleSystems={visible}
+          inset={inset}
+          onSelect={onSelect}
+          onResolved={setResolved}
+          autoRotate={false}
+        />
+      )}
+
+      {downloading && (
+        <DownloadProgress
+          label="Loading the female model"
+          pct={femalePct}
+          totalBytes={gzipTotalBytes(atlases.female)}
+          onCancel={() => void switchTo.current('male', ids, 'cancel')}
+        />
+      )}
+      <p className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </p>
 
       {/* Search + controls */}
       <div className={cn('pointer-events-none absolute left-3 top-3 z-20 flex flex-col gap-2', wide ? 'w-[340px]' : 'right-3')}>
@@ -171,15 +388,17 @@ export function AtlasView() {
             className="h-11 w-full rounded-xl border border-border bg-surface/95 pl-10 pr-10 text-[0.95rem] text-ink shadow-card outline-none backdrop-blur placeholder:text-muted focus:border-accent"
           />
           {q && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setQ('')}
-              className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-surface2"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <Tooltip tip={ATLAS_TIPS['atlas.search.clear']} iconOnly>
+              <button
+                type="button"
+                aria-label="Clear search"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setQ('')}
+                className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted hover:bg-surface2"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </Tooltip>
           )}
           {open && results.length > 0 && (
             <ul
@@ -188,75 +407,93 @@ export function AtlasView() {
               className="absolute inset-x-0 top-full z-30 mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-pop"
             >
               {results.map((c, i) => (
-                <li
-                  key={c.id}
-                  role="option"
-                  aria-selected={i === cursor}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => pickStructure(c.id)}
-                  onMouseEnter={() => setCursor(i)}
-                  className={cn('flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3.5 py-2 text-sm md:min-h-[38px]', i === cursor && 'bg-accent-soft')}
-                >
-                  <span className="truncate first-letter:uppercase">{c.name}</span>
-                  <span className="shrink-0 font-mono text-[0.68rem] text-muted">{c.id}</span>
-                </li>
+                <Tooltip key={c.id} tip={structureTip(c.name)}>
+                  <li
+                    role="option"
+                    aria-selected={i === cursor}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickStructure(c.id)}
+                    onMouseEnter={() => setCursor(i)}
+                    className={cn('flex min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3.5 py-2 text-sm md:min-h-[38px]', i === cursor && 'bg-accent-soft')}
+                  >
+                    <span className="truncate first-letter:uppercase">{c.name}</span>
+                    <span className="shrink-0 font-mono text-[0.68rem] text-muted">{c.id}</span>
+                  </li>
+                </Tooltip>
               ))}
             </ul>
           )}
         </div>
 
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          {femaleFlag && (
+            <SexToggle
+              value={active}
+              onChange={(next) => requestSwitch(next, ids, 'user')}
+              femaleRef={femaleRadio}
+              describedBy={active === 'female' ? 'atlas-female-note' : undefined}
+            />
+          )}
           <Button
             size="sm"
             variant={isolate ? 'primary' : 'secondary'}
             onClick={() => setIsolate(!isolate)}
             disabled={!hasSelection}
             aria-pressed={isolate}
-            title={hasSelection ? 'Show only the selected structure' : 'Select a structure first'}
+            tip={ATLAS_TIPS['atlas.isolate']}
             className="bg-opacity-95 shadow-card"
           >
             <Focus className="h-4 w-4" aria-hidden /> Isolate
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={doReset}
-            aria-disabled={!atlas || undefined}
-            title={atlas ? 'Back to the whole-body view. Layers stay as set.' : 'Atlas still loading'}
-            className="shadow-card"
-          >
+          <Button size="sm" variant="secondary" onClick={doReset} disabled={!atlas} tip={ATLAS_TIPS['atlas.reset']} className="shadow-card">
             <RotateCcw className="h-4 w-4" aria-hidden /> Reset view
           </Button>
-          <Button size="sm" variant={layersOpen ? 'primary' : 'secondary'} onClick={() => setLayersOpen((v) => !v)} aria-expanded={layersOpen} className="shadow-card">
+          <Button
+            size="sm"
+            variant={layersOpen ? 'primary' : 'secondary'}
+            onClick={() => setLayersOpen((v) => !v)}
+            aria-expanded={layersOpen}
+            tip={ATLAS_TIPS['atlas.layers']}
+            className="shadow-card"
+          >
             <Layers className="h-4 w-4" aria-hidden /> Layers
           </Button>
         </div>
+
+        {femaleFlag && active === 'female' && (
+          <div className="pointer-events-auto">
+            <FemaleNote id="atlas-female-note" />
+          </div>
+        )}
 
         {layersOpen && (
           <div className="pointer-events-auto card p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="label-mono">Body systems</span>
-              <button type="button" onClick={resetLayers} className="text-xs text-accent underline-offset-2 hover:underline">
-                Default
-              </button>
+              <Tooltip tip={ATLAS_TIPS['atlas.layers.default']}>
+                <button type="button" onClick={resetLayers} className="text-xs text-accent underline-offset-2 hover:underline">
+                  Default
+                </button>
+              </Tooltip>
             </div>
             <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
               {SYSTEMS.filter((s) => s.id !== 'integumentary' && presentSystems.has(s.id)).map((s) => {
                 const on = visible.includes(s.id);
                 return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => toggleSystem(s.id)}
-                    className={cn(
-                      'inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
-                      on ? 'border-accent/40 bg-accent-soft text-ink' : 'border-border bg-surface text-muted opacity-70',
-                    )}
-                  >
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} aria-hidden />
-                    {s.name}
-                  </button>
+                  <Tooltip key={s.id} tip={layerTip(s.name, on)}>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleSystem(s.id)}
+                      className={cn(
+                        'inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
+                        on ? 'border-accent/40 bg-accent-soft text-ink' : 'border-border bg-surface text-muted opacity-70',
+                      )}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} aria-hidden />
+                      {s.name}
+                    </button>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -266,16 +503,21 @@ export function AtlasView() {
         {!hasSelection && suggestions.length > 0 && (
           <div className="pointer-events-auto flex flex-wrap gap-1.5">
             {suggestions.slice(0, wide ? 7 : 4).map((c) => (
-              <Chip key={c.id} onClick={() => setSelection([c.id])} className="min-h-[36px] text-[0.82rem] shadow-card">
+              <Chip key={c.id} onClick={() => setSelection([c.id])} tip={structureTip(c.name)} className="min-h-[36px] text-[0.82rem] shadow-card">
                 {c.name}
               </Chip>
             ))}
           </div>
         )}
+
+        {/* C1: credit for the model on screen (CC BY 4.0). */}
+        <div className="pointer-events-auto w-fit rounded-lg bg-surface/85 px-2 py-1 backdrop-blur">
+          <ModelCredit model={active === 'female' ? 'hra-vh-f' : 'bodyparts3d'} />
+        </div>
       </div>
 
       {/* Empty-state hint */}
-      {!hasSelection && progress >= 0 && (
+      {!hasSelection && !downloading && (
         <p className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted shadow-card backdrop-blur">
           Drag to orbit · pinch or scroll to zoom · tap a structure
         </p>
@@ -296,53 +538,64 @@ export function AtlasView() {
           aria-label="Selected structure"
         >
           <div className="flex items-start justify-between gap-2 px-4 pb-2 pt-3">
-            <button
-              type="button"
-              onClick={() => !wide && setCollapsed((c) => !c)}
-              className={cn('min-w-0 flex-1 text-left', wide && 'cursor-default')}
-              aria-expanded={wide ? undefined : !collapsed}
-            >
-              {!wide && <span className="mx-auto mb-2 block h-1 w-9 rounded-full bg-border" aria-hidden />}
-              <span className="label-mono block">3D structure</span>
-              <span className="block truncate text-lg font-semibold first-letter:uppercase">
-                {conceptName(atlas, index, activeId)}
-              </span>
-            </button>
-            <div className="flex shrink-0 items-center">
-              {!wide && (
-                <button
-                  type="button"
-                  onClick={() => setCollapsed((c) => !c)}
-                  aria-label={collapsed ? 'Expand details' : 'Collapse details'}
-                  className="grid h-11 w-11 place-items-center rounded-xl text-muted hover:bg-surface2"
-                >
-                  <ChevronDown className={cn('h-5 w-5 transition-transform', collapsed && 'rotate-180')} />
-                </button>
-              )}
+            {/* On desktop the title is not a control (it only folds the mobile sheet), so it carries no tip there. */}
+            <Tooltip tip={wide ? NO_TIP : ATLAS_TIPS['atlas.panel.toggle']}>
               <button
                 type="button"
-                onClick={() => setSelection([])}
-                aria-label="Clear selection"
-                className="grid h-11 w-11 place-items-center rounded-xl text-muted hover:bg-surface2 hover:text-ink"
+                onClick={() => !wide && setCollapsed((c) => !c)}
+                className={cn('min-w-0 flex-1 text-left', wide && 'cursor-default')}
+                aria-expanded={wide ? undefined : !collapsed}
               >
-                <X className="h-5 w-5" />
+                {!wide && <span className="mx-auto mb-2 block h-1 w-9 rounded-full bg-border" aria-hidden />}
+                <span className="label-mono block">3D structure</span>
+                <span className="block truncate text-lg font-semibold first-letter:uppercase">
+                  {conceptName(atlas, index, activeId)}
+                </span>
               </button>
+            </Tooltip>
+            <div className="flex shrink-0 items-center">
+              {!wide && (
+                <Tooltip tip={collapsed ? ATLAS_TIPS['atlas.panel.expand'] : ATLAS_TIPS['atlas.panel.collapse']} iconOnly>
+                  <button
+                    type="button"
+                    onClick={() => setCollapsed((c) => !c)}
+                    aria-label={collapsed ? 'Expand details' : 'Collapse details'}
+                    className="grid h-11 w-11 place-items-center rounded-xl text-muted hover:bg-surface2"
+                  >
+                    <ChevronDown className={cn('h-5 w-5 transition-transform', collapsed && 'rotate-180')} />
+                  </button>
+                </Tooltip>
+              )}
+              <Tooltip tip={ATLAS_TIPS['atlas.panel.clear']} iconOnly>
+                <button
+                  type="button"
+                  onClick={() => setSelection([])}
+                  aria-label="Clear selection"
+                  className="grid h-11 w-11 place-items-center rounded-xl text-muted hover:bg-surface2 hover:text-ink"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </Tooltip>
             </div>
           </div>
           {!(collapsed && !wide) && (
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
               {ids.length > 1 && (
                 <div className="mb-3 flex flex-wrap gap-1.5">
-                  {ids.map((id, i) => (
-                    <Chip
-                      key={id}
-                      onClick={() => setActive(i)}
-                      aria-pressed={i === active}
-                      className={cn('min-h-[34px] text-[0.8rem]', i === active && 'border-accent bg-accent-soft')}
-                    >
-                      {conceptName(atlas, index, id)}
-                    </Chip>
-                  ))}
+                  {ids.map((id, i) => {
+                    const name = conceptName(atlas, index, id);
+                    return (
+                      <Chip
+                        key={id}
+                        onClick={() => setActiveIdx(i)}
+                        aria-pressed={i === activeIdx}
+                        tip={{ purpose: `Shows the details for ${name}.`, effect: 'The highlight stays on every selected structure.' }}
+                        className={cn('min-h-[34px] text-[0.8rem]', i === activeIdx && 'border-accent bg-accent-soft')}
+                      >
+                        {name}
+                      </Chip>
+                    );
+                  })}
                 </div>
               )}
               {unmatched.length > 0 && resolved && resolved.matched.length === 0 && (
@@ -350,10 +603,19 @@ export function AtlasView() {
                   This structure is not part of the 3D model, so nothing is highlighted.
                 </p>
               )}
-              <SelectionPanel fmaId={activeId} />
+              <SelectionPanel fmaId={activeId} sex={active} />
             </div>
           )}
         </div>
+      )}
+
+      {sheetOpen && (
+        <FemaleConfirmSheet
+          totalBytes={gzipTotalBytes(atlases.female)}
+          constrained={constrained}
+          onDownload={onDownload}
+          onNotNow={onNotNow}
+        />
       )}
     </div>
   );

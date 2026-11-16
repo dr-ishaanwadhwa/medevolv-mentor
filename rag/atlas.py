@@ -9,7 +9,10 @@ INVOLVES_STRUCTURE fact is the only claim; the link is navigation and never adds
 
 Everything returns None / [] when ATLAS_URL is unset or the crosswalk file is missing, so the app hides the feature.
 The file is built offline by scripts/build_atlas_crosswalk.py; one JSON per line:
-    {"label", "key", "atlas_id", "atlas_name", "method", "score", ["atlas_ids"], ["by_side"]}
+    {"label", "key", "atlas_id", "atlas_name", "method", "score", ["atlas_ids"], ["by_side"], ["sex"]}
+`sex` is present only on rows for structures drawn only in the female model (HRA VH_F, PRD R5 F-4); those rows come
+from hand-reviewed deploy/atlas/female/id_map.csv rows only, and their deep link adds `&sex=female`. A male row
+always wins a key both models share, so male links never change.
 It holds every atlas name (so a label that merely spells an atlas name differently still links), curated synonyms,
 and the LLM-checked matches. `variants(label)` (plural, 'the', 'X of Y' order, trailing 'muscle'/'bone', hyphens) is
 shared by the build and by the lookup here. A structure drawn only as a left and a right piece (lungs, kidneys'
@@ -139,10 +142,13 @@ def links() -> dict[str, dict]:
     """name_key of a label or atlas name -> crosswalk record (plus '~nospace' keys for hyphen/space variants)."""
     if not PATH.exists():
         return {}
-    out = {}
+    out: dict[str, dict] = {}
     for line in PATH.read_text(encoding="utf-8").splitlines():
         if line.strip():
             r = json.loads(line)
+            old = out.get(r["key"])
+            if old and record_sex(old) == "male" and record_sex(r) == "female":
+                continue                        # the male model keeps every key it has (F-6)
             out[r["key"]] = r
     for k, r in list(out.items()):
         out.setdefault("~" + k.replace(" ", ""), r)
@@ -153,14 +159,21 @@ def enabled() -> bool:
     return bool(config.ATLAS_URL) and bool(links())
 
 
-def url_for(atlas_id: str | list[str]) -> str:
-    """Deep link; several ids (a left/right pair) are comma separated and selected together."""
+def record_sex(r: dict) -> str:
+    """'female' for a structure drawn only in the female model, else 'male' (every row without `sex`)."""
+    return "female" if r.get("sex") == "female" else "male"
+
+
+def url_for(atlas_id: str | list[str], sex: str | None = None) -> str:
+    """Deep link; several ids (a left/right pair) are comma separated and selected together. `&sex=female` only for
+    a female-only structure; male links are unchanged."""
     ids = atlas_id if isinstance(atlas_id, list) else [atlas_id]
-    return f"{config.ATLAS_URL.rstrip('/')}/?select={quote(','.join(ids), safe=',')}"
+    tail = "&sex=female" if sex == "female" else ""
+    return f"{config.ATLAS_URL.rstrip('/')}/?select={quote(','.join(ids), safe=',:')}{tail}"
 
 
 def record_url(r: dict) -> str:
-    return url_for(r.get("atlas_ids") or r["atlas_id"])
+    return url_for(r.get("atlas_ids") or r["atlas_id"], record_sex(r))
 
 
 def atlas_record(label: str) -> dict | None:

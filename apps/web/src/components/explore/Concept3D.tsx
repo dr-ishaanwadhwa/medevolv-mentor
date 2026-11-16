@@ -5,6 +5,7 @@ import { Box } from 'lucide-react';
 import AtlasCanvas from '@/components/canvas/AtlasCanvas';
 import { LinkButton } from '@/components/ui';
 import { useAtlasStore } from '@/lib/atlas-store';
+import { ModelCredit } from '@/components/credits/ModelCredit';
 import type { ConceptPage } from './api';
 
 /** FMA ids from an atlas deep link (`...?select=FMA1,FMA2`). */
@@ -20,7 +21,8 @@ function idsFromLink(link: string | null): string[] {
 
 /** Compact 3D panel. Renders nothing unless the concept maps onto the 3D atlas (navigation only, never a clinical claim). */
 export function Concept3D({ concept }: { concept: ConceptPage }) {
-  const atlas = useAtlasStore((s) => s.atlas);
+  // Always the male model here (F-7): the female model is only ever requested by the full atlas viewer.
+  const atlas = useAtlasStore((s) => s.atlases.male);
   const loadManifest = useAtlasStore((s) => s.loadManifest);
   const linkIds = useMemo(() => idsFromLink(concept.atlas.link), [concept.atlas.link]);
 
@@ -32,7 +34,7 @@ export function Concept3D({ concept }: { concept: ConceptPage }) {
 
   const wantsLookup = linkIds.length === 0 && names.length > 0;
   useEffect(() => {
-    if (wantsLookup) void loadManifest();
+    if (wantsLookup) void loadManifest('male');
   }, [wantsLookup, loadManifest]);
 
   const ids = useMemo(() => {
@@ -74,13 +76,14 @@ export function Concept3D({ concept }: { concept: ConceptPage }) {
           </h2>
           <p className="mt-0.5 text-xs text-muted">Navigation only: shows where it sits, not a clinical claim.</p>
         </div>
-        <LinkButton href={href} size="sm" variant="primary" className="shrink-0">
+        <LinkButton href={href} size="sm" variant="primary" tip="explore.in3d" className="shrink-0">
           <Box className="h-4 w-4" aria-hidden /> Open in 3D Atlas
         </LinkButton>
       </div>
       <div ref={box} className="relative h-[280px] bg-[radial-gradient(ellipse_at_50%_40%,rgb(var(--c-surface2))_0%,rgb(var(--c-surface))_75%)] md:h-[320px]">
-        {near && <AtlasCanvas compact highlight={ids} autoRotate />}
+        {near && <AtlasCanvas compact highlight={ids} autoRotate sex="male" />}
       </div>
+      <ModelCredit model="bodyparts3d" className="px-4 pb-3 pt-2" />
     </section>
   );
 }

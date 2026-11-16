@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { loadChunk } from '@/components/canvas/model-download';
 import { modelUrl, type Atlas } from '@/lib/anatomy';
+import { manifestFile, type Sex } from '@/lib/atlas-sex';
 
-/** Loads only the optic-chiasm parts (concept FMA62045) from the atlas; resolves to a centred, unit-ish mesh group. */
-export async function loadChiasm(): Promise<THREE.Group> {
-  const res = await fetch(modelUrl('/models/atlas.json'));
+/** Loads only the optic-chiasm parts (concept FMA62045) from the atlas; resolves to a centred, unit-ish mesh group.
+ * Always the male model unless a sex is passed explicitly, whatever /atlas last loaded (F-7). */
+export async function loadChiasm(sex: Sex = 'male'): Promise<THREE.Group> {
+  const res = await fetch(modelUrl(`/models/${manifestFile(sex)}`));
   if (!res.ok) throw new Error('atlas.json');
   const atlas = (await res.json()) as Atlas;
   const parts = atlas.parts.filter((p) => p.conceptId.toUpperCase() === 'FMA62045');

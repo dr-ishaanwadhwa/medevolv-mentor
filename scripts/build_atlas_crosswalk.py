@@ -78,6 +78,33 @@ SYNONYMS: dict[str, str | list[str]] = {
 }
 
 
+FEMALE_ID_MAP = Path("deploy/atlas/female/id_map.csv")
+
+
+def female_rows(id_map: Path, table: dict[str, dict], male_ids: set[str]) -> list[dict]:
+    """Crosswalk rows (sex 'female') for structures drawn only in the female model (PRD R5 F-4).
+
+    Only hand-reviewed id_map rows (non-empty reviewed_by) feed answer links; an id or a name the male atlas already
+    has is skipped, so male links never change. One row per concept id."""
+    import csv
+    if not id_map.exists():
+        return []
+    out: dict[str, dict] = {}
+    with id_map.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            cid = (row.get("concept_id") or "").strip().upper()
+            name = (row.get("concept_name") or "").strip()
+            reviewer = (row.get("reviewed_by") or "").strip()
+            if not (cid and name and reviewer) or cid in male_ids or cid in out:
+                continue
+            k = name_key(name)
+            if not k or k in table:
+                continue
+            out[cid] = {"label": name, "key": k, "atlas_id": cid, "atlas_name": name, "method": "female-id-map",
+                        "score": 1.0, "sex": "female", "reviewed_by": reviewer}
+    return list(out.values())
+
+
 def load_atlas(path: Path) -> list[dict]:
     return json.loads(path.read_text())["concepts"]
 
@@ -293,6 +320,8 @@ def main() -> None:
     ap.add_argument("--dry", action="store_true", help="no LLM calls, no file written")
     ap.add_argument("--audit", type=int, default=0)
     ap.add_argument("--show-unmatched", action="store_true")
+    ap.add_argument("--female-id-map", type=Path, default=FEMALE_ID_MAP,
+                    help="reviewed rows of the female id map become sex='female' rows (PRD R5 F-4)")
     a = ap.parse_args()
     if a.guard:
         return build_guard(min(a.budget, 0.05))
@@ -354,8 +383,12 @@ def main() -> None:
         table[r["key"]] = r
         hit[r["key"]] = r
 
+    # Female-only structures from the hand-reviewed id map (none until a reviewer fills reviewed_by).
+    fem = female_rows(a.female_id_map, table, {c["id"].upper() for c in atlas})
+    print(f"{len(fem)} reviewed female-only rows from {a.female_id_map}")
+
     # Output: every atlas alias / synonym / LLM record; source labels resolve at lookup time through rag.atlas.variants.
-    rows = list(table.values())
+    rows = list(table.values()) + fem
     if not a.dry:
         PATH.parent.mkdir(parents=True, exist_ok=True)
         PATH.write_text("".join(json.dumps(r) + "\n" for r in rows))

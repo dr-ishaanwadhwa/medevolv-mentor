@@ -20,8 +20,10 @@ export function fmtMs(ms: number) {
 }
 
 /** Atlas deep link from spatial actions (navigation only). */
-export function atlasHref(fmaIds: string[]) {
-  return `/atlas?select=${fmaIds.join(',')}`;
+export function atlasHref(fmaIds: string[], opts?: { sex?: 'male' | 'female' | null; femaleAtlas?: boolean }) {
+  // `&sex=female` only for a female-only structure AND when the female_atlas flag is on (F-9): otherwise the link is the male one.
+  const female = opts?.sex === 'female' && opts.femaleAtlas === true;
+  return `/atlas?select=${fmaIds.join(',')}${female ? '&sex=female' : ''}`;
 }
 
 export function isRealUrlId(id: string) {

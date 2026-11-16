@@ -2,61 +2,119 @@
 import { create } from 'zustand';
 import { buildIndex, modelUrl, DEFAULT_VISIBLE, type Atlas, type AtlasIndex, type SystemId } from './anatomy';
 import { getCachedManifest, setCachedManifest } from './idb';
+import { LEGACY_MALE_CACHE_KEY, manifestCacheKey, manifestFile, manifestMatches, type Sex } from './atlas-sex';
+
+type Status = 'idle' | 'loading' | 'ready' | 'error';
+const both = <T,>(m: T, f: T): Record<Sex, T> => ({ male: m, female: f });
 
 interface AtlasState {
-  atlas: Atlas | null;
-  index: AtlasIndex | null;
-  status: 'idle' | 'loading' | 'ready' | 'error';
-  error: string;
-  /** 0-100 geometry download progress for the full atlas viewer */
+  /** One manifest per model (F-1). Never merged, never mixed in one scene. */
+  atlases: Record<Sex, Atlas | null>;
+  indexes: Record<Sex, AtlasIndex | null>;
+  statuses: Record<Sex, Status>;
+  errors: Record<Sex, string>;
+  /** 0-100 geometry download progress for the full atlas viewer (the model currently in the scene) */
   progress: number;
+  /** Which model `progress` belongs to (so a stale 100 from the other model is never read as this one's) */
+  progressSex: Sex | null;
+  /** The model whose geometry is fully in the full viewer's scene, or null while loading */
+  modelReady: Sex | null;
+  /** The full viewer failed to load a model's geometry (the toolbar then falls back to Male) */
+  sceneError: { sex: Sex; message: string } | null;
   isolate: boolean;
   resetNonce: number;
   visible: SystemId[];
-  loadManifest: () => Promise<void>;
-  setProgress: (n: number) => void;
+  loadManifest: (sex?: Sex) => Promise<void>;
+  setProgress: (n: number, sex?: Sex) => void;
+  setModelReady: (s: Sex | null) => void;
+  setSceneError: (e: { sex: Sex; message: string } | null) => void;
   setIsolate: (v: boolean) => void;
   reset: () => void;
   toggleSystem: (id: SystemId) => void;
   resetLayers: () => void;
 }
 
-let inflight: Promise<void> | null = null;
+export interface ManifestDeps {
+  fetchJson: (url: string) => Promise<unknown>;
+  getCached: (key: string) => Promise<Atlas | null>;
+  setCached: (key: string, data: Atlas) => void;
+}
+
+const CATALOGUE_ERROR = (sex: Sex) =>
+  sex === 'female' ? "Couldn't load the female model." : 'The anatomy catalogue could not be loaded.';
+
+/**
+ * Fetch one model's manifest. The network answer must be that model's manifest. On a fetch failure only the same
+ * model's cache may answer (F-1a); the female model never falls back to the male manifest (or the reverse), so the
+ * UI can never show one model while labelled as the other. Throws when nothing valid is available.
+ */
+export async function loadManifestFor(sex: Sex, deps: ManifestDeps): Promise<Atlas> {
+  const key = manifestCacheKey(sex);
+  try {
+    const body = await deps.fetchJson(modelUrl(manifestFile(sex)));
+    if (!manifestMatches(sex, body as Atlas)) throw new Error(CATALOGUE_ERROR(sex));
+    deps.setCached(key, body as Atlas);
+    return body as Atlas;
+  } catch (e) {
+    let cached = await deps.getCached(key);
+    if (!cached && sex === 'male') cached = await deps.getCached(LEGACY_MALE_CACHE_KEY);
+    if (cached && manifestMatches(sex, cached)) return cached;
+    throw e instanceof Error ? e : new Error(CATALOGUE_ERROR(sex));
+  }
+}
+
+const browserDeps: ManifestDeps = {
+  fetchJson: async (url) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('The anatomy catalogue could not be loaded.');
+    return r.json();
+  },
+  getCached: (key) => getCachedManifest<Atlas>(key),
+  setCached: (key, data) => void setCachedManifest(key, data),
+};
+
+const inflight: Partial<Record<Sex, Promise<void>>> = {};
 
 export const useAtlasStore = create<AtlasState>((set, get) => ({
-  atlas: null,
-  index: null,
-  status: 'idle',
-  error: '',
+  atlases: both(null, null),
+  indexes: both(null, null),
+  statuses: both<Status>('idle', 'idle'),
+  errors: both('', ''),
   progress: 0,
+  progressSex: null,
+  modelReady: null,
+  sceneError: null,
   isolate: false,
   resetNonce: 0,
   visible: DEFAULT_VISIBLE,
-  loadManifest: () => {
-    if (get().atlas) return Promise.resolve();
-    if (inflight) return inflight;
-    set({ status: 'loading', error: '' });
-    inflight = (async () => {
-      let atlas: Atlas | null = null;
+  loadManifest: (sex = 'male') => {
+    if (get().atlases[sex]) return Promise.resolve();
+    const running = inflight[sex];
+    if (running) return running;
+    set((s) => ({ statuses: { ...s.statuses, [sex]: 'loading' }, errors: { ...s.errors, [sex]: '' } }));
+    const p = (async () => {
       try {
-        const r = await fetch(modelUrl('atlas.json'));
-        if (!r.ok) throw new Error('The anatomy catalogue could not be loaded.');
-        atlas = (await r.json()) as Atlas;
-        void setCachedManifest('atlas.json', atlas);
+        const atlas = await loadManifestFor(sex, browserDeps);
+        set((s) => ({
+          atlases: { ...s.atlases, [sex]: atlas },
+          indexes: { ...s.indexes, [sex]: buildIndex(atlas) },
+          statuses: { ...s.statuses, [sex]: 'ready' },
+        }));
       } catch (e) {
-        atlas = await getCachedManifest<Atlas>('atlas.json');
-        if (!atlas) {
-          set({ status: 'error', error: e instanceof Error ? e.message : 'The anatomy catalogue could not be loaded.' });
-          return;
-        }
+        set((s) => ({
+          statuses: { ...s.statuses, [sex]: 'error' },
+          errors: { ...s.errors, [sex]: e instanceof Error ? e.message : CATALOGUE_ERROR(sex) },
+        }));
       }
-      set({ atlas, index: buildIndex(atlas), status: 'ready' });
     })().finally(() => {
-      inflight = null;
+      delete inflight[sex];
     });
-    return inflight;
+    inflight[sex] = p;
+    return p;
   },
-  setProgress: (progress) => set({ progress }),
+  setProgress: (progress, sex) => set((s) => ({ progress, progressSex: sex ?? s.progressSex })),
+  setModelReady: (modelReady) => set({ modelReady }),
+  setSceneError: (sceneError) => set({ sceneError }),
   setIsolate: (isolate) => set({ isolate }),
   reset: () => set((s) => ({ resetNonce: s.resetNonce + 1, isolate: false })),
   toggleSystem: (id) =>

@@ -31,8 +31,14 @@ def _ids(record: dict) -> list[str]:
     return list(record.get("atlas_ids") or [record["atlas_id"]])
 
 
+def _sex_fields(record: dict) -> dict:
+    """{'sex': 'female'} for a female-only structure, else {} (male actions are unchanged). Needs the optional
+    `SpatialAction.sex` / `AtlasLink.sex` fields (api/schemas.py, PRD R5); pydantic ignores it until they exist."""
+    return {"sex": "female"} if atlas.record_sex(record) == "female" else {}
+
+
 def _action(label: str, record: dict) -> SpatialAction:
-    return SpatialAction(fma_ids=_ids(record), label=label)
+    return SpatialAction(fma_ids=_ids(record), label=label, **_sex_fields(record))
 
 
 def section_concept_labels(section_id: str) -> list[str]:
@@ -115,10 +121,15 @@ def spatial_actions(answer, question: str = "") -> list[SpatialAction]:
     return out
 
 
-def _records_for_fma(fma: str) -> list[dict]:
+def _records_for_fma(fma: str, sex: str | None = None) -> list[dict]:
+    """Crosswalk records drawing this id. With `sex` (the model the structure was tapped in), a record drawn only in
+    the other model is skipped; ids are compared case-insensitively (HRA:/UBERON: ids from the female model)."""
+    want = fma.upper()
     seen, out = set(), []
     for r in atlas.links().values():
-        if fma in _ids(r) and r["key"] not in seen:
+        if sex == "male" and atlas.record_sex(r) == "female":
+            continue
+        if want in (i.upper() for i in _ids(r)) and r["key"] not in seen:
             seen.add(r["key"])
             out.append(r)
     return out
@@ -163,11 +174,18 @@ def re_chapter(c: str) -> str:
     return re.sub(r"^\d+\.?\s*", "", c or "")
 
 
-def resolve(fma: str | None, label: str | None) -> dict | None:
-    """Everything known about one structure; None when neither the atlas nor the ontology knows it."""
+def structure_sex(records: list[dict]) -> str:
+    """'female' when every record is drawn only in the female model, else 'male' (also for no record)."""
+    return "female" if records and all(atlas.record_sex(r) == "female" for r in records) else "male"
+
+
+def resolve(fma: str | None, label: str | None, sex: str | None = None) -> dict | None:
+    """Everything known about one structure; None when neither the atlas nor the ontology knows it. `sex` is the
+    model the structure was tapped in (optional; male behaviour is unchanged without it). The result's `sex` says
+    which model draws the structure, so a "View in 3D" link can open the right one (PRD R5 F-4)."""
     records: list[dict] = []
     if fma:
-        records = _records_for_fma(fma)
+        records = _records_for_fma(fma, sex)
     elif label:
         r = atlas.atlas_record(label)
         records = [r] if r else []
@@ -182,9 +200,9 @@ def resolve(fma: str | None, label: str | None) -> dict | None:
     ids = list(dict.fromkeys(i for r in records for i in _ids(r)))
     shown = (concept or {}).get("label") or (records[0]["label"] if records else label or "")
     return {
-        "fma_ids": ids, "label": shown,
+        "fma_ids": ids, "label": shown, "sex": structure_sex(records),
         "atlas": [AtlasLink(label=r["label"], atlas_name=r["atlas_name"], fma_ids=_ids(r),
-                            url=atlas.record_url(r) if config.ATLAS_URL else None) for r in records],
+                            url=atlas.record_url(r) if config.ATLAS_URL else None, **_sex_fields(r)) for r in records],
         "concept": ConceptRef(id=concept["id"], label=concept["label"], type=concept["type"], aliases=concept["aliases"],
                               degree=concept["degree"], books=concept["books"]) if concept else None,
         "citations": concept_citations(concept["label"], concept["id"]) if concept else [],

@@ -6,6 +6,9 @@ import { ArrowUpRight, BookOpen, Info } from 'lucide-react';
 import { Chip, SkeletonLines, Tag } from '@/components/ui';
 import { useAtlasStore } from '@/lib/atlas-store';
 import { conceptName } from '@/lib/anatomy';
+import type { Sex } from '@/lib/atlas-sex';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { ATLAS_TIPS, relatedTip } from '@/lib/tips/atlas';
 import {
   bookName,
   conceptHref,
@@ -25,9 +28,9 @@ interface Data {
 }
 
 /** Textbook pointers and related concepts for one atlas structure (GET /api/spatial/resolve). */
-export function SelectionPanel({ fmaId }: { fmaId: string }) {
-  const atlas = useAtlasStore((s) => s.atlas);
-  const index = useAtlasStore((s) => s.index);
+export function SelectionPanel({ fmaId, sex = 'male' }: { fmaId: string; sex?: Sex }) {
+  const atlas = useAtlasStore((s) => s.atlases[sex]);
+  const index = useAtlasStore((s) => s.indexes[sex]);
   const [data, setData] = useState<Data | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
 
@@ -38,7 +41,7 @@ export function SelectionPanel({ fmaId }: { fmaId: string }) {
     setData(null);
     (async () => {
       try {
-        const r = await fetchSpatial(fmaId, ctl.signal);
+        const r = await fetchSpatial(fmaId, ctl.signal, sex);
         setData({ label: r.label, concept: r.concept, citations: r.citations, related: r.related });
         setState('ready');
       } catch (e) {
@@ -67,7 +70,7 @@ export function SelectionPanel({ fmaId }: { fmaId: string }) {
       }
     })();
     return () => ctl.abort();
-  }, [fmaId, atlas, index]);
+  }, [fmaId, atlas, index, sex]);
 
   const note = (
     <p className="mb-4 flex items-start gap-2 rounded-lg border border-border bg-surface2 px-3 py-2 text-[0.82rem] leading-snug text-muted">
@@ -119,12 +122,14 @@ export function SelectionPanel({ fmaId }: { fmaId: string }) {
       </div>
 
       {concept && (
+        <Tooltip tip={ATLAS_TIPS['atlas.panel.concept']}>
         <Link
           href={conceptHref(concept.id)}
           className="mb-5 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-accent px-4 text-[0.92rem] font-medium text-accent-ink hover:bg-accent/90"
         >
           Open concept page <ArrowUpRight className="h-4 w-4" aria-hidden />
         </Link>
+        </Tooltip>
       )}
 
       <h3 className="label-mono mb-2 flex items-center gap-1.5">
@@ -154,7 +159,7 @@ export function SelectionPanel({ fmaId }: { fmaId: string }) {
           <h3 className="label-mono mb-2">Related concepts</h3>
           <div className="flex flex-wrap gap-1.5">
             {related.map((r) => (
-              <Chip key={r.id} href={conceptHref(r.id)} className="text-[0.82rem]">
+              <Chip key={r.id} href={conceptHref(r.id)} tip={relatedTip(r.label)} className="text-[0.82rem]">
                 {r.label}
               </Chip>
             ))}

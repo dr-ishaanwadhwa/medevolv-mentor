@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { AlertTriangle } from 'lucide-react';
 import { SYSTEMS, resolveHighlight, type Atlas, type SystemId } from '@/lib/anatomy';
 import { useAtlasStore } from '@/lib/atlas-store';
+import { defaultFramingParts, type Sex } from '@/lib/atlas-sex';
 import { computeGoalPose } from '@/lib/atlas-camera';
 import type { PoseSnapshot } from '@/lib/atlas-reset';
 import { cn } from '@/lib/cn';
@@ -51,6 +52,10 @@ export interface AtlasCanvasProps {
   /** Small embed: load only the highlighted structures, no wheel zoom, vertical swipes scroll the page. */
   compact?: boolean;
   autoRotate?: boolean;
+  /** Which model to show. Defaults to male: only the full atlas viewer ever asks for female (F-7). */
+  sex?: Sex;
+  /** The parent shows its own loading UI (the female download has size, cancel and announcements). */
+  hideLoading?: boolean;
   /** Receives the camera handle (null on unmount). */
   cameraApiRef?: { current: AtlasCameraApi | null };
   className?: string;
@@ -62,21 +67,23 @@ const NO_GHOST = new Set<SystemId>(['muscular', 'connective', 'lymphatic', 'arte
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export default function AtlasScene(props: AtlasCanvasProps) {
-  const { highlight, compact = false, className } = props;
-  const atlas = useAtlasStore((s) => s.atlas);
-  const index = useAtlasStore((s) => s.index);
-  const status = useAtlasStore((s) => s.status);
-  const loadError = useAtlasStore((s) => s.error);
+  const { highlight, compact = false, className, sex = 'male' } = props;
+  const atlas = useAtlasStore((s) => s.atlases[sex]);
+  const index = useAtlasStore((s) => s.indexes[sex]);
+  const status = useAtlasStore((s) => s.statuses[sex]);
+  const loadError = useAtlasStore((s) => s.errors[sex]);
   const loadManifest = useAtlasStore((s) => s.loadManifest);
   const setStoreProgress = useAtlasStore((s) => s.setProgress);
+  const setModelReady = useAtlasStore((s) => s.setModelReady);
+  const setSceneError = useAtlasStore((s) => s.setSceneError);
   const host = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    void loadManifest();
-  }, [loadManifest]);
+    void loadManifest(sex);
+  }, [loadManifest, sex]);
 
   const highlightKey = (highlight ?? []).join(',');
   const resolution = useMemo(
@@ -109,12 +116,24 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     setError('');
     setReady(false);
     setProgress(0);
+    if (!compact) {
+      setStoreProgress(0, sex);
+      setModelReady(null);
+      setSceneError(null);
+    }
+    // Only the female download is cancellable: its chunks are not shared with another viewer.
+    const abort = new AbortController();
+    const signal = sex === 'female' && !compact ? abort.signal : undefined;
+    const fail = (message: string) => {
+      setError(message);
+      if (!compact) setSceneError({ sex, message });
+    };
 
     let renderer: T.WebGLRenderer;
     try {
       renderer = new T.WebGLRenderer({ antialias: !compact, alpha: true, powerPreference: 'high-performance' });
     } catch {
-      setError('This browser could not start the 3D viewer. Please try one with WebGL enabled.');
+      fail('This browser could not start the 3D viewer. Please try one with WebGL enabled.');
       return;
     }
     const mobile = () => el.clientWidth < 768;
@@ -128,7 +147,10 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     canvas.style.width = '100%';
     canvas.style.height = '100%';
     canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', '3D human anatomy. Drag to orbit, pinch or scroll to zoom, tap a structure to inspect it.');
+    canvas.setAttribute(
+      'aria-label',
+      `3D human anatomy, ${sex} reference model. Drag to orbit, pinch or scroll to zoom, tap a structure to inspect it.`,
+    );
     el.appendChild(canvas);
 
     const scene = new T.Scene();
@@ -223,7 +245,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     const loadedParts = new Set<number>();
 
     const buildChunk = async (ci: number) => {
-      const buffer = await loadChunk(atlas, atlas.chunks[ci]);
+      const buffer = await loadChunk(atlas, atlas.chunks[ci], signal);
       if (disposed) return;
       const groups = new Map<string, T.BufferGeometry[]>();
       parts.forEach((p, i) => {
@@ -271,7 +293,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
         if (!disposed) {
           const pct = Math.round((done / chunkIds.length) * 100);
           setProgress(pct);
-          if (!compact) setStoreProgress(pct);
+          if (!compact) setStoreProgress(pct, sex);
         }
       }
     };
@@ -279,13 +301,17 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       .then(() => {
         if (disposed) return;
         setReady(true);
+        if (!compact) setModelReady(sex);
         stateKey = '';
         dirty = true;
       })
       .catch((e) => {
-        if (!disposed) setError(e instanceof Error ? e.message : 'Could not load the anatomy.');
+        if (!disposed) fail(e instanceof Error ? e.message : 'Could not load the anatomy.');
       });
-    if (!chunkIds.length) setReady(true);
+    if (!chunkIds.length) {
+      setReady(true);
+      if (!compact) setModelReady(sex);
+    }
 
     // ---- camera framing ----
     const goalTarget = new T.Vector3(0, 0.85, 0);
@@ -306,12 +332,15 @@ export default function AtlasScene(props: AtlasCanvasProps) {
       else camera.clearViewOffset();
     };
 
+    // Per-model default view (D-4 per model): male frames the whole body, female the torso and pelvis.
+    const defaultFrame = compact ? null : defaultFramingParts(atlas, sex);
+    const defaultFrameSet = defaultFrame ? new Set(defaultFrame) : null;
     const frame3 = (idx: number[], fromDefaultDirection: boolean, instant = false) => {
       const useAll = idx.length === 0;
       const boxes: T.Box3[] = [];
       parts.forEach((p, i) => {
         if (p.system === 'integumentary') return;
-        if (useAll ? wanted.has(i) : idx.includes(i)) boxes.push(bounds[i]);
+        if (useAll ? (defaultFrameSet ? defaultFrameSet.has(i) : wanted.has(i)) : idx.includes(i)) boxes.push(bounds[i]);
       });
       const dir = fromDefaultDirection || userMoved === false ? undefined : camera.position.clone().sub(controls.target);
       const goal = computeGoalPose(
@@ -486,7 +515,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
     canvas.addEventListener('pointerleave', onLeave);
     const onLost = (e: Event) => {
       e.preventDefault();
-      setError('The 3D session was paused by your device. Reload to continue.');
+      fail('The 3D session was paused by your device. Reload to continue.');
     };
     canvas.addEventListener('webglcontextlost', onLost);
 
@@ -550,6 +579,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
 
     return () => {
       disposed = true;
+      abort.abort();
       if (props.cameraApiRef) props.cameraApiRef.current = null;
       cancelAnimationFrame(frame);
       observer.disconnect();
@@ -581,7 +611,7 @@ export default function AtlasScene(props: AtlasCanvasProps) {
   return (
     <div className={cn('relative h-full w-full overflow-hidden', className)}>
       <div ref={host} className="absolute inset-0" />
-      {loading && (
+      {loading && !props.hideLoading && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="flex w-56 flex-col items-center gap-3 rounded-2xl border border-border bg-surface/90 px-5 py-4 text-center shadow-card backdrop-blur">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface2" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>

@@ -58,7 +58,9 @@ export interface SpatialCitation {
 export interface SpatialResolve {
   fma_ids: string[];
   label: string;
-  atlas: { label: string; atlas_name: string; fma_ids: string[]; url: string | null }[];
+  atlas: { label: string; atlas_name: string; fma_ids: string[]; url: string | null; sex?: 'male' | 'female' }[];
+  /** Model the structure belongs to; absent until the API ships the field. */
+  sex?: 'male' | 'female';
   concept: { id: string; label: string; type: string; aliases: string[]; degree: number; books: string[] } | null;
   citations: SpatialCitation[];
   related: { id: string; label: string; type: string; shared_facts: number; tier: string }[];
@@ -107,11 +109,14 @@ export async function fetchConcept(labelOrId: string, signal?: AbortSignal): Pro
 
 const spatialCache = new Map<string, SpatialResolve>();
 
-export async function fetchSpatial(fma: string, signal?: AbortSignal): Promise<SpatialResolve> {
-  const hit = spatialCache.get(fma);
+/** `sex` is the model the structure was tapped in. Only 'female' adds a query param, so male requests are unchanged. */
+export async function fetchSpatial(fma: string, signal?: AbortSignal, sex: 'male' | 'female' = 'male'): Promise<SpatialResolve> {
+  const key = sex === 'female' ? `${fma}|female` : fma;
+  const hit = spatialCache.get(key);
   if (hit) return hit;
-  const r = await getJson<SpatialResolve>(`/api/spatial/resolve?fma=${encodeURIComponent(fma)}`, signal);
-  spatialCache.set(fma, r);
+  const q = sex === 'female' ? '&sex=female' : '';
+  const r = await getJson<SpatialResolve>(`/api/spatial/resolve?fma=${encodeURIComponent(fma)}${q}`, signal);
+  spatialCache.set(key, r);
   return r;
 }
 

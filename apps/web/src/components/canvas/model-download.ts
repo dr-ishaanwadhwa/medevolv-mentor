@@ -18,7 +18,7 @@ async function decode(response: Response, expectedBytes: number, compressed: boo
 // Decoded chunks are shared between viewers (atlas page and concept-page embeds) for the page lifetime.
 const memo = new Map<string, Promise<ArrayBuffer>>();
 
-export function loadChunk(atlas: Atlas, chunk: ChunkMeta): Promise<ArrayBuffer> {
+export function loadChunk(atlas: Atlas, chunk: ChunkMeta, signal?: AbortSignal): Promise<ArrayBuffer> {
   const key = `${atlas.version}:${chunk.url}`;
   const hit = memo.get(key);
   if (hit) return hit;
@@ -26,7 +26,7 @@ export function loadChunk(atlas: Atlas, chunk: ChunkMeta): Promise<ArrayBuffer> 
     const cached = await getCachedGeometryChunk(key);
     if (cached && cached.byteLength === chunk.bytes) return cached;
     const compressed = !!chunk.gzip && typeof DecompressionStream !== 'undefined';
-    const res = await fetch(modelUrl(compressed ? chunk.gzip! : chunk.url));
+    const res = await fetch(modelUrl(compressed ? chunk.gzip! : chunk.url), { signal });
     const buffer = await decode(res, chunk.bytes, compressed);
     void setCachedGeometryChunk(key, buffer, chunk.bytes);
     return buffer;
