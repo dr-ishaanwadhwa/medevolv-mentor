@@ -193,6 +193,16 @@ def _carriers(cites: set, sents: list[tuple[str, set, set, list[str]]]) -> list[
 
 # ---------------------------------------------------------------- the validator
 
+def _shorten(label: str) -> str:
+    """A label a little over MAX_LABEL is cut at a word boundary with an ellipsis (words removed, none added; the support
+    check then runs on what is left). Labels far over the limit are left as they are, so the schema check rejects them."""
+    s = label.strip()
+    if len(s) <= MAX_LABEL or len(s) > 2 * MAX_LABEL:
+        return s
+    cut = s[: MAX_LABEL - 1].rsplit(" ", 1)[0].rstrip(" ,;:-(")
+    return cut + "…"
+
+
 def parse_graph(raw) -> dict:
     """V1/V2 structure. Returns {kind, title, nodes: [{id,label,role,cites}], edges: [{from,to,label,cites}]} or raises."""
     if not isinstance(raw, dict):
@@ -210,6 +220,7 @@ def parse_graph(raw) -> dict:
             raise SchemaError("every node needs a string id and a string label.")
         if n["id"] in ids:
             raise SchemaError(f"duplicate node id {n['id']}.")
+        n = {**n, "label": _shorten(n["label"])}
         if not n["label"].strip() or len(n["label"]) > MAX_LABEL:
             raise SchemaError(f"node labels must be 1 to {MAX_LABEL} characters.")
         ids.add(n["id"])
@@ -321,6 +332,29 @@ def _edge_ok(e: dict, src: dict, tgt: dict, carriers: list, kind: str) -> tuple[
     return False, ""
 
 
+def _contradicted(label: str, src: dict, tgt: dict, carriers: list) -> bool:
+    """True when a cited sentence that holds BOTH boxes says something the arrow would contradict: a negation the boxes
+    don't carry (E3), the opposite direction verb (antonym), or the target clearly before the source (reversed order).
+    'Order could not be confirmed' is not a contradiction; those edges may still use the cross-sentence fallback."""
+    sw, tw = content_words(src["label"]), content_words(tgt["label"])
+    own = set(tokens(src["label"])) | set(tokens(tgt["label"])) | set(tokens(label))
+    for text, words, toks in carriers:
+        if support(src["label"], words) < SUPPORT_MIN or support(tgt["label"], words) < SUPPORT_MIN:
+            continue
+        low = strip_markers(text).lower()
+        if (NEGATION & set(toks) or "n't" in low) and not (NEGATION & own):
+            return True
+        if label and not _has_syn(label, low, toks):
+            opposite = NEG_STEMS if label in POS_VERBS else POS_STEMS if label in NEG_VERBS else ()
+            if opposite and _has_stem(opposite, toks):
+                return True
+        s_only, t_only = (sw - tw) or sw, (tw - sw) or tw
+        ps, pt = _first_pos(s_only, toks), _first_pos(t_only, toks)
+        if ps is not None and pt is not None and ps > pt and _first_pos(s_only, toks[pt:]) is None:
+            return True                                     # every source word comes after the target: reversed
+    return False
+
+
 def _adjacent_ok(e: dict, src: dict, tgt: dict, cites: set, sents: list) -> bool:
     """E2 fallback for step-per-sentence answers (bullet lists): the source box is supported by cited sentence i and the
     target box by a later sentence of the same section (at most MAX_STEP_GAP on), so the arrow only restates the order the answer gives. No verb,
@@ -387,10 +421,8 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
         label = e["label"] if e["label"] in verbs else ""                                    # V5
         ok, show = _edge_ok({**e, "label": label}, kept[e["from"]], kept[e["to"]], _carriers(cites, sents), kind)
         src, tgt = kept[e["from"]], kept[e["to"]]
-        one_sentence = any(support(src["label"], w) >= SUPPORT_MIN and support(tgt["label"], w) >= SUPPORT_MIN
-                           for _, w, _ in _carriers(cites, sents))
-        if not ok and kind in DIRECTIONAL_KINDS and not one_sentence:
-            # only when no single sentence holds both boxes; if one does, E2/E3 already judged it and that verdict stands
+        if not ok and kind in DIRECTIONAL_KINDS and not _contradicted(label, src, tgt, _carriers(cites, sents)):
+            # the cross-sentence order fallback never overrides a contradiction found inside one sentence
             ok, show = _adjacent_ok(e, src, tgt, cites | src["cites"] | tgt["cites"], sents), ""
         if ok:
             edges.append({"from": e["from"], "to": e["to"], "label": show, "cites": cites})

@@ -417,3 +417,11 @@ def test_validation_decline_retries_once_with_feedback_then_succeeds(env):
     env["llm"]([bad, CLASSIFY_G])
     d = post(env).json()
     assert d["status"] == "ok", d
+
+
+def test_slightly_long_labels_are_shortened_not_fatal():
+    from api import diagram_validate as V
+    long = "Inhibit transpeptidases blocking cleavage of terminal D-alanine and cross-linking strands"   # 89 chars
+    out = V._shorten(long)
+    assert len(out) <= V.MAX_LABEL and out.endswith("…") and long.startswith(out[:-1])
+    assert V._shorten("x" * 200) == "x" * 200                                  # far over: left for the schema check
