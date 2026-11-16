@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && node scripts/check-tips.mjs",
+    "check:tips": "node scripts/check-tips.mjs",
     "test:unit": "vitest run --passWithNoTests"
   },
   "dependencies": {

@@ -83,8 +83,11 @@ Tiers: `links_out` are `certified` (quote-checked facts); `links_in` are `derive
 `structures` is `[]` unless the condition is local and atlas-linked. Graph edges point source -> target in the fact's
 direction.
 
-### GET /api/spatial/resolve ?fma= | ?label=
-Unchanged: concept + atlas links + pointer citations + related concepts.
+### GET /api/spatial/resolve ?fma= | ?label= [&sex=male|female]
+Concept + atlas links + pointer citations + related concepts. Optional `sex` is the model the structure was tapped
+in; with `sex=male`, female-only crosswalk rows are skipped. The response carries `sex` (`"male"` unless every record
+is female-only), and each `atlas[]` link and chat `spatial` action carries `sex: "female"` only for female rows
+(otherwise null). Female links add `&sex=female` (PRD R5 F-4).
 
 ### POST /api/answers  ->  `{id}`
 Body `{kind: "chat"|"why", question: str (<=3000), payload: object}`. Payload over 200 KB -> 413. YouTube metadata

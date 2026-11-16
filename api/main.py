@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -172,10 +173,14 @@ async def why_stream(req: WhyRequest):
 
 
 @app.get("/api/spatial/resolve", response_model=SpatialResolveResponse)
-async def spatial_resolve(fma: str | None = Query(None, min_length=1), label: str | None = Query(None, min_length=1)):
+async def spatial_resolve(
+    fma: str | None = Query(None, min_length=1),
+    label: str | None = Query(None, min_length=1),
+    sex: Literal["male", "female"] | None = Query(None),
+):
     if bool(fma) == bool(label):
         raise HTTPException(422, "Pass exactly one of ?fma= or ?label=")
-    r = await asyncio.to_thread(spatial.resolve, fma, label)
+    r = await asyncio.to_thread(spatial.resolve, fma, label, sex)
     if r is None:
         raise HTTPException(404, "Unknown structure")
     return SpatialResolveResponse(query={"fma": fma} if fma else {"label": label}, **r)

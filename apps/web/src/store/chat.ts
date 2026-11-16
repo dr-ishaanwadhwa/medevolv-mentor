@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import {
   requestDiagram,
   streamChat,
+  trackOnce,
   type AnswerEvent,
   type DiagramResponse,
   type RelatedTopic,
@@ -141,6 +142,15 @@ export const useChat = create<ChatState>((set, get) => {
       if (!q || get().busy) return;
       const id = `t${Date.now()}-${++seq}`;
       set((s) => ({ draft: '', turns: [...s.turns, { id, question: q, steps: [], spatial: [], phase: 'streaming' }] }));
+      // First question after a landing CTA (PRD 1.4): count once, never the question text.
+      try {
+        if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('from_landing')) {
+          sessionStorage.removeItem('from_landing');
+          trackOnce('question_sent_from_landing');
+        }
+      } catch {
+        /* storage blocked */
+      }
       run(id, q);
     },
     retry: (id) => {

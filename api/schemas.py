@@ -65,6 +65,7 @@ class SpatialAction(BaseModel):
     fma_ids: list[str]
     label: str
     tier: Literal["navigation"] = "navigation"
+    sex: Literal["male", "female"] | None = None
 
 
 class SpatialEvent(BaseModel):
@@ -99,6 +100,7 @@ class AtlasLink(BaseModel):
     atlas_name: str
     fma_ids: list[str]
     url: str | None = None
+    sex: Literal["male", "female"] | None = None
 
 
 class ConceptRef(BaseModel):
@@ -127,6 +129,7 @@ class SpatialResolveResponse(BaseModel):
     citations: list[Citation]
     related: list[RelatedConcept]
     tier: Literal["navigation"] = "navigation"
+    sex: Literal["male", "female"] = "male"
 
 
 class ConceptHit(BaseModel):

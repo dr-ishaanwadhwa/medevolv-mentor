@@ -57,6 +57,7 @@ export interface SpatialAction {
   fma_ids: string[];
   label: string;
   tier: 'navigation';
+  sex?: 'male' | 'female' | null;
 }
 export interface VerdictEvent {
   status: 'verdict' | 'insufficient';
@@ -279,7 +280,7 @@ export async function fetchVideos(topic: string, signal?: AbortSignal): Promise<
 
 // ---- anonymous daily counters (api/events.py): at most once per page load per name (PRD 5.3)
 const sentEvents = new Set<string>();
-export function trackOnce(name: 'video_click', props?: Record<string, string>) {
+export function trackOnce(name: 'video_click' | 'question_sent_from_landing', props?: Record<string, string>) {
   const k = `${name}|${JSON.stringify(props ?? {})}`;
   if (sentEvents.has(k)) return;
   sentEvents.add(k);

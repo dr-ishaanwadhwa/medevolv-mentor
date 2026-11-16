@@ -3,6 +3,7 @@
 import { Box } from 'lucide-react';
 import { Chip, Markdown, SkeletonLines, StatusPill, Tag, statusMeta } from '@/components/ui';
 import { saveAnswer, type AnswerEvent, type SpatialAction } from '@/lib/api';
+import { useFeature } from '@/components/FeaturesProvider';
 import { atlasHref } from '@/lib/format';
 import { useChat, type Turn } from '@/store/chat';
 import { FeedbackButton, ShareButton } from './Actions';
@@ -22,6 +23,7 @@ const ROUTE: Record<string, string> = {
 };
 
 export function SpatialChips({ actions }: { actions: SpatialAction[] }) {
+  const femaleAtlas = useFeature('female_atlas');
   const usable = actions.filter((a) => a.fma_ids.length);
   if (!usable.length) return null;
   return (
@@ -33,7 +35,7 @@ export function SpatialChips({ actions }: { actions: SpatialAction[] }) {
         {usable.map((a) => (
           <Chip
             key={a.fma_ids.join()}
-            href={atlasHref(a.fma_ids)}
+            href={atlasHref(a.fma_ids, { sex: a.sex, femaleAtlas })}
             tip={{ purpose: `Shows ${a.label} in the 3D atlas.`, effect: 'Opens the atlas at that structure.' }}
           >
             <Box className="h-4 w-4 text-accent" aria-hidden />
