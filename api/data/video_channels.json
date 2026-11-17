@@ -1,1 +1,278 @@
-[]
+[
+  {
+    "name": "Ninja Nerd",
+    "channel_id": "UC6QYFutt9cluQ3uSM963_KQ",
+    "handle": "@NinjaNerdOfficial",
+    "url": "https://www.youtube.com/channel/UC6QYFutt9cluQ3uSM963_KQ",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "medicine"
+    ],
+    "audience": "MBBS / USMLE",
+    "evidence": [
+      "https://www.youtube.com/channel/UC6QYFutt9cluQ3uSM963_KQ",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Osmosis from Elsevier",
+    "channel_id": "UCNI0qOojpkhsUtaQ4_2NUhQ",
+    "handle": "@osmosis",
+    "url": "https://www.youtube.com/channel/UCNI0qOojpkhsUtaQ4_2NUhQ",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology",
+      "medicine",
+      "surgery"
+    ],
+    "audience": "MBBS / USMLE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCNI0qOojpkhsUtaQ4_2NUhQ",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Armando Hasudungan",
+    "channel_id": "UCesNt4_Z-Pm41RzpAClfVcg",
+    "handle": "@armandohasudungan",
+    "url": "https://www.youtube.com/channel/UCesNt4_Z-Pm41RzpAClfVcg",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology",
+      "medicine",
+      "surgery"
+    ],
+    "audience": "MBBS / Global Medical",
+    "evidence": [
+      "https://www.youtube.com/channel/UCesNt4_Z-Pm41RzpAClfVcg",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "PrepLadder NEET PG I FMGE I INI-CET",
+    "channel_id": "UCdbMxSVAgPENqhYVeYkAA2w",
+    "handle": "@PrepLaddermedpg",
+    "url": "https://www.youtube.com/channel/UCdbMxSVAgPENqhYVeYkAA2w",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology",
+      "medicine",
+      "surgery"
+    ],
+    "audience": "MBBS / NEET-PG / INI-CET / FMGE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCdbMxSVAgPENqhYVeYkAA2w",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Cerebellum Academy",
+    "channel_id": "UCopuYMzvJudDmPiZld7JB4w",
+    "handle": "@cerebellumacademy",
+    "url": "https://www.youtube.com/channel/UCopuYMzvJudDmPiZld7JB4w",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology",
+      "medicine",
+      "surgery"
+    ],
+    "audience": "MBBS / NEET-PG / INI-CET / FMGE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCopuYMzvJudDmPiZld7JB4w",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "DocTutorials - NEET PG | INI CET",
+    "channel_id": "UCFqYI_5ksnEuDYtkKQHmrUg",
+    "handle": "@DocTutorials",
+    "url": "https://www.youtube.com/channel/UCFqYI_5ksnEuDYtkKQHmrUg",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology",
+      "medicine",
+      "surgery"
+    ],
+    "audience": "MBBS / NEET-PG / INI-CET",
+    "evidence": [
+      "https://www.youtube.com/channel/UCFqYI_5ksnEuDYtkKQHmrUg",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "MedLive By Dr. Priyanka",
+    "channel_id": "UCBjCQFX_bbsxtyvKHFyS2Fg",
+    "handle": "@MedLiveByDrPriyanka",
+    "url": "https://www.youtube.com/channel/UCBjCQFX_bbsxtyvKHFyS2Fg",
+    "subjects": [
+      "pathology",
+      "pharmacology",
+      "microbiology",
+      "forensic medicine",
+      "community medicine",
+      "medicine"
+    ],
+    "audience": "MBBS / NEET-PG / INI-CET / FMGE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCBjCQFX_bbsxtyvKHFyS2Fg",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Lecturio Medical",
+    "channel_id": "UCbYmF43dpGHz8gi2ugiXr0Q",
+    "handle": "@lecturiomedical",
+    "url": "https://www.youtube.com/channel/UCbYmF43dpGHz8gi2ugiXr0Q",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "medicine"
+    ],
+    "audience": "MBBS / NEET-PG / USMLE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCbYmF43dpGHz8gi2ugiXr0Q",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Physiology Open",
+    "channel_id": "UCp10Y8hxSVZ7j4d797oEfUA",
+    "handle": "@PhysiologyOpen",
+    "url": "https://www.youtube.com/channel/UCp10Y8hxSVZ7j4d797oEfUA",
+    "subjects": [
+      "physiology"
+    ],
+    "audience": "MBBS / MD Physiology",
+    "evidence": [
+      "https://www.youtube.com/channel/UCp10Y8hxSVZ7j4d797oEfUA",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Geeky Medics",
+    "channel_id": "UCkjnrEHQ8bQQmlfNdAQC_5w",
+    "handle": "@geekymedics",
+    "url": "https://www.youtube.com/channel/UCkjnrEHQ8bQQmlfNdAQC_5w",
+    "subjects": [
+      "medicine",
+      "surgery",
+      "clinical skills",
+      "osce"
+    ],
+    "audience": "MBBS / UKMLA",
+    "evidence": [
+      "https://www.youtube.com/channel/UCkjnrEHQ8bQQmlfNdAQC_5w",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Johari MBBS",
+    "channel_id": "UCk2VkCk0BwPDiPUgja41vkA",
+    "handle": "@JohariMBBS",
+    "url": "https://www.youtube.com/channel/UCk2VkCk0BwPDiPUgja41vkA",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology"
+    ],
+    "audience": "MBBS / NEET-PG",
+    "evidence": [
+      "https://www.youtube.com/channel/UCk2VkCk0BwPDiPUgja41vkA",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "DAMS : NEET PG, MBBS, FMGE, USMLE Prep",
+    "channel_id": "UCB7hjHN7-kcToQAWDY8TrIw",
+    "handle": "@damsdelhi",
+    "url": "https://www.youtube.com/channel/UCB7hjHN7-kcToQAWDY8TrIw",
+    "subjects": [
+      "anatomy",
+      "physiology",
+      "biochemistry",
+      "pharmacology",
+      "pathology",
+      "microbiology",
+      "medicine",
+      "surgery"
+    ],
+    "audience": "MBBS / NEET-PG / INI-CET / FMGE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCB7hjHN7-kcToQAWDY8TrIw",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  },
+  {
+    "name": "Dr. Najeeb Lectures",
+    "channel_id": "UCPHpx55tgrbm8FrYYCflAHw",
+    "handle": "@DoctorNajeeb",
+    "url": "https://www.youtube.com/channel/UCPHpx55tgrbm8FrYYCflAHw",
+    "subjects": [
+      "physiology",
+      "pathology",
+      "pharmacology",
+      "anatomy"
+    ],
+    "audience": "MBBS / USMLE",
+    "evidence": [
+      "https://www.youtube.com/channel/UCPHpx55tgrbm8FrYYCflAHw",
+      "YouTube Data API channels.list id/handle match, 2026-11-17"
+    ],
+    "verified_by": "MedEvolv team (API-checked)",
+    "verified_on": "2026-11-17"
+  }
+]

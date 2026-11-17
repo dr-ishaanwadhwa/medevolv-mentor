@@ -19,6 +19,7 @@ Copy (`label`) mirrors shared/copy/videos.json (a test keeps them equal).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -238,7 +239,10 @@ def _response(topic: str, videos: list[dict], source: str, fetched_at: float | N
 
 async def videos_for(topic: str) -> dict:
     key_api = _key()
-    ck = norm_topic(topic)
+    # Cached cards are already ranked, so the key carries the allow/block lists' fingerprint: editing either list
+    # starts a fresh cache instead of serving old rankings for up to TTL_S.
+    lists = "|".join(sorted(allowlist())) + "#" + "|".join(sorted(blocklist()))
+    ck = norm_topic(topic) + "@" + hashlib.sha1(lists.encode()).hexdigest()[:10]
     now = time.time()
     hit = await asyncio.to_thread(_cache_get, ck)
     if hit and now - hit[1] < TTL_S:

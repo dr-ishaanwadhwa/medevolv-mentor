@@ -138,7 +138,7 @@ def test_purge_on_write_and_at_startup(env):
     post(env)                                                          # a write purges too
     keys = [r[0] for r in con.execute("SELECT key FROM video_cache")]
     con.close()
-    assert keys == ["nephrotic syndrome"]
+    assert [k.split("@")[0] for k in keys] == ["nephrotic syndrome"]          # key = topic@<allow/block lists fingerprint>
 
 
 # ---------------------------------------------------------------- fallback paths (V-4, V-5) and keyless mode
@@ -277,7 +277,7 @@ def test_cache_holds_only_videos_and_no_question(env):
     tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     rows = con.execute("SELECT key, json FROM video_cache").fetchall()
     con.close()
-    assert rows[0][0] == "nephrotic syndrome" and set(json.loads(rows[0][1])) == {"videos"}
+    assert rows[0][0].split("@")[0] == "nephrotic syndrome" and set(json.loads(rows[0][1])) == {"videos"}
     assert {"video_cache", "video_search_log"} <= tables
 
 
@@ -304,3 +304,16 @@ def test_rate_limit_429_after_30_per_minute(env, monkeypatch):
 
 def test_key_never_in_response(env):
     assert "test-key-not-real" not in post(env).text
+
+
+def test_cache_key_changes_when_allowlist_changes(monkeypatch):
+    """Cached cards are ranked; editing the allowlist must not keep serving old rankings."""
+    from api import videos
+    import asyncio
+    seen = []
+    monkeypatch.setattr(videos, "_cache_get", lambda k: seen.append(k) or ({"videos": []}, __import__("time").time()))
+    monkeypatch.setattr(videos, "allowlist", lambda: {"UCa"})
+    asyncio.run(videos.videos_for("nephrotic syndrome"))
+    monkeypatch.setattr(videos, "allowlist", lambda: {"UCa", "UCb"})
+    asyncio.run(videos.videos_for("nephrotic syndrome"))
+    assert seen[0] != seen[1] and all(k.startswith("nephrotic syndrome@") for k in seen)

@@ -34,7 +34,7 @@ chmod 600 "$OUT/.env"
 # API fingerprint: the API container is recreated only when this changes. It covers the API code, the API image
 # inputs and the bundled .env (env_file is read when the container is created). Hashing .env via stdin keeps the
 # temp path out of the hash, so the same inputs always give the same value.
-API_SHA="$({ find api rag ontology/merge.py -type f -name '*.py' | sort | xargs shasum
+API_SHA="$({ find api rag ontology/merge.py -type f \( -name '*.py' -o -name '*.json' \) | sort | xargs shasum
             shasum deploy/v2/Dockerfile.api deploy/v2/docker-compose.yml
             shasum < "$OUT/.env"; } | shasum | cut -d' ' -f1)"
 printf '%s\n' "$API_SHA" > "$OUT/api.sha"
