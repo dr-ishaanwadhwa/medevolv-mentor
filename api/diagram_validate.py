@@ -73,7 +73,8 @@ MIN_NODES = 3
 MAX_LABEL = 80
 SUPPORT_MIN = 0.5                                  # V4/E1: share of a label's content words found in the cited sentences
 FAIL_CEILING = 0.30                                # V6: more than this share of failed nodes declines the whole diagram
-RULES_VERSION = 6                                  # part of the diagram cache key: a rules change re-validates cached declines
+RULES_VERSION = 7                                  # part of the diagram cache key: a rules change re-validates cached declines
+                                                   # (7: the entailment check, api.diagram_entail, runs after these rules)
 
 # Order-sensitive verbs (E2): the source's words must appear before the target's in the cited sentence.
 ORDER_VERBS = ("causes", "leads to", "passes to", "branches to")

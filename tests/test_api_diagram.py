@@ -1,5 +1,6 @@
 """POST /api/diagram and GET /api/diagram/{id} (PRD 4.1, R1). Seam tests through HTTP; the LLM is mocked."""
 import json
+import re
 import sqlite3
 import time
 import unicodedata
@@ -7,7 +8,7 @@ import unicodedata
 import pytest
 from fastapi.testclient import TestClient
 
-from api import diagram, main, ratelimit
+from api import diagram, diagram_entail, main, ratelimit
 from api.ratelimit import DailyCap
 from tests.test_api import client as chat_client, stream  # noqa: F401  (stubbed chat stream fixture)
 
@@ -76,7 +77,41 @@ def env(monkeypatch, tmp_path):
             return r if isinstance(r, str) else json.dumps(r)
         monkeypatch.setattr(diagram, "chat", fake)
     llm([])
-    return {"c": TestClient(main.app), "llm": llm, "calls": calls, "ff": ff, "db": tmp_path / "app.db"}
+    vcalls = []
+
+    def verifier(decide=None):
+        """Mock the entailment call. `decide(item, sentences) -> (verdict, quote) | None` (None: leave the item out of
+        the reply); default: every item supported, quoting the start of its first cited sentence."""
+        def fake(system, user, **kw):
+            vcalls.append(user)
+            sents, items = parse_verifier_prompt(user)
+            out = []
+            for it in items:
+                r = (decide or support_all)(it, sents)
+                if r is not None:
+                    out.append({"id": it["id"], "verdict": r[0], "quote": r[1]})
+            return json.dumps({"items": out})
+        monkeypatch.setattr(diagram_entail, "chat", fake)
+    verifier()
+    return {"c": TestClient(main.app), "llm": llm, "calls": calls, "ff": ff, "db": tmp_path / "app.db",
+            "verifier": verifier, "vcalls": vcalls}
+
+
+def parse_verifier_prompt(user):
+    """{"S1": sentence text} and the item dicts, from the entailment prompt."""
+    sents, items = {}, []
+    for line in user.splitlines():
+        m = re.match(r"(S\d+)(?: \(under \"(.*)\"\))?: (.*)$", line)
+        if m:
+            sents[m.group(1)] = m.group(3)
+        elif line.startswith("{"):
+            items.append(json.loads(line))
+    return sents, items
+
+
+def support_all(item, sents):
+    first = sents[item["cited_sentences"][0]]
+    return "supported", " ".join(first.split()[:12])
 
 
 def body(q=CLASSIFY_Q, a=CLASSIFY_A, cits=CITS, gcits=GCITS, sig=None, **extra):
@@ -223,6 +258,7 @@ def test_llm_exception_and_hang_become_generator_error_and_are_not_cached(env, m
     t = time.monotonic()
     assert post(env).json()["reason"] == "generator_error"
     assert time.monotonic() - t < 0.9
+    monkeypatch.setattr(diagram, "TOTAL_BUDGET_S", 30.0)                          # (a 0.3 s budget leaves no verifier time)
     env["llm"]([CLASSIFY_G])                                                      # a retry may now succeed
     assert post(env).json()["status"] == "ok"
 

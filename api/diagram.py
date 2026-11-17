@@ -4,13 +4,15 @@ Two grounded paths, one JSON graph (version 2):
   1. CERTIFIED: the question names an ontology condition or drug, the answer mentions it and at least 3 of its fact
      labels  ->  rag.diagrams.build_graph (facts only; headings are groups, never nodes).
   2. ANSWER: DeepSeek restructures the already-cited answer into a graph; api.diagram_validate drops every box and
-     arrow the answer does not support (V1-V6, E1-E5). Nothing partial: it draws a valid graph or declines.
+     arrow the answer does not support (V1-V6, E1-E5); then api.diagram_entail (one DeepSeek call) drops every box and
+     arrow that a quoted span of its own cited sentence does not state, and re-applies V6/E4. Nothing partial: it draws
+     a valid graph or declines ("verifier_unavailable" when that check cannot run).
 
 Authenticity (D-12): the chat stream signs each answer (`answer_sig`, HMAC-SHA256 over a canonical form the SERVER
 builds); /api/diagram recomputes it, so only answers Mentor itself produced are restructured. The secret is
 DIAGRAM_SIG_SECRET (server .env only). Without it no answer is signed and the web chip never appears.
 
-Results (ok and deterministic declines, never generator errors) are cached in `diagram_cache` in $APP_DB under a hash
+Results (ok and validator declines, never generator_error or verifier_unavailable) are cached in `diagram_cache` in $APP_DB under a hash
 of VERSION | ontology mtime | question | answer | citations: the raw question is never stored. 90-day TTL, refreshed
 when a shared page reads the row. The LLM runs on its own 2-thread executor so chat keeps the default pool.
 """
@@ -32,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from api import events, features, store
+from api import diagram_entail, events, features, store
 from api.diagram_validate import KINDS, RULES_VERSION, SchemaError, markers_in, sentences, strip_numbers_of_dose, validate
 from api.ratelimit import DailyCap, limit
 from api.safety_cues import patient_scoped
@@ -44,6 +46,7 @@ TTL_DAYS = 90
 TOTAL_BUDGET_S = 30.0                           # D-13: the whole endpoint, LLM retry included
 DAILY_CAP = int(os.getenv("DIAGRAM_DAILY_CAP", "300"))   # D-14: a budget we set, not a provider limit
 MIN_CITED_SENTENCES = 3
+UNCACHED_REASONS = ("generator_error", "verifier_unavailable")    # model trouble: a retry may succeed
 
 router = APIRouter()
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="diagram")
@@ -314,9 +317,14 @@ def _extract_json(raw: str):
             raise SchemaError("The reply was not valid JSON.")
 
 
-def answer_path(answer_text: str, passage_ns: set[int], fact_ns: set[int], graph_pointers: list[dict]) -> dict:
+def answer_path(answer_text: str, passage_ns: set[int], fact_ns: set[int], graph_pointers: list[dict],
+                deadline: float | None = None) -> dict:
     """Blocking (runs on the diagram executor): one LLM call, then the validator; one retry, with feedback, on a malformed
-    reply or a validation decline."""
+    reply or a validation decline. A graph the validator accepts then goes through the entailment check
+    (api.diagram_entail), which may only remove boxes and arrows; it gets what is left of the budget up to its own
+    VERIFY_TIMEOUT_S. `deadline` is a time.monotonic() value (default: TOTAL_BUDGET_S from now)."""
+    if deadline is None:
+        deadline = time.monotonic() + TOTAL_BUDGET_S
     err = None
     for attempt in range(2):
         try:
@@ -335,10 +343,18 @@ def answer_path(answer_text: str, passage_ns: set[int], fact_ns: set[int], graph
                        "the rest: leave out a box the answer does not link, or draw a list as a classification.")
                 continue
             return _declined(res.reason or "too_few_supported_nodes")
-        g = res.graph
+        try:
+            chk = diagram_entail.check(res.graph, answer_text, prior_dropped=res.dropped,
+                                       timeout=min(diagram_entail.VERIFY_TIMEOUT_S, deadline - time.monotonic() - 0.5))
+        except diagram_entail.VerifierUnavailable:
+            return _declined("verifier_unavailable")
+        if not chk.ok:
+            return _declined(chk.reason or "too_few_supported_nodes")
+        g = chk.graph
+        used = diagram_entail.fact_ns(g)
         srcs = [{k: p[k] for k in ("n", "fact_id", "book", "edition", "chapter", "pages")}
-                for p in graph_pointers if p["n"] in res.fact_ns]
-        return _ok("answer", g["kind"], None, g["title"], [], g["nodes"], g["edges"], srcs, res.dropped)
+                for p in graph_pointers if p["n"] in used]
+        return _ok("answer", g["kind"], None, g["title"], [], g["nodes"], g["edges"], srcs, chk.dropped)
     return _declined("generator_error")
 
 
@@ -353,6 +369,7 @@ def _event(name: str, props: dict | None = None) -> None:
 
 @router.post("/api/diagram", dependencies=[Depends(limit("diagram", per_minute=10))])
 async def make_diagram(req: DiagramRequest):
+    t0 = time.monotonic()                                  # D-13: TOTAL_BUDGET_S covers the whole endpoint
     if not features.flag("diagram"):
         raise HTTPException(503, "diagram_unavailable")
     cits = [c.model_dump() for c in req.citations]
@@ -388,12 +405,13 @@ async def make_diagram(req: DiagramRequest):
         else:
             loop = asyncio.get_running_loop()
             try:
+                deadline = t0 + TOTAL_BUDGET_S
                 resp = await asyncio.wait_for(
-                    loop.run_in_executor(_executor, answer_path, req.answer_text, passage_ns, fact_ns, gcits),
-                    timeout=TOTAL_BUDGET_S)
+                    loop.run_in_executor(_executor, answer_path, req.answer_text, passage_ns, fact_ns, gcits, deadline),
+                    timeout=max(0.1, deadline - time.monotonic()))
             except (asyncio.TimeoutError, Exception):                  # noqa: BLE001 - LLM trouble is a decline, never a 5xx
                 resp = _declined("generator_error")
-    if resp["reason"] == "generator_error":
+    if resp["reason"] in UNCACHED_REASONS:
         return JSONResponse(resp)                                      # never cached, so a retry can succeed
     if resp["status"] == "ok":
         resp["diagram_id"] = await asyncio.to_thread(_new_id)

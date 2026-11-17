@@ -36,6 +36,9 @@ export const COPY = {
   notEnough:
     "This answer doesn't have enough cited steps for a flowchart. Try asking for a classification, pathway or mechanism.",
   failed: "Couldn't draw it right now.",
+  /** verifier_unavailable: a flowchart was drawn but could not be checked box by box against its sources, so none is
+   *  shown (the chip's tip promises every box and arrow links to its source). Not deterministic: Retry. */
+  unverified: "Couldn't check this flowchart against its sources right now.",
   budget: 'Flowcharts are paused for today.',
   rateLimited: 'Too many requests, try again in a minute.',
   working: 'Working on it',
@@ -60,6 +63,8 @@ export function diagramUx(o: DiagramOutcome): DiagramUx {
   if (o.kind === 'declined') {
     if ((VALIDATOR_REASONS as readonly string[]).includes(o.reason)) return VALIDATOR;
     if (o.reason === 'generator_error') return FAILED_RETRY;
+    if (o.reason === 'verifier_unavailable')
+      return { copy: COPY.unverified, retry: true, askChip: false, hideChip: false, chipLock: 'none' };
     if (o.reason === 'budget')
       return { copy: COPY.budget, retry: false, askChip: false, hideChip: false, chipLock: 'page', lockTip: COPY.paused };
     // Patient-scoped questions never offer the chip; if the server still says so, remove everything quietly.
