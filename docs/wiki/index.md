@@ -22,3 +22,6 @@ Living repository of tribal knowledge, architectural decisions, and subsystem sp
 
 ## Product specs
 - [Next release PRD (2026-11-15)](../prd/2026-11-15-next-release-prd.md) — Draft requirements for the landing page, flowchart maker, YouTube videos, tooltips, Reset view fix and female atlas, with review log.
+
+## Problems
+- [Flags stale after deploy](problems/flags-stale-after-deploy.md) — First request after every deploy renders with all feature flags off (build-time ISR HTML); reload fixes; proper fix pending.
