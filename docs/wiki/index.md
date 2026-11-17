@@ -25,3 +25,4 @@ Living repository of tribal knowledge, architectural decisions, and subsystem sp
 
 ## Problems
 - [Flags stale after deploy](problems/flags-stale-after-deploy.md) — First request after every deploy renders with all feature flags off (build-time ISR HTML); reload fixes; proper fix pending.
+- [Flowchart validator: word rules vs meaning](problems/diagram-validator-lexical-limits.md) — Four red-team rounds 2026-11-16/17; 4 meaning flips still pass at e88176b; diagrams turned off live; entailment check proposed.
