@@ -21,3 +21,14 @@ recorded: "zero known meaning flips pass", not "every known flip has a failing t
 entailment check (DeepSeek, temperature 0, JSON yes/no + quoted span) against the exact cited sentence; decline the
 box when the model cannot quote a supporting span. Then re-run the red team suites (redteam1-4) and the live eval.
 Related: [PRD R1](../../prd/2026-11-15-next-release-prd.md), [flags stale after deploy](flags-stale-after-deploy.md).
+
+**Update 2026-11-17 (supersedes "Proposed direction").** The user approved the entailment check; built in
+`main@f822135` (`api/diagram_entail.py`, RULES_VERSION 7). One DeepSeek call per diagram judges each box/arrow against its
+cited sentences and must return a quote that a code check finds verbatim in a sentence the item cites; it only removes
+items; failures decline `verifier_unavailable` (uncached). Measured by the engineer: the 4 known flips caught live; red
+teams 1-4 bad cases 73/73 declined by the verifier alone; false drops on 35 good diagrams 0/287 boxes, 8/231 arrows; about
++1.9 s per request. Deployed and the `diagram` flag turned back **on** the same day. Live end-to-end check after deploy:
+6/7 question types drew a diagram (comparison, metformin, facial nerve, beta blockers, T1D, superior orbital fissure),
+digoxin declined, a patient-specific question was refused before any flowchart was offered. Known soft spot: arrows from a
+lead-in to "division" items and backward connectives ("is attributed to") are sometimes dropped (lost diagrams, not
+wrong ones).
