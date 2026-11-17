@@ -42,6 +42,18 @@ Round 2/3 (red team round 2; each rule removes boxes or arrows, except the four 
   context, not a negation of the items. (+) A negation inside a bracket that no box touches is about that bracket.
   (+) A clause that announces a sequence ("a proposed sequence includes A, B, C", "a two-step entry: A and B") orders
   its list. (+) "**X** — ..." is a bold lead like "**X:**".
+
+Round 4 (red team round 3; each rule only removes boxes or arrows):
+- A box's direction word (increased, raised, decline, rises, falls, more, less, fewer, ...) must be one the text puts
+  on the same object (read per clause, also from the head of a list: "decreasing A, B and possibly C"); the text naming
+  the object with no direction, or the opposite one, does not place the box. "two or more" is a count, not a direction.
+- A box may not drop a negation: a word the sentence only says as the head of a "not"/"no"/"without" ("(not reversed
+  by atropine)") does not place a box without that negation.
+- Each number of a box stands in its sentence next to the same word as in the box ("stage 1" does not license "one
+  islet autoantibody").
+- A box word its sentence lacks but another answer sentence has is borrowed: the sentence does not support the box.
+- A box word whose opposite the text has instead also covers negating prefixes ("active"/"inactive",
+  "AMPK-dependent"/"AMPK-independent", "sensitization"/"desensitization") and hyper-/hypo-.
 """
 from __future__ import annotations
 
@@ -61,7 +73,7 @@ MIN_NODES = 3
 MAX_LABEL = 80
 SUPPORT_MIN = 0.5                                  # V4/E1: share of a label's content words found in the cited sentences
 FAIL_CEILING = 0.30                                # V6: more than this share of failed nodes declines the whole diagram
-RULES_VERSION = 5                                  # part of the diagram cache key: a rules change re-validates cached declines
+RULES_VERSION = 6                                  # part of the diagram cache key: a rules change re-validates cached declines
 
 # Order-sensitive verbs (E2): the source's words must appear before the target's in the cited sentence.
 ORDER_VERBS = ("causes", "leads to", "passes to", "branches to")
@@ -96,7 +108,7 @@ NEG_VERBS = ("inhibits", "decreases")
 POS_STEMS = ("activat", "stimulat", "increas", "rais", "elevat", "enhanc", "promot", "upregulat", "up-regulat", "caus",
              "lead", "produc", "induc", "trigger", "boost")
 NEG_STEMS = ("inhibit", "decreas", "reduc", "lower", "suppress", "block", "antagonis", "prevent", "deplet",
-             "downregulat", "down-regulat", "diminish", "impair")
+             "downregulat", "down-regulat", "diminish", "impair", "declin", "diminu", "attenuat")
 
 NEGATION = frozenset({"not", "never", "no", "without", "unless", "neither", "nor", "cannot", "none"})
 WARNING_CUES = ("never", "contraindicated", "avoid", "must not", "warning", "do not", "should not", "danger")
@@ -113,8 +125,16 @@ CONTRAST = ("vs", "versus", "unlike", "whereas", "in contrast", "compared with",
 UP_STEMS = ("increas", "rais", "elevat", "enhanc", "promot", "upregulat", "up-regulat", "boost", "activat", "stimulat",
             "augment")
 DOWN_STEMS = ("decreas", "reduc", "lower", "suppress", "diminish", "inhibit", "block", "deplet", "downregulat",
-              "down-regulat", "impair", "attenuat", "slow", "retard")
+              "down-regulat", "impair", "attenuat", "slow", "retard", "declin", "diminu", "prevent")
+# Whole words only (a stem would catch "risk", "fallopian", "mortality"): rise/fall verbs and the comparatives that say
+# which way a quantity goes ("more complete emptying" is not "less complete emptying"). "two or more" is a count, not a
+# direction (see _dir_at).
+UP_WORDS = frozenset({"rise", "rises", "rising", "rose", "risen", "more", "greater", "higher", "larger"})
+DOWN_WORDS = frozenset({"fall", "falls", "falling", "fell", "fallen", "drop", "drops", "dropped", "dropping", "less",
+                        "fewer", "lesser", "smaller", "lose", "loses", "losing", "lost", "loss"})
 DIR_WINDOW = 3                                     # a direction word modifies an object at most 3 tokens away
+LIST_WINDOW = 8                                    # ... or the head of a list it governs ("decreasing A, B and possibly C")
+NEAR = 6                                           # a box's own direction word this close to its object grounds it
 _COORD = frozenset({"and", "or", "but", "which", "while", "whereas", "nor"})
 # A directional arrow between two boxes in one clause needs one of these BETWEEN them (plus the kind's verb synonyms):
 # boxes separated only by commas, "and", "or" or a parenthesis are items of one list, not a step or a branch.
@@ -231,6 +251,63 @@ def exact_marks(text: str) -> set[str]:
     return out
 
 
+def _tok_marks(t: str) -> set[str]:
+    """Number marks of one token: digits ("30s" -> 30) and spelled numbers ("two-thirds" -> 2)."""
+    out = set(numbers_in(t))
+    out |= {_NUM_WORDS[x] for x in re.findall(r"[a-z]+", t) if x in _NUM_WORDS}
+    return out
+
+
+def _num_neighbours(toks: list[str], i: int) -> set[str]:
+    """The nearest content word on each side of the number toks[i], not across another number ("stage 1 one islet":
+    "one" has only "islet")."""
+    out = set()
+    for rng in (range(i - 1, -1, -1), range(i + 1, len(toks))):
+        for k in rng:
+            if _tok_marks(toks[k]):
+                break
+            if toks[k] not in STOP and len(toks[k]) > 1:
+                out.add(_stem(toks[k]))
+                break
+    return out
+
+
+def numbers_bound(label: str, text: str) -> bool:
+    """Every number of a box stands in the text where the box's own words are:
+    - next to the same word as in the box ("stage 1" and "stage 3" in the sentence do not license "one islet
+      autoantibody" or "Three or more ... autoantibodies" where the text says "two or more islet cell autoantibodies");
+    - in a comma/semicolon part of the sentence that also holds another word of the box ("stage 1 is defined by two or
+      more islet cell autoantibodies with normoglycemia, stage 2 by continued autoimmunity ..." does not license "Stage 2
+      = islet autoantibodies with normoglycemia");
+    - several numbers in the box's order ("Stage 2: two or more ..." is not "stage 1 ... two or more ..., stage 2");
+    - a digit where the text writes that digit, a spelled number where it spells it, when the text has that form.
+    A number with no word beside it in the box is only checked by exact_marks."""
+    lt = tokens(label)
+    tt, seg = [], []
+    for n, part in enumerate(re.split(r"[,;:]", _tok_text(text))):
+        found = _TOK.findall(part)
+        tt += found
+        seg += [n] * len(found)
+    words = content_words(label)
+    last = -1
+    for i, t in enumerate(lt):
+        marks, nb = _tok_marks(t), _num_neighbours(lt, i)
+        if not marks or not nb:
+            continue
+        others = words - nb
+        same = [k for k, x in enumerate(tt) if marks & _tok_marks(x)]
+        # a digit is read where the text writes that digit, a spelled number where it spells it ("Stage 2" is not
+        # licensed by "two" when the text has its own "stage 2")
+        form = [k for k in same if bool(re.search(r"\d", tt[k])) == bool(re.search(r"\d", t))]
+        ok = [k for k in (form or same) if nb & _num_neighbours(tt, k)
+              and (not others or any(_stem(tt[j]) in others for j in range(len(tt)) if seg[j] == seg[k]))]
+        later = [k for k in ok if k > last]
+        if not later:
+            return False
+        last = later[0]
+    return True
+
+
 # Words whose opposite in the text means the box says the opposite of the answer (V4 and arrow units): a box word that
 # is not in the text, while its opposite is, is a reworded claim ("posterior two-thirds" for "anterior two-thirds").
 _ANTONYM_PAIRS = (("anterior", "posterior"), ("superior", "inferior"), ("upper", "lower"), ("strong", "weak"),
@@ -243,7 +320,12 @@ _ANTONYM_PAIRS = (("anterior", "posterior"), ("superior", "inferior"), ("upper",
                   ("retained", "lost"), ("retained", "loss"), ("preserved", "lost"), ("preserved", "loss"),
                   ("maintained", "lost"), ("proven", "unproven"), ("effective", "ineffective"), ("high", "low"),
                   ("early", "late"), ("reversible", "irreversible"), ("hyperglycemia", "hypoglycemia"),
-                  ("hyperglycaemia", "hypoglycaemia"), ("hyperkalemia", "hypokalemia"))
+                  ("hyperglycaemia", "hypoglycaemia"), ("hyperkalemia", "hypokalemia"), ("mild", "marked"),
+                  ("mild", "severe"), ("mild", "potent"), ("weak", "potent"), ("short", "long"), ("childhood", "adulthood"),
+                  ("rapid", "slow"), ("fast", "slow"), ("presence", "absence"), ("excess", "deficiency"))
+# A box word that is the text's word with a negating prefix added or removed ("active" / "inactive", "dependent" /
+# "independent", "sensitization" / "desensitization") or hyper-/hypo- swapped says the opposite of the text.
+_NEG_PREFIXES = ("in", "un", "non", "non-", "de", "dis", "ir", "im", "il", "a")
 ANTONYMS: dict[str, set[str]] = {}
 for _a, _b in _ANTONYM_PAIRS:
     ANTONYMS.setdefault(_stem(_a), set()).add(_stem(_b))
@@ -253,7 +335,19 @@ for _a, _b in _ANTONYM_PAIRS:
 def _opposed(label: str, words: set[str]) -> bool:
     """A box word missing from `words` whose opposite IS in `words`."""
     lw = content_words(label)
-    return any(ANTONYMS.get(w, set()) & words for w in lw - words)
+    return any((ANTONYMS.get(w, set()) | _prefix_opposites(w)) & words for w in lw - words)
+
+
+def _prefix_opposites(w: str) -> set[str]:
+    if "-" in w:                                    # "AMPK-dependent" / "AMPK-independent"
+        head, tail = w.rsplit("-", 1)
+        return {f"{head}-{x}" for x in _prefix_opposites(tail)} if tail else set()
+    out = {p + w for p in _NEG_PREFIXES}
+    out |= {w[len(p):] for p in _NEG_PREFIXES if w.startswith(p) and len(w) - len(p) >= 4}
+    for a, b in (("hyper", "hypo"), ("hypo", "hyper")):
+        if w.startswith(a):
+            out.add(b + w[len(a):])
+    return out
 
 
 def support(label: str, sentence_words: set[str]) -> float:
@@ -271,6 +365,10 @@ def node_supported(label: str, words: set[str]) -> bool:
 
 
 def _dir(tok: str) -> int:
+    if tok in UP_WORDS:
+        return 1
+    if tok in DOWN_WORDS:
+        return -1
     if any(tok.startswith(st) for st in UP_STEMS):
         return 1
     if any(tok.startswith(st) for st in DOWN_STEMS):
@@ -278,39 +376,135 @@ def _dir(tok: str) -> int:
     return 0
 
 
-def _polarity_at(toks: list[str], pos: int) -> int:
-    """The direction word that modifies toks[pos]: the nearest one before it (within DIR_WINDOW), else after it."""
+def _dir_at(toks: list[str], k: int) -> int:
+    """_dir of toks[k] in its place: "or more" / "or less" ("two or more autoantibodies") is a count, not a direction."""
+    if toks[k] in UP_WORDS | DOWN_WORDS and k and toks[k - 1] in ("or", "no", "any"):
+        return 0
+    return _dir(toks[k])
+
+
+def _polarity_at(toks: list[str], pos: int, ext: bool = False) -> int:
+    """The direction word that modifies toks[pos]: the nearest one before it (within DIR_WINDOW, not across a
+    coordinator: "shortened and diastole"), else after it. With `ext`, when neither is found, the head of a list the
+    object is an item of ("decreasing serum norepinephrine, plasma renin and possibly aldosterone": up to LIST_WINDOW
+    tokens back, across "and"/"or" only) or a predicate further on ("velocity of tension development increases")."""
     for d in range(1, DIR_WINDOW + 1):
-        if pos - d >= 0 and _dir(toks[pos - d]):
-            return _dir(toks[pos - d])
+        if pos - d < 0 or toks[pos - d] in _COORD:
+            break
+        if _dir_at(toks, pos - d):
+            return _dir_at(toks, pos - d)
     for d in range(1, DIR_WINDOW + 1):          # after the object: never across a coordinator ("flux ... and activates")
         if pos + d >= len(toks) or toks[pos + d] in _COORD:
             break
-        if _dir(toks[pos + d]):
-            return _dir(toks[pos + d])
+        if _dir_at(toks, pos + d):
+            return _dir_at(toks, pos + d)
+    if not ext:
+        return 0
+    for d in range(1, LIST_WINDOW + 1):
+        if pos - d < 0 or toks[pos - d] in _COORD - {"and", "or"} or toks[pos - d] in NEGATION:
+            break
+        if _dir_at(toks, pos - d):
+            return _dir_at(toks, pos - d)
+    for d in range(1, LIST_WINDOW - 2):
+        if pos + d >= len(toks) or toks[pos + d] in _COORD:
+            break
+        if _dir_at(toks, pos + d):
+            return _dir_at(toks, pos + d)
     return 0
 
 
-def _direction_contradicted(label: str, toks: list[str]) -> bool:
-    """A box that says which way something changes ("Increased end-diastolic volume") is contradicted when the text puts
-    the opposite direction word on that object ("reduced end-diastolic volume") and never the same one."""
-    lt = [t for t in tokens(label) if t not in STOP and not t.isdigit()]
-    for i, t in enumerate(lt):
-        p = _dir(t)
+def _box_directions(label: str) -> list[tuple[int, str]]:
+    """(direction, object stem) for each direction word of a box. The object is the next content word ("Raised
+    aldosterone levels" -> aldosterone); for a predicate ("Heart rate is decreased", "Velocity ... increases") or a word
+    with nothing after it, the content word before it. A direction word followed by another one does not govern
+    ("Cell-wall inhibitors enhance aminoglycoside entry": "enhance" governs "aminoglycoside")."""
+    lt = tokens(label)
+    out = []
+    for i in range(len(lt)):
+        p = _dir_at(lt, i)
         if not p:
             continue
-        objs = [w for w in lt[i + 1:] if not _dir(w)]       # the object the box's direction word governs
-        if not objs:
+        after = [w for w in lt[i + 1:] if w not in STOP and not w.isdigit()]
+        before = [w for w in lt[:i] if w not in STOP and not w.isdigit() and not _dir(w)]
+        if after and _dir(after[0]):
             continue
-        obj = _stem(objs[0])
-        seen = {_polarity_at(toks, k) for k, w in enumerate(toks) if _stem(w) == obj}
+        # "Heart rate is decreased", "cardiac output rises": the object comes first. A trailing participle
+        # ("..., increasing…") governs what follows it, which the box left out.
+        # (only a verb form says that: "... cell wall inhibitors" names an agent, it does not lower "wall")
+        verb = lt[i] in ("lost", "fell", "rose", "rise", "fall", "drop") or (
+            lt[i].endswith(("ed", "es", "s", "en")) and not lt[i].endswith(("ors", "ions", "ers", "ss", "ents")))
+        predicate = i and lt[i - 1] in _PASSIVE_AUX or (not after and verb)
+        obj = before[-1] if predicate and before else after[0] if after else None
+        if obj:
+            out.append((p, _stem(obj)))
+    return out
+
+
+def _direction_contradicted(label: str, toks: list[str], *more: list[str]) -> bool:
+    """A box that says which way something changes ("Increased end-diastolic volume", "Less complete emptying") must be
+    told so by the text: the text puts that direction on the same object somewhere. It is contradicted when the text
+    puts only the opposite word on it ("reduced end-diastolic volume", "more complete emptying"), and unsupported when
+    the text names the object with no direction, or another one ("decreasing ... possibly aldosterone levels" does not
+    place "Raised aldosterone levels"), unless the box's own direction word stands near the object in the same clause
+    ("Cardioselectivity is only relative and is lost at high doses"). A box whose object the text does not name is left
+    to the word-support check.
+    Each token list in `toks, *more` (a list lead, then each clause) is read on its own: a direction word never reaches
+    across from a heading into its item ("Rate slowing: Vagal tone is increased")."""
+    segs = (toks,) + more
+    words = {_stem(t) for t in tokens(label) if _dir(t)}       # the box's own direction words, as the text may say them
+    for p, obj in _box_directions(label):
+        occ = [(t, k) for t in segs for k, w in enumerate(t) if _stem(w) == obj]
+        if not occ:
+            continue
+        seen = {_polarity_at(t, k) for t, k in occ}
         if -p in seen and p not in seen:
+            return True
+        if p not in seen and p not in {_polarity_at(t, k, ext=True) for t, k in occ} \
+                and not any(_stem(x) in words for t, k in occ for x in t[max(0, k - NEAR):k + NEAR + 1]):
             return True
     return False
 
 
 def _neg_count(toks) -> int:
     return sum(t in NEGATION for t in toks)
+
+
+_NEG_SCOPE_END = re.compile(r"[,;:.()\[\]—–]")
+_NEG_ADVERBS = frozenset({"longer", "fully", "always", "necessarily", "yet", "directly", "significantly", "usually",
+                          "completely", "entirely", "clearly", "well", "been", "be"})
+
+
+def _negated_heads(text: str) -> tuple[set[str], set[str]]:
+    """(stems the text only says right after a negation, stems it says elsewhere). The head of a negation is the first
+    content word after it, within its clause ("(not reversed by atropine)" -> reversed, "can no longer be sustained" ->
+    sustained, "does not raise blood volume" -> raise; "blood volume" itself is not negated; "does not stimulate β cells
+    or cause insulin release" -> stimulate, cause)."""
+    heads, other = set(), set()
+    for seg in _NEG_SCOPE_END.split(_tok_text(text)):
+        want = scope = False                  # scope: inside a negated phrase, where "or"/"nor" negates the next verb too
+        for t in _TOK.findall(seg):
+            if t in NEGATION or t.endswith("n't"):
+                want = scope = True
+                continue
+            if t in ("or", "nor") and scope:
+                want = True
+                continue
+            if t in _COORD:
+                want = scope = False
+            if t in STOP or t in _NEG_ADVERBS or t.isdigit():
+                continue
+            (heads if want else other).add(_stem(t))
+            want = False
+    return heads, other
+
+
+def _negation_dropped(label: str, s: "Sent") -> bool:
+    """A box with no negation of its own that holds a word the sentence only ever says as the head of a negation: "an
+    extravagal depressant action (not reversed by atropine)" does not place "... action reversed by atropine"."""
+    if set(tokens(label)) & NEGATION or "n't" in label.lower():
+        return False
+    heads, other = _negated_heads(f"{s.ctx}. {strip_markers(s.text)}")
+    return bool(content_words(label) & (heads - other))
 
 
 def _negations_kept(label: str, toks: list[str]) -> bool:
@@ -986,19 +1180,28 @@ def _box_worded(label: str, s: Sent) -> bool:
     the sentence says it: every box word the sentence has sits in that clause (a box never blends "X has proven benefit;
     Y has not shown benefit" into "Y has proven benefit"), the clause keeps the box's negations, no box word is the
     opposite of the text's ("posterior" for "anterior"), and no direction word is flipped."""
-    if not _negations_kept(label, s.toks) or _direction_contradicted(label, s.toks):
+    clauses = [c for c in _CLAUSE.split(strip_markers(s.text)) if c.strip()]
+    if not _negations_kept(label, s.toks) or _negation_dropped(label, s) \
+            or _direction_contradicted(label, tokens(s.ctx), *(tokens(c) for c in clauses)):
         return False
     ctx_w = content_words(s.ctx)
     if node_supported(label, ctx_w) and not _opposed(label, ctx_w):
         return True
     if not node_supported(label, s.own) or _opposed(label, s.words):
         return False
-    clauses = [c for c in _CLAUSE.split(strip_markers(s.text)) if c.strip()]
     if len(clauses) < 2:
         return True
     matched = content_words(label) & s.own
     return any(matched <= content_words(c) | ctx_w and _negations_kept(label, tokens(f"{s.ctx} {c}"))
                for c in clauses)
+
+
+def _borrowed(label: str, s: Sent, sents: list[Sent]) -> bool:
+    """A box word its sentence does not have but another sentence of the answer does is borrowed from there: a blend of
+    two places, not one sentence's claim ("Aminoglycosides inhibit cell wall synthesis" = the aminoglycoside sentence's
+    "inhibit protein synthesis" + the penicillin section's "cell wall")."""
+    missing = content_words(label) - s.words
+    return bool(missing) and any(missing & t.words for t in sents if t is not s)
 
 
 def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) -> Result:
@@ -1030,11 +1233,12 @@ def validate(raw, *, answer_text: str, passage_ns: set[int], fact_ns: set[int]) 
         # sentences), keeps the box's negation words, does not put the opposite direction on its object, and holds
         # every number the box shows.
         carry = _carriers(cites, sents)
-        worded = [s for s in carry if _box_worded(label, s)]
+        worded = [s for s in carry if _box_worded(label, s) and not _borrowed(label, s, sents)]
         if not worded:
             notes.append(f'box "{label}" is not worded as its cited sentence says it')
             continue
-        worded = [s for s in worded if exact_marks(label) <= exact_marks(f"{s.ctx} {strip_markers(s.text)}")]
+        worded = [s for s in worded if exact_marks(label) <= exact_marks(f"{s.ctx} {strip_markers(s.text)}")
+                  and numbers_bound(label, f"{s.ctx} {strip_markers(s.text)}")]
         if not worded:
             notes.append(f'box "{label}" has a number or Greek letter its cited sentence does not')
             continue
