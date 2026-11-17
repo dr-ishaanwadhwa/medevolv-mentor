@@ -5,6 +5,7 @@ Living repository of tribal knowledge, architectural decisions, and subsystem sp
 ## Architectural Decision Records (ADRs)
 - [ADR-001: Unified AI-Native Architecture](decisions/ADR-001-unified-ai-native-architecture.md) — Decision on 2026-11-13 to deprecate Streamlit and build a unified Next.js 15 PWA + FastAPI monorepo with embedded Three.js WebGL canvas.
 - [ADR-002: Next release scope](decisions/ADR-002-next-release-scope.md) — Proposed 2026-11-15: post-demo release order (Reset, credits, tooltips, then flowcharts and videos, landing, female atlas), gated on the user's v2-freeze decision.
+- [ADR-003: Female study model](decisions/ADR-003-female-study-model.md) — Accepted 2026-11-17 (user choice): the human-atlas-enhanced female study model v3 (male-derived, reshaped, plus HRA female organs) replaces the HRA organs-only set as the default female atlas, labelled "Female (study model)" with per-part origin.
 
 ## Subsystems
 - [Spatial-Semantic Bridge](subsystems/spatial-semantic-bridge.md) — Bi-directional event bus streaming text tokens + spatial actions and handling 3D mesh click callbacks.

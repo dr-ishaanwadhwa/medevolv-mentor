@@ -179,6 +179,22 @@ def structure_sex(records: list[dict]) -> str:
     return "female" if records and all(atlas.record_sex(r) == "female" for r in records) else "male"
 
 
+def _origin(fma: str | None, records: list[dict], sex: str | None) -> str | None:
+    """What the female study model draws for this structure: 'hra-female', 'bp3d-reshaped' (male mesh reshaped to a
+    female form) or 'mixed'. Only for a tap in the female model, or for a female-only (HRA) result; else None."""
+    if sex == "female":
+        if fma:
+            return atlas.study_origin(fma)
+        for r in records:
+            o = next((atlas.study_origin(i) for i in _ids(r) if atlas.study_origin(i)), None)
+            if o:
+                return o
+        return None
+    if records and all(r.get("origin") == "hra-female" for r in records):
+        return "hra-female"
+    return None
+
+
 def resolve(fma: str | None, label: str | None, sex: str | None = None) -> dict | None:
     """Everything known about one structure; None when neither the atlas nor the ontology knows it. `sex` is the
     model the structure was tapped in (optional; male behaviour is unchanged without it). The result's `sex` says
@@ -189,6 +205,13 @@ def resolve(fma: str | None, label: str | None, sex: str | None = None) -> dict 
     elif label:
         r = atlas.atlas_record(label)
         records = [r] if r else []
+    # Female study model (ADR-003): a structure it draws with native HRA female meshes (uterus, ovary, its pelvis...)
+    # gets a female record; reshaped male meshes never do. Not for a tap in the male model, and without `sex` only
+    # when the crosswalk has nothing (male results stay unchanged).
+    if sex == "female" or (sex is None and not records):
+        study = atlas.study_record(fma, None) if fma else atlas.study_record(None, label)
+        if study and not any(i.upper() == study["atlas_id"] for r in records for i in _ids(r)):
+            records = [study, *records]
     names = [r["label"] for r in records] + ([label] if label else [])
     concept = {}
     for n in names:
@@ -200,9 +223,10 @@ def resolve(fma: str | None, label: str | None, sex: str | None = None) -> dict 
     ids = list(dict.fromkeys(i for r in records for i in _ids(r)))
     shown = (concept or {}).get("label") or (records[0]["label"] if records else label or "")
     return {
-        "fma_ids": ids, "label": shown, "sex": structure_sex(records),
+        "fma_ids": ids, "label": shown, "sex": structure_sex(records), "origin": _origin(fma, records, sex),
         "atlas": [AtlasLink(label=r["label"], atlas_name=r["atlas_name"], fma_ids=_ids(r),
-                            url=atlas.record_url(r) if config.ATLAS_URL else None, **_sex_fields(r)) for r in records],
+                            url=atlas.record_url(r) if config.ATLAS_URL else None, origin=r.get("origin"),
+                            **_sex_fields(r)) for r in records],
         "concept": ConceptRef(id=concept["id"], label=concept["label"], type=concept["type"], aliases=concept["aliases"],
                               degree=concept["degree"], books=concept["books"]) if concept else None,
         "citations": concept_citations(concept["label"], concept["id"]) if concept else [],

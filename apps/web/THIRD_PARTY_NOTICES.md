@@ -11,7 +11,15 @@ We re-implemented four viewer ideas for our own architecture: zooming towards th
 restoring individual structures, grouped search results, and a staged explode view (families first, then pieces).
 The explode layout and playback timing follow `app/explosion-layout.ts` and `app/explode-playback.ts`, and the
 hide/restore rules follow `app/hide-restore.ts`. They live in `src/lib/atlas-zoom.ts`, `atlas-hidden.ts`,
-`atlas-search.ts` and `atlas-explode.ts`. No model data, Learn text or images were taken.
+`atlas-search.ts` and `atlas-explode.ts`. No Learn text or images were taken.
+
+Since 2026-11-17 the Female view also uses the fork's model files: the "female study model v3"
+(`public/models/atlas-female-reconstructed.json` and its `female-base-*` / `female-joint-additions-*` chunks, upstream
+commit `fb3ca0f`, model files by wiiiimm, 2026-09-07). It is BodyParts3D 4.0 (© DBCLS, CC BY 4.0) male geometry
+reshaped by the fork's morph fields, plus Human Reference Atlas VH_F v1.5 female meshes (Browne and Schlehlein,
+HuBMAP, CC BY 4.0) fitted into it. The data licences are credited on `/credits` and in `deploy/atlas/ATTRIBUTION.md`;
+the reshaping and fitting work is covered by the MIT licence below. We serve the geometry unchanged and add our own
+per-part origin labels (`deploy/atlas/female-study/install_study.mjs`).
 
 The fork's own `LICENSE` carries only the upstream holder line below; PrejudiceNeutrino, the fork's author, adds no
 separate copyright line, so the fork's work is credited here by name.

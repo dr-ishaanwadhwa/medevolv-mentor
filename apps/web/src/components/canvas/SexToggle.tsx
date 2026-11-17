@@ -4,13 +4,12 @@ import { useRef, type KeyboardEvent, type Ref } from 'react';
 import { cn } from '@/lib/cn';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { ATLAS_TIPS } from '@/lib/tips/atlas';
-import { FEMALE_NOTE, SEXES, type Sex } from '@/lib/atlas-sex';
+import { FEMALE_NOTE, SEX_TOGGLE_LABEL as LABEL, SEXES, type Sex } from '@/lib/atlas-sex';
 
-const LABEL: Record<Sex, string> = { male: 'Male', female: 'Female (organs)' };
 const TIP = { male: ATLAS_TIPS['atlas.sex.male'], female: ATLAS_TIPS['atlas.sex.female'] } as const;
 
 /**
- * "Male | Female (organs)" segmented control (PRD 4.5, F-10). Rendered only when the `female_atlas` flag is on.
+ * "Male | Female (study model)" segmented control (PRD 4.5, F-10). Rendered only when the `female_atlas` flag is on.
  * radiogroup with two radios, one tab stop (roving tabindex), arrows move and select, Space/Enter select.
  */
 export function SexToggle({

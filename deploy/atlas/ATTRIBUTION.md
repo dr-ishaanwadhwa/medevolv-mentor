@@ -15,7 +15,30 @@ Source OBJ comments mention an older CC BY-SA 2.1 Japan license. The official cu
 
 BodyParts3D represents an adult male reference anatomy based on TARO MRI and anatomical illustration refinements. It is not a complete model of every possible human anatomical structure or variation. This interface is educational and is not a clinical tool.
 
-## Female reference model (current release, behind the `female_atlas` flag)
+## Female study model (current Female view since 2026-11-17, behind the `female_atlas` flag)
+
+The Female view shows the "female study model v3" from human-atlas-enhanced (https://github.com/PrejudiceNeutrino/human-atlas-enhanced,
+a fork of https://github.com/ashemag/human-atlas; model files by wiiiimm, 2026-09-07; upstream commit `fb3ca0f`).
+It is an adaptation of the two CC BY 4.0 works credited in this file:
+
+- BodyParts3D 4.0, © The Database Center for Life Science, CC BY 4.0: 2,181 male meshes, **reshaped by human-atlas-enhanced
+  morph fields (MIT)** to estimated female proportions (stature, torso, thorax, head, nose, waist, glutes; described upstream
+  as artistic estimates, review unresolved). 53 male or pelvic-floor parts are removed.
+- Human Reference Atlas, 3D Reference Organ Set for United, Female v1.5 (Kristen Browne, Heidi Schlehlein, HuBMAP), CC BY 4.0:
+  64 meshes (reproductive tract, breast, pelvic bones, 2 knee ligaments) fitted into that body (pelvis affine-fitted to the
+  hip-bone envelope, reproductive tract by one affine fit on bladder bounds, breast by an artistic contour).
+- The reshaping and fitting code and data are MIT, "Copyright (c) 2026 ashemag" (the fork's LICENSE; the fork's own authors
+  add no holder line). The MIT notice ships as `LICENSE-human-atlas.txt` and in `apps/web/THIRD_PARTY_NOTICES.md`.
+
+Our changes (CC BY 4.0 requires changes to be indicated): every part marked `origin` `hra-female` or `bp3d-reshaped` from
+the upstream provenance; `FMA:` ids written without the colon and all concept ids uppercased; the upstream `reproductive`
+and `mammary` systems shown as "Reproductive (female)"; manifest renamed `female.json`. Geometry bytes are unchanged. Downloaded files, sizes and SHA-256: `deploy/atlas/female-study/README.md`.
+
+This is not female anatomy data throughout: 97% of the meshes are male anatomy reshaped to a female form. The interface
+labels it "Female (study model)", for orientation only, and marks each reshaped part. Nothing is claimed about DBCLS,
+HuBMAP, NIH or the human-atlas-enhanced authors endorsing this interface.
+
+## Female reference model (HRA organs-only build: fallback, not shown by default since 2026-11-17)
 
 Kristen Browne and Heidi Schlehlein, Human Reference Atlas / HuBMAP, *3D Reference Organ Set for United, Female*, v1.5 (created 2023-12-15). CC BY 4.0.
 

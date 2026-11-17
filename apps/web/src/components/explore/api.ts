@@ -55,10 +55,14 @@ export interface SpatialCitation {
   excerpt?: string | null;
 }
 
+export type SpatialOrigin = 'hra-female' | 'bp3d-reshaped' | 'mixed';
+
 export interface SpatialResolve {
   fma_ids: string[];
   label: string;
-  atlas: { label: string; atlas_name: string; fma_ids: string[]; url: string | null; sex?: 'male' | 'female' }[];
+  atlas: { label: string; atlas_name: string; fma_ids: string[]; url: string | null; sex?: 'male' | 'female'; origin?: SpatialOrigin | null }[];
+  /** Female study model (ADR-003): what the female model draws for this structure. */
+  origin?: SpatialOrigin | null;
   /** Model the structure belongs to; absent until the API ships the field. */
   sex?: 'male' | 'female';
   concept: { id: string; label: string; type: string; aliases: string[]; degree: number; books: string[] } | null;

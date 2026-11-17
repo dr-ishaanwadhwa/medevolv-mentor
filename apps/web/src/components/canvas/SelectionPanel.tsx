@@ -6,7 +6,7 @@ import { ArrowUpRight, BookOpen, Info } from 'lucide-react';
 import { Chip, SkeletonLines, Tag } from '@/components/ui';
 import { useAtlasStore } from '@/lib/atlas-store';
 import { conceptName } from '@/lib/anatomy';
-import type { Sex } from '@/lib/atlas-sex';
+import { originLabel, originOf, type Sex } from '@/lib/atlas-sex';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { ATLAS_TIPS, relatedTip } from '@/lib/tips/atlas';
 import {
@@ -72,14 +72,30 @@ export function SelectionPanel({ fmaId, sex = 'male' }: { fmaId: string; sex?: S
     return () => ctl.abort();
   }, [fmaId, atlas, index, sex]);
 
+  // Female study model (ADR-003): say whether this structure is reshaped male geometry or HRA female data.
+  const origin = sex === 'female' ? originOf(atlas, index, fmaId) : null;
   const note = (
-    <p className="mb-4 flex items-start gap-2 rounded-lg border border-border bg-surface2 px-3 py-2 text-[0.82rem] leading-snug text-muted">
-      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <span>
-        <b className="font-semibold text-ink">Navigation only.</b> This highlight is not a clinical claim; it just shows where the
-        structure sits and where the books discuss it.
-      </span>
-    </p>
+    <>
+      <p className="mb-4 flex items-start gap-2 rounded-lg border border-border bg-surface2 px-3 py-2 text-[0.82rem] leading-snug text-muted">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        <span>
+          <b className="font-semibold text-ink">Navigation only.</b> This highlight is not a clinical claim; it just shows where the
+          structure sits and where the books discuss it.
+        </span>
+      </p>
+      {origin && (
+        <p
+          data-origin={origin}
+          className={
+            origin === 'hra-female'
+              ? 'mb-4 rounded-lg border border-border bg-surface2 px-3 py-2 text-[0.82rem] leading-snug text-muted'
+              : 'mb-4 rounded-lg bg-warn-soft px-3 py-2 text-[0.82rem] leading-snug text-warn'
+          }
+        >
+          {originLabel(origin)}
+        </p>
+      )}
+    </>
   );
 
   if (state === 'loading') {

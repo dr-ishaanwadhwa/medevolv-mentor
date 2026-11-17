@@ -54,9 +54,11 @@ export default function CreditsPage() {
 
       <LegalSection title="About the female model">
         <p>
-          The Human Reference Atlas female model is listed here ahead of the Female view in the 3D atlas. It is credited
-          on this page whether or not that view is switched on for you, and next to the 3D view whenever Female is
-          active.
+          The Female view in the 3D atlas shows the female study model: a male BodyParts3D body reshaped to a female
+          form, with female organs from the Human Reference Atlas. It is for orientation only. It is credited on this
+          page whether or not that view is switched on for you, and next to the 3D view whenever Female is active. The
+          reshaping comes from human-atlas-enhanced, MIT licence, copyright (c) 2026 ashemag; see the app&apos;s
+          third-party notices.
         </p>
       </LegalSection>
 

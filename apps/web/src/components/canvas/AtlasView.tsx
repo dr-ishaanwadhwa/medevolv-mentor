@@ -636,7 +636,7 @@ export function AtlasView() {
 
         {/* C1: credit for the model on screen (CC BY 4.0). */}
         <div className="pointer-events-auto w-fit rounded-lg bg-surface/85 px-2 py-1 backdrop-blur">
-          <ModelCredit model={active === 'female' ? 'hra-vh-f' : 'bodyparts3d'} />
+          <ModelCredit model={active === 'female' ? 'female-study' : 'bodyparts3d'} />
         </div>
       </div>
 

@@ -64,7 +64,7 @@ export function FemaleConfirmSheet({
         </h2>
         <p id="female-sheet-body" className="mt-2 text-sm leading-relaxed text-muted">
           {known ? 'Best on Wi-Fi. ' : 'Checking the size. '}
-          It is saved on this device, so you only download it once. Skeleton and muscles are partial.
+          It is saved on this device, so you only download it once. It is a male-derived body reshaped to a female form, with female organs from the Human Reference Atlas, for orientation only.
           {constrained ? ' Your connection looks slow or data-saving.' : ''}
         </p>
         <div className="mt-4 flex flex-wrap justify-end gap-2">

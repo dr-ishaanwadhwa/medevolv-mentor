@@ -101,6 +101,7 @@ class AtlasLink(BaseModel):
     fma_ids: list[str]
     url: str | None = None
     sex: Literal["male", "female"] | None = None
+    origin: Literal["hra-female", "bp3d-reshaped", "mixed"] | None = None   # female study model (ADR-003)
 
 
 class ConceptRef(BaseModel):
@@ -130,6 +131,8 @@ class SpatialResolveResponse(BaseModel):
     related: list[RelatedConcept]
     tier: Literal["navigation"] = "navigation"
     sex: Literal["male", "female"] = "male"
+    # Female study model (ADR-003): 'bp3d-reshaped' = a male mesh reshaped to a female form, never female anatomy data
+    origin: Literal["hra-female", "bp3d-reshaped", "mixed"] | None = None
 
 
 class ConceptHit(BaseModel):

@@ -39,8 +39,8 @@ export const ATLAS_TIPS = {
     effect: 'Shows the male model.',
   },
   'atlas.sex.female': {
-    purpose: 'Visible Human Female reference organs. Skeleton and muscles are partial.',
-    effect: 'Shows the female model.',
+    purpose: 'A male-derived body reshaped to a female form, plus female organs from the Human Reference Atlas.',
+    effect: 'Shows the female study model, for orientation only.',
   },
   'atlas.panel.expand': {
     purpose: 'Shows the full details of the selected structure.',

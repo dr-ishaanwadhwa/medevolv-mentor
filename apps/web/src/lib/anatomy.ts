@@ -56,6 +56,8 @@ export interface Part {
   vertexCount: number;
   indexCount: number;
   bounds: [number[], number[]];
+  /** Female study model only (ADR-003): native HRA female mesh or reshaped male BodyParts3D mesh. */
+  origin?: 'hra-female' | 'bp3d-reshaped';
 }
 
 export interface Concept {

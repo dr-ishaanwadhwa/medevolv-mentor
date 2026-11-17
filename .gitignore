@@ -39,3 +39,5 @@ apps/web/public/story/
 /deploy/atlas/female/source/
 /deploy/atlas/female/work/
 /deploy/atlas/female/node_modules/
+# Female study model source files (human-atlas-enhanced, ~37 MB, downloaded; see deploy/atlas/female-study/README.md)
+/deploy/atlas/female-study/source/

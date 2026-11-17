@@ -100,3 +100,65 @@ def test_id_map_ids_survive_the_matchers():
     bad = [r["concept_id"] for r in rows if r["concept_id"] and not re.fullmatch(r"[A-Z]+:?[A-Z0-9_]+", r["concept_id"])]
     assert not bad, bad[:5]
     assert all("," not in r["concept_id"] and " " not in r["concept_id"] for r in rows)
+
+
+# ---------------------------------------------------------------- female study model (ADR-003)
+
+FEMUR = {"label": "femur", "key": "femur", "atlas_id": "FMA9611", "atlas_name": "femur", "method": "atlas-name", "score": 1.0}
+
+
+@pytest.fixture
+def study(monkeypatch):
+    """The committed sidecar rag/female_study_origin.json; crosswalk holds only male rows (femur, heart)."""
+    monkeypatch.setattr(config, "ATLAS_URL", "https://atlas.example")
+    monkeypatch.setattr(atlas, "links", lambda: {"heart": HEART, "femur": FEMUR})
+    monkeypatch.setattr(spatial.concepts, "concept", lambda n: {})
+
+
+def test_study_sidecar_origins():
+    assert atlas.study_origin("HRA:VH_F_UTERUS") == "hra-female"
+    assert atlas.study_origin("fma:7214") == "hra-female"              # left ovary, any id spelling
+    assert atlas.study_origin("FMA9611") == "bp3d-reshaped"            # femur
+    assert atlas.study_origin("FMA23881") == "mixed"                   # skeletal system: reshaped bones + HRA pelvis
+    assert atlas.study_record("FMA9611") is None and atlas.study_record("FMA23881") is None
+
+
+@pytest.mark.parametrize("fma,label", [("HRA:VH_F_UTERUS", None), (None, "uterus"), (None, "left ovary")])
+def test_resolve_female_only_structure_is_hra(study, fma, label):
+    r = spatial.resolve(fma, label, "female")
+    assert r["sex"] == "female" and r["origin"] == "hra-female"
+    a = r["atlas"][0]
+    assert a.origin == "hra-female" and a.sex == "female" and a.url.endswith("&sex=female")
+    if label == "left ovary":
+        assert r["fma_ids"] == ["FMA7214"]                               # the left one, never both ovaries
+
+
+def test_resolve_female_only_structure_without_sex(study):
+    r = spatial.resolve(None, "uterus")                                 # e.g. a chat link: crosswalk has no row
+    assert r["sex"] == "female" and r["origin"] == "hra-female"
+
+
+def test_resolve_reshaped_part_never_female_native(study):
+    r = spatial.resolve("FMA9611", None, "female")                      # femur tapped in the female study model
+    assert r["origin"] == "bp3d-reshaped"
+    assert r["sex"] == "male"                                           # not a female-only structure
+    assert all(a.sex != "female" and a.origin != "hra-female" for a in r["atlas"])
+    assert r["atlas"][0].url == "https://atlas.example/?select=FMA9611"  # FMA deep link unchanged
+    m = spatial.resolve("FMA9611", None, "male")                        # male model: no origin at all
+    assert m["origin"] is None and m["sex"] == "male"
+
+
+def test_resolve_mixed_structure(study):
+    r = spatial.resolve("FMA23881", None, "female")
+    assert r is None or (r["origin"] == "mixed" and r["sex"] == "male")
+
+
+def test_api_spatial_resolve_reports_origin(study):
+    from fastapi.testclient import TestClient
+    from api.main import app
+    c = TestClient(app)
+    u = c.get("/api/spatial/resolve", params={"fma": "HRA:VH_F_UTERUS", "sex": "female"}).json()
+    assert u["origin"] == "hra-female" and u["sex"] == "female" and u["atlas"][0]["origin"] == "hra-female"
+    f = c.get("/api/spatial/resolve", params={"fma": "FMA9611", "sex": "female"}).json()
+    assert f["origin"] == "bp3d-reshaped" and f["sex"] == "male"
+    assert all(a.get("origin") != "hra-female" and a.get("sex") != "female" for a in f["atlas"])

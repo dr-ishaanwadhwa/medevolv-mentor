@@ -1,4 +1,4 @@
-/** Pure logic for the Male | Female (organs) atlas switch (PRD 4.5, D-8). No React, no `@/` imports, so Node tests run it.
+/** Pure logic for the Male | Female (study model) atlas switch (PRD 4.5, D-8). No React, no `@/` imports, so Node tests run it.
  *
  * One model is in the scene at a time; the two are never overlaid or morphed. Selection is carried across by concept
  * id, never by part index. Everything here is gated by the `female_atlas` flag at the call sites: with the flag off
@@ -8,8 +8,36 @@ import { buildIndex, resolveHighlight, type Atlas, type AtlasIndex } from './ana
 export type Sex = 'male' | 'female';
 export const SEXES: readonly Sex[] = ['male', 'female'];
 
+/** One sentence under the toggle while the female model is shown (ADR-003: the study model is male-derived). */
 export const FEMALE_NOTE =
-  'Female model: Visible Human Female reference organs. Skeleton and muscles are partial; external genitalia are not included.';
+  'Female study model: a male body reshaped to a female form, with female organs from the Human Reference Atlas; for orientation only.';
+
+// ---------------------------------------------------------------- native vs reshaped parts (ADR-003)
+
+/** Where a part's geometry comes from. `hra-female`: Human Reference Atlas female data. `bp3d-reshaped`: a male
+ * BodyParts3D mesh reshaped to a female form by the study model's morph fields. Male-model parts have no origin. */
+export type PartOrigin = 'hra-female' | 'bp3d-reshaped';
+export type SelectionOrigin = PartOrigin | 'mixed';
+
+/** Origin of what a concept id draws in this model: one origin, 'mixed', or null (not drawn, or no origin data). */
+export function originOf(atlas: Atlas | null, index: AtlasIndex | null, id: string): SelectionOrigin | null {
+  if (!atlas || !index) return null;
+  const seen = new Set<PartOrigin>();
+  for (const i of resolveHighlight(atlas, index, [id]).partIdx) {
+    const o = atlas.parts[i].origin;
+    if (!o) return null;
+    seen.add(o);
+  }
+  if (seen.size === 0) return null;
+  return seen.size > 1 ? 'mixed' : [...seen][0];
+}
+
+/** Short line for the selection panel. Reshaped parts must never read as female anatomy data. */
+export function originLabel(o: SelectionOrigin): string {
+  if (o === 'bp3d-reshaped') return 'Reshaped from the male model (BodyParts3D), not female anatomy data.';
+  if (o === 'hra-female') return 'Female anatomy data from the Human Reference Atlas, fitted into this body.';
+  return 'Partly reshaped from the male model, partly female anatomy data from the Human Reference Atlas.';
+}
 
 export function parseSex(raw: string | null | undefined): Sex | null {
   const v = (raw ?? '').trim().toLowerCase();
@@ -17,6 +45,8 @@ export function parseSex(raw: string | null | undefined): Sex | null {
 }
 
 export const otherSex = (s: Sex): Sex => (s === 'male' ? 'female' : 'male');
+/** Labels of the Male | Female switch. The female set is the male-derived study model (ADR-003), so it says so. */
+export const SEX_TOGGLE_LABEL: Record<Sex, string> = { male: 'Male', female: 'Female (study model)' };
 export const sexLabel = (s: Sex): string => (s === 'male' ? 'Male' : 'Female');
 
 /** Manifest file under the models base. */
