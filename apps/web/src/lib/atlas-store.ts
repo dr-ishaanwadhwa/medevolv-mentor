@@ -74,7 +74,10 @@ export async function loadManifestFor(sex: Sex, deps: ManifestDeps): Promise<Atl
 
 const browserDeps: ManifestDeps = {
   fetchJson: async (url) => {
-    const r = await fetch(url);
+    // Manifests are small and change when a model is swapped; /models/* is served with a 7-day max-age, so a plain
+    // fetch would keep an old model's manifest for up to a week. 'no-cache' revalidates (a 304 when unchanged).
+    // Chunks keep the long cache: their names and IndexedDB keys change with the model version.
+    const r = await fetch(url, { cache: 'no-cache' });
     if (!r.ok) throw new Error('The anatomy catalogue could not be loaded.');
     return r.json();
   },
